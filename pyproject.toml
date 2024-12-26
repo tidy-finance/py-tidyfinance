@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tidyfinance"
+authors = [{name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"},
+           {name = "Christoph Frey", email = "christoph.frey@gmail.com"}
+           ]
+version = "0.1.0"
+description = "A Python library for financial data manipulation using Polars"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.28.1",
+    "polars>=1.0.0",
+    "pytest>=8.3.4",
+    "pytest-httpx>=0.35.0",
+    "pytest-cov>=6.0.0"
+]
+
+[project.urls]
+Repository = "https://github.com/tidy-finance/py-tidyfinance"
+Issues = "https://github.com/tidy-finance/py-tidyfinance/issues"
+Changelog = "https://github.com/tidy-finance/py-tidyfinance/blob/master/CHANGELOG.md"
