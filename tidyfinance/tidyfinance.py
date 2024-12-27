@@ -1,19 +1,73 @@
-def add_lag_columns(data, cols, by=None, lag=1, max_lag=None, drop_na=True, data_options=None):
-    """Add lagged versions of specified columns to a DataFrame.
+"""Main module for tidyfinance package."""
 
-    Parameters:
-        data (pd.DataFrame): The data containing the columns to be lagged.
-        cols (list): List of column names to lag.
-        by (str, optional): Column name to group by when applying the lag. Default is None.
-        lag (int): Number of periods to lag the columns by.
-        max_lag (int, optional): Maximum lag period. Defaults to lag.
-        drop_na (bool): Whether to drop rows with missing values in the lagged columns.
-        data_options (dict, optional): Additional options for data processing.
+import polars as pl
 
-    Returns:
-        pd.DataFrame: DataFrame with lagged columns added.
+
+def add_lag_columns(
+    data: pl.DataFrame,
+    cols: list[str],
+    by: str | None = None,
+    lag: int = 0,
+    max_lag: int | None = None,
+    drop_na: bool = False,
+    date_col: str = "date"
+) -> pl.DataFrame:
     """
-    pass
+    Add lagged versions of specified columns to a Polars DataFrame.
+
+    Parameters
+    ----------
+        data (pl.DataFrame): The input DataFrame.
+        cols (list[str]): List of column names to lag.
+        by (str | None): Optional column to group by. Default is None.
+        lag (int): Number of periods to lag. Must be non-negative.
+        max_lag (int | None): Maximum lag period. Defaults to `lag` if None.
+        drop_na (bool): Whether to drop rows with missing values in lagged
+        columns. Default is True.
+        date_col (str): The name of the date column. Default is "date".
+
+    Returns
+    -------
+        pl.DataFrame: DataFrame with lagged columns appended.
+
+    """
+    if lag < 0 or (max_lag is not None and max_lag < lag):
+        raise ValueError("`lag` must be non-negative, "
+                         + "and `max_lag` must be greater than or "
+                         + "equal to `lag`.")
+
+    if max_lag is None:
+        max_lag = lag
+
+    # Ensure the date column is available
+    if date_col not in data.columns:
+        raise ValueError(f"Date column `{date_col}` not found in DataFrame.")
+
+    # Add lagged columns
+    result = data.clone()
+    for col in cols:
+        if col not in data.columns:
+            raise ValueError(f"Column `{col}` not found in the DataFrame.")
+
+        # Create lagged column for each lag from `lag` to `max_lag`
+        for index_lag in range(lag, max_lag + 1):
+            lag_col_name = f"{col}_lag_{index_lag}"
+
+            if by:
+                # Apply lag with grouping
+                result = result.with_columns(
+                    pl.col(col).shift(index_lag).over(by).alias(lag_col_name)
+                )
+            else:
+                # Apply lag without grouping
+                result = result.with_columns(
+                    pl.col(col).shift(index_lag).alias(lag_col_name)
+                )
+            # Optionally drop rows with NA values
+            if drop_na:
+                result = result.drop_nulls(subset=[lag_col_name])
+
+    return result
 
 
 def assign_portfolio(data, sorting_variable, breakpoint_options=None, breakpoint_function=None, data_options=None):
