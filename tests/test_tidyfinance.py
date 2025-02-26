@@ -1,23 +1,29 @@
 """Test script for tidyfinance package."""
 
-import polars as pl
 import pandas as pd
 import numpy as np
 import pytest
-from tidyfinance import add_lag_columns
+import sys
+import os
+
+sys.path.insert(0,
+                os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                             '..')))
+
+from tidyfinance.tidyfinance import add_lag_columns
 
 
 # Helper function to create test data
 def create_test_data():
     np.random.seed(42)  # For reproducibility
-    dates = pd.date_range(start='2023-01-01', periods=10, freq='M')
+    dates = pd.date_range(start='2023-01-01', periods=10, freq='ME')
     data = {
         'permno': np.repeat([1, 2], 10),
         'date': np.tile(dates, 2),
         'bm': np.random.uniform(0.5, 1.5, 20),
         'size': np.random.uniform(100, 200, 20)
     }
-    return pl.DataFrame(data)
+    return pd.DataFrame(data)
 
 
 # Tests
@@ -64,8 +70,8 @@ def test_preserve_original_values():
     result = add_lag_columns(data, cols=["bm", "size"], lag=3, by="permno")
 
     # Convert to lists for comparison
-    assert result.get_column("bm").to_list() == data.get_column("bm").to_list()
-    assert result.get_column("size").to_list() == data.get_column("size").to_list()
+    assert result.get("bm").to_list() == data.get("bm").to_list()
+    assert result.get("size").to_list() == data.get("size").to_list()
 
 
 def test_lag_values_correctness():
@@ -75,13 +81,13 @@ def test_lag_values_correctness():
 
     # For each permno group, check if lag values are correct
     for permno in [1, 2]:
-        group_data = result.filter(pl.col("permno") == permno).sort("date")
-        orig_values = group_data.get_column("bm").to_list()
-        lag_values = group_data.get_column("bm_lag_1").to_list()
+        group_data = result.query("permno == @permno").sort_values("date")
+        orig_values = group_data.get("bm").to_list()
+        lag_values = group_data.get("bm_lag_1").to_list()
 
         # Check if lagged values match original values shifted by 1
         assert lag_values[1:] == orig_values[:-1]
-        assert lag_values[0] is None  # First value should be None
+        assert np.isnan(lag_values[0])  # First value should be NaN
 
 
 def test_multiple_lags():

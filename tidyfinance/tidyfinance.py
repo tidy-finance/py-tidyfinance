@@ -1,40 +1,39 @@
 """Main module for tidyfinance package."""
 
-import polars as pl
+import pandas as pd
 
 
 def add_lag_columns(
-    data: pl.DataFrame,
+    data: pd.DataFrame,
     cols: list[str],
     by: str | None = None,
     lag: int = 0,
     max_lag: int | None = None,
     drop_na: bool = False,
     date_col: str = "date"
-) -> pl.DataFrame:
+) -> pd.DataFrame:
     """
-    Add lagged versions of specified columns to a Polars DataFrame.
+    Add lagged versions of specified columns to a Pandas DataFrame.
 
     Parameters
     ----------
-        data (pl.DataFrame): The input DataFrame.
+        data (pd.DataFrame): The input DataFrame.
         cols (list[str]): List of column names to lag.
         by (str | None): Optional column to group by. Default is None.
         lag (int): Number of periods to lag. Must be non-negative.
         max_lag (int | None): Maximum lag period. Defaults to `lag` if None.
         drop_na (bool): Whether to drop rows with missing values in lagged
-        columns. Default is True.
+        columns. Default is False.
         date_col (str): The name of the date column. Default is "date".
 
     Returns
     -------
-        pl.DataFrame: DataFrame with lagged columns appended.
-
+        pd.DataFrame: DataFrame with lagged columns appended.
     """
     if lag < 0 or (max_lag is not None and max_lag < lag):
         raise ValueError("`lag` must be non-negative, "
-                         + "and `max_lag` must be greater than or "
-                         + "equal to `lag`.")
+                         "and `max_lag` must be greater than or "
+                         "equal to `lag`.")
 
     if max_lag is None:
         max_lag = lag
@@ -43,29 +42,21 @@ def add_lag_columns(
     if date_col not in data.columns:
         raise ValueError(f"Date column `{date_col}` not found in DataFrame.")
 
-    # Add lagged columns
-    result = data.clone()
+    result = data.copy()
     for col in cols:
         if col not in data.columns:
             raise ValueError(f"Column `{col}` not found in the DataFrame.")
 
-        # Create lagged column for each lag from `lag` to `max_lag`
         for index_lag in range(lag, max_lag + 1):
             lag_col_name = f"{col}_lag_{index_lag}"
 
             if by:
-                # Apply lag with grouping
-                result = result.with_columns(
-                    pl.col(col).shift(index_lag).over(by).alias(lag_col_name)
-                )
+                result[lag_col_name] = result.groupby(by)[col].shift(index_lag)
             else:
-                # Apply lag without grouping
-                result = result.with_columns(
-                    pl.col(col).shift(index_lag).alias(lag_col_name)
-                )
-            # Optionally drop rows with NA values
+                result[lag_col_name] = result[col].shift(index_lag)
+
             if drop_na:
-                result = result.drop_nulls(subset=[lag_col_name])
+                result = result.dropna(subset=[lag_col_name])
 
     return result
 
