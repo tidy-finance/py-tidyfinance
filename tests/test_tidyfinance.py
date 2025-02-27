@@ -10,7 +10,7 @@ sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              '..')))
 
-from tidyfinance.tidyfinance import add_lag_columns
+from tidyfinance.tidyfinance import add_lag_columns, download_data_factors
 
 
 # Helper function to create test data
@@ -111,6 +111,34 @@ def test_invalid_date_column():
     data = create_test_data()
     with pytest.raises(ValueError):
         add_lag_columns(data, cols=["bm"], lag=1, date_col="invalid_date")
+
+
+def test_download_data_factors_invalid_data_set():
+    with pytest.raises(ValueError, match="Unsupported factor data type."):
+        download_data_factors("invalid_data_set", start_date="2020-01-01",
+                              end_date="2022-12-31")
+
+
+def test_download_data_factors_ff_data_set():
+    with pytest.raises(ValueError, match="Unsupported factor data type."):
+        download_data_factors('factors_test', start_date="2020-01-01",
+                              end_date="2022-12-01")
+
+
+def test_download_data_factors_q_handles_broken_url():
+    with pytest.raises(ValueError,
+                       match=("Returning an empty data set due to download "
+                              "failure."
+                              )):
+        download_data_factors("factors_q5_annual", start_date="2020-01-01",
+                              end_date="2022-12-01", url="test")
+
+
+def test_download_data_factors_q_handles_start_date_after_end_date():
+    with pytest.raises(ValueError,
+                       match="start_date cannot be after end_date"):
+        download_data_factors("factors_q5_annual", start_date="2021-12-31",
+                              end_date="2020-01-01")
 
 
 if __name__ == "__main__":

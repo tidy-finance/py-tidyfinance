@@ -1,6 +1,8 @@
 """Main module for tidyfinance package."""
 
 import pandas as pd
+import requests
+import pandas_datareader as pdr
 
 
 def add_lag_columns(
@@ -202,19 +204,206 @@ def disconnection_connection(con):
     pass
 
 
-def download_data(type, start_date=None, end_date=None, **kwargs):
-    """Download and process data based on the specified type.
-
-    Parameters:
-        type (str): Type of dataset to download.
-        start_date (str, optional): Start date for the data (YYYY-MM-DD).
-        end_date (str, optional): End date for the data (YYYY-MM-DD).
-        kwargs: Additional arguments for the specific download function.
-
-    Returns:
-        pd.DataFrame: Processed data.
+def download_data(
+    data_set: str,
+    start_date: str = None,
+    end_date: str = None,
+    **kwargs
+) -> pd.DataFrame:
     """
-    pass
+    Download and process data based on the specified type.
+
+    Parameters
+    ----------
+    type : str
+        The type of dataset to download, indicating either factor data or
+        macroeconomic predictors  (e.g., Fama-French factors, Global Q factors,
+                                   or macro predictors).
+    start_date : str, optional
+        The start date for filtering the data, in "YYYY-MM-DD" format.
+    end_date : str, optional
+        The end date for filtering the data, in "YYYY-MM-DD" format.
+    **kwargs : dict
+        Additional arguments passed to specific download functions depending
+        on the `type`.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with processed data, including dates and relevant financial
+        metrics, filtered by the specified date range.
+    """
+    if "factors" in data_set:
+        processed_data = download_data_factors(
+            data_set, start_date, end_date, **kwargs
+            )
+    elif "macro_predictors" in data_set:
+        processed_data = download_data_macro_predictors(
+            data_set, start_date, end_date, **kwargs
+            )
+    elif "wrds" in data_set:
+        processed_data = download_data_wrds(
+            data_set, start_date, end_date, **kwargs
+            )
+    elif "constituents" in data_set:
+        processed_data = download_data_constituents(**kwargs)
+    elif "fred" in data_set:
+        processed_data = download_data_fred(
+            start_date=start_date, end_date=end_date, **kwargs
+            )
+    elif "stock_prices" in data_set:
+        processed_data = download_data_stock_prices(
+            start_date=start_date, end_date=end_date, **kwargs
+            )
+    elif "osap" in data_set:
+        processed_data = download_data_osap(start_date, end_date, **kwargs)
+    else:
+        raise ValueError("Unsupported data type.")
+    return processed_data
+
+
+def download_data_factors(
+    data_set: str,
+    start_date: str = None,
+    end_date: str = None,
+    **kwargs
+) -> pd.DataFrame:
+    """
+    Download and process factor data for the specified type and date range.
+
+    Parameters
+    ----------
+    type : str
+        The type of dataset to download, indicating factor model and frequency.
+    start_date : str, optional
+        The start date for filtering the data, in "YYYY-MM-DD" format.
+    end_date : str, optional
+        The end date for filtering the data, in "YYYY-MM-DD" format.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with processed factor data, including dates,
+        risk-free rates, market excess returns, and other factors,
+        filtered by the specified date range.
+    """
+    if "factors_ff" in data_set:
+        return download_data_factors_ff(data_set, start_date, end_date)
+    elif "factors_q" in data_set:
+        return download_data_factors_q(data_set, start_date, end_date)
+    else:
+        raise ValueError("Unsupported factor data type.")
+
+
+def download_data_factors_ff(
+    data_set: str,
+    start_date: str = None,
+    end_date: str = None
+) -> pd.DataFrame:
+    """Download and process Fama-French factor data."""
+    start_date, end_date = _validate_dates(start_date, end_date)
+    all_data_sets = pdr.famafrench.get_available_datasets()
+    if data_set in all_data_sets:
+        try:
+            raw_data = (pdr.famafrench.FamaFrenchReader(
+                data_set, start=start_date, end=end_date).read()[0]
+                .div(100)
+                .reset_index()
+                .rename(columns=lambda x:
+                        x.lower()
+                        .replace("-rf", "_excess")
+                        .replace("rf", "risk_free")
+                        )
+                .assign(date=lambda x: _return_datetime(x['date']))
+                .apply(lambda x: x.replace([-99.99, -999], pd.NA)
+                       if x.name != 'date' else x
+                       )
+                )
+            raw_data = raw_data[
+                ["date"] + [col for col in raw_data.columns if col != "date"]
+                ].reset_index(drop=True)
+            return raw_data
+        except ValueError:
+            raise ValueError("Unsupported factor data type.")
+    else:
+        raise ValueError("Returning an empty data set due to download failure")
+        print(f"{data_set} is not in list of available data sets. "
+              " Returns empty DataFrame. Choose a dataset from:")
+        print("")
+        print(all_data_sets)
+        return pd.DataFrame()
+
+
+def download_data_factors_q(
+    data_set: str,
+    start_date: str = None,
+    end_date: str = None,
+    url: str = "https://global-q.org/uploads/1/2/2/6/122679606/"
+) -> pd.DataFrame:
+    """
+    Download and process Global Q factor data.
+
+    Parameters
+    ----------
+    type : str
+        The type of dataset to download (e.g., "factors_q5_daily",
+                                         "factors_q5_monthly").
+    start_date : str, optional
+        The start date for filtering the data, in "YYYY-MM-DD" format.
+    end_date : str, optional
+        The end date for filtering the data, in "YYYY-MM-DD" format.
+    url : str, optional
+        The base URL from which to download the dataset files.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with processed factor data, including the date,
+        risk-free rate, market excess return, and other factors.
+    """
+    start_date, end_date = _validate_dates(start_date, end_date)
+    ref_year = pd.Timestamp.today().year - 1
+    all_data_sets = [f"q5_factors_daily_{ref_year}",
+                     f"q5_factors_weekly_{ref_year}",
+                     f"q5_factors_weekly_w2w_{ref_year}",
+                     f"q5_factors_monthly_{ref_year}",
+                     f"q5_factors_quarterly_{ref_year}",
+                     f"q5_factors_annual_{ref_year}"
+                     ]
+    if data_set in all_data_sets:
+        raw_data = (pd.read_csv(f"{url}{data_set}.csv")
+                    .rename(columns=lambda x: x.lower().replace("r_", ""))
+                    .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
+                    )
+        if "monthly" in data_set:
+            raw_data = (raw_data.assign(date=lambda x: pd.to_datetime(
+                x["year"].astype(str) + "-" + x["month"].astype(str)+"-01")
+                )
+                .drop(columns=["year", "month"])
+                )
+        if "annual" in data_set:
+            raw_data = (raw_data.assign(date=lambda x: pd.to_datetime(
+                x["year"].astype(str) + "-01-01")
+                )
+                .drop(columns=["year"])
+                )
+        raw_data = (raw_data
+                    .assign(date=lambda x: pd.to_datetime(x["date"]))
+                    .apply(lambda x: x.div(100) if x.name != "date" else x)
+                    )
+        if start_date and end_date:
+            raw_data = raw_data.query('@start_date <= date <= @end_date')
+        raw_data = raw_data[
+            ["date"] + [col for col in raw_data.columns if col != "date"]
+            ].reset_index(drop=True)
+        return raw_data
+    else:
+        raise ValueError("Returning an empty data set due to download failure.")
+        print(f"{data_set} might not be in list of available data sets: "
+              " Also check the provided URL. Choose a dataset from:")
+        print("")
+        print(all_data_sets)
+        return pd.DataFrame()
 
 
 def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
@@ -359,6 +548,56 @@ def winsorize(x, cut):
     """
     pass
 
+
+def _validate_dates(
+    start_date: str = None,
+    end_date: str = None,
+    use_default_range: bool = False
+) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
+    """
+    Validate and process start and end dates.
+
+    Parameters
+    ----------
+    start_date : str, optional
+        The start date in "YYYY-MM-DD" format.
+    end_date : str, optional
+        The end date in "YYYY-MM-DD" format.
+    use_default_range : bool, optional
+        Whether to use a default date range if no dates are provided.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the validated start and end dates.
+    """
+    if start_date is None or end_date is None:
+        if use_default_range:
+            end_date = pd.Timestamp.today()
+            start_date = end_date - pd.DateOffset(years=2)
+            print("No start_date or end_date provided. Using the range "
+                  f"{start_date.date()} to {end_date.date()} to avoid "
+                  "downloading large amounts of data.")
+            return start_date.date(), end_date.date()
+        else:
+            print("No start_date or end_date provided. Returning the full "
+                  "dataset.")
+            return None, None
+    else:
+        start_date = pd.to_datetime(start_date).date()
+        end_date = pd.to_datetime(end_date).date()
+        if start_date > end_date:
+            raise ValueError("start_date cannot be after end_date.")
+        return start_date, end_date
+
+
+def _return_datetime(dates):
+    """Return date without time and change period to timestamp."""
+    dates = pd.Series(dates)
+    if isinstance(dates.iloc[0], pd.Period):  # Check if 'Date' is a Period
+        return dates.dt.to_timestamp(how='start').dt.date
+    else:
+        return pd.to_datetime(dates, errors='coerce').dt.date
 
 
 
