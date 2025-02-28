@@ -436,13 +436,18 @@ def download_data_macro_predictors(
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
-    try:
-        macro_sheet_url = (f"https://docs.google.com/spreadsheets/d/{sheet_id}"
-                           f"/gviz/tq?tqx=out:csv&sheet={data_set}"
-                           )
-        raw_data = pd.read_csv(macro_sheet_url)
-    except Exception:
-        print("Returning an empty data set due to download failure.")
+    if data_set in ["Monthly", "Quarterly", "Annual"]:
+        try:
+            macro_sheet_url = ("https://docs.google.com/spreadsheets/d/"
+                               f"{sheet_id}/gviz/tq?tqx=out:csv&sheet="
+                               f"{data_set}"
+                               )
+            raw_data = pd.read_csv(macro_sheet_url)
+        except Exception:
+            print("Expected an empty DataFrame due to download failure.")
+            return pd.DataFrame()
+    else:
+        raise ValueError("Unsupported macro predictor type.")
         return pd.DataFrame()
 
     if data_set == "Monthly":
@@ -497,21 +502,80 @@ def download_data_macro_predictors(
         dfy=lambda df: df["BAA"] - df["AAA"]
     )
 
-    processed_data = raw_data[[
+    raw_data = raw_data[[
         "date", "rp_div", "dp", "dy", "ep", "de", "svar", "b/m", "ntis",
         "tbl", "lty", "ltr", "tms", "dfy", "infl"
         ]]
-    processed_data = (processed_data
-                      .rename(columns={col: col.replace("/", "")
-                                       for col in processed_data.columns}
-                              )
-                      .dropna()
-                      )
+    raw_data = (raw_data
+                .rename(columns={col: col.replace("/", "")
+                                 for col in raw_data.columns}
+                        )
+                .dropna()
+                )
 
     if start_date and end_date:
         raw_data = raw_data.query('@start_date <= date <= @end_date')
 
-    return processed_data
+    return raw_data
+
+
+def download_data_fred(
+    series: str | list,
+    start_date: str = None,
+    end_date: str = None,
+) -> pd.DataFrame:
+    """
+    Download and process data from FRED.
+
+    Parameters
+    ----------
+    series : str or list
+        A list of FRED series IDs to download.
+    start_date : str, optional
+        The start date for filtering the data, in "YYYY-MM-DD" format.
+    end_date : str, optional
+        The end date for filtering the data, in "YYYY-MM-DD" format.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with processed data, including the date, value,
+        and series ID, filtered by the specified date range.
+    """
+    if isinstance(series, str):
+        series = [series]
+
+    start_date, end_date = _validate_dates(start_date, end_date)
+    fred_data = []
+
+    for s in series:
+        url = f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv"
+        headers = {"User-Agent": get_random_user_agent()}
+
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+
+            raw_data = (pd.read_csv(pd.io.common.StringIO(response.text))
+                        .rename(columns=lambda x: x.lower())
+                        .assign(date=lambda x: pd.to_datetime(x["date"]),
+                                value=lambda x: pd.to_numeric(x["value"],
+                                                              errors='coerce'),
+                                series=s
+                                )
+                        )
+
+            fred_data.append(raw_data)
+        except requests.RequestException as e:
+            print(f"Failed to retrieve data for series {s}: {e}")
+            fred_data.append(pd.DataFrame(columns=["date", "value", "series"]))
+
+    fred_data = pd.concat(fred_data, ignore_index=True)
+
+    if start_date and end_date:
+        fred_data = fred_data.query('@start_date <= date <= @end_date')
+
+    return fred_data
 
 
 def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
@@ -564,10 +628,29 @@ def estimate_model(data, model, min_obs=1):
 def get_random_user_agent():
     """Retrieve a random user agent string.
 
-    Returns:
+    Returns
+    -------
         str: A random user agent string.
     """
-    pass
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246",
+        "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9",
+        "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36",
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
+        "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 14_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:117.0) Gecko/20100101 Firefox/117.0",
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:116.0) Gecko/20100101 Firefox/116.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.141 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_6_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_7_8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36 Edg/116.0.1938.69"
+        ]
+    return str(np.random.choice(user_agents))
 
 
 def get_wrds_connection():

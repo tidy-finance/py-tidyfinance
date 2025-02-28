@@ -11,7 +11,8 @@ sys.path.insert(0,
                                              '..')))
 
 from tidyfinance.tidyfinance import (add_lag_columns, download_data_factors,
-                                     download_data_macro_predictors
+                                     download_data_macro_predictors,
+                                     download_data_fred
                                      )
 
 
@@ -146,15 +147,20 @@ def test_download_data_factors_q_handles_start_date_after_end_date():
 def test_download_data_macro_predictors_invalid_type():
     with pytest.raises(ValueError, match="Unsupported macro predictor type."):
         download_data_macro_predictors("invalid_type")
-        
-download_data_macro_predictors("macro_predictors_monthly")
 
 
 def test_download_data_macro_predictors_invalid_url():
-    df = download_data_macro_predictors("macro_predictors_monthly",
+    df = download_data_macro_predictors("Monthly",
                                         sheet_id="invalid_sheet_id")
     assert df.empty, "Expected an empty DataFrame due to download failure."
 
+def test_download_data_fred_empty():
+    df = download_data_fred("INVALID_SERIES")
+    assert df.empty
+
+def test_download_data_fred_valid_structure():
+    df = download_data_fred("GDP", "2020-01-01", "2020-12-31")
+    assert set(df.columns) == {"date", "value", "series"}
 
 if __name__ == "__main__":
     # Run all tests
