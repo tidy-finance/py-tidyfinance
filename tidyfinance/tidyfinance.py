@@ -1,6 +1,7 @@
 """Main module for tidyfinance package."""
 
 import pandas as pd
+import numpy as np
 import requests
 import pandas_datareader as pdr
 
@@ -215,7 +216,7 @@ def download_data(
 
     Parameters
     ----------
-    type : str
+    data_set : str
         The type of dataset to download, indicating either factor data or
         macroeconomic predictors  (e.g., Fama-French factors, Global Q factors,
                                    or macro predictors).
@@ -273,7 +274,7 @@ def download_data_factors(
 
     Parameters
     ----------
-    type : str
+    data_set : str
         The type of dataset to download, indicating factor model and frequency.
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
@@ -345,7 +346,7 @@ def download_data_factors_q(
 
     Parameters
     ----------
-    type : str
+    data_set : str
         The type of dataset to download (e.g., "factors_q5_daily",
                                          "factors_q5_monthly").
     start_date : str, optional
@@ -398,12 +399,119 @@ def download_data_factors_q(
             ].reset_index(drop=True)
         return raw_data
     else:
-        raise ValueError("Returning an empty data set due to download failure.")
+        raise ValueError("Returning an empty data set due to download "
+                         "failure.")
         print(f"{data_set} might not be in list of available data sets: "
               " Also check the provided URL. Choose a dataset from:")
         print("")
         print(all_data_sets)
         return pd.DataFrame()
+
+
+def download_data_macro_predictors(
+    data_set: str,
+    start_date: str = None,
+    end_date: str = None,
+    sheet_id: str = "1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG"
+) -> pd.DataFrame:
+    """
+    Download and process macroeconomic predictor data.
+
+    Parameters
+    ----------
+    data_set : str
+        The type of dataset to download ("Monthly", "Quarterly", "Annual")
+    start_date : str, optional
+        The start date for filtering the data, in "YYYY-MM-DD" format.
+    end_date : str, optional
+        The end date for filtering the data, in "YYYY-MM-DD" format.
+    sheet_id : str, optional
+        The Google Sheets ID from which to download the dataset.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with processed data, including financial metrics, filtered
+        by the specified date range.
+    """
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    try:
+        macro_sheet_url = (f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+                           f"/gviz/tq?tqx=out:csv&sheet={data_set}"
+                           )
+        raw_data = pd.read_csv(macro_sheet_url)
+    except Exception:
+        print("Returning an empty data set due to download failure.")
+        return pd.DataFrame()
+
+    if data_set == "Monthly":
+        raw_data = (raw_data
+                    .assign(date=lambda x: pd.to_datetime(x["yyyymm"],
+                                                          format="%Y%m")
+                            )
+                    .drop(columns=['yyyymm'])
+                    )
+    if data_set == "Quarterly":
+        raw_data = (raw_data
+                    .assign(date=lambda x: pd.to_datetime(
+                        x["yyyyq"].astype(str).str[:4]
+                        + "-" + (x["yyyyq"].astype(str).str[4].astype(int)
+                                 * 3 - 2).astype(str)
+                        + "-01")
+                        )
+                    .drop(columns=['yyyyq'])
+                    )
+    if data_set == "Annual":
+        raw_data = (raw_data
+                    .assign(date=lambda x:
+                            pd.to_datetime(x["yyyy"].astype(str) + "-01-01")
+                            )
+                    .drop(columns=['yyyy'])
+                    )
+
+    raw_data = raw_data.apply(
+        lambda x: pd.to_numeric(x.astype(str).str.replace(",", ""),
+                                errors='coerce') if x.dtype == "object" else x)
+    raw_data = raw_data.assign(
+        IndexDiv=lambda df: df["Index"] + df["D12"],
+        logret=lambda df: df["IndexDiv"].apply(
+            lambda x: np.nan if pd.isna(x) else np.log(x)
+            ).diff(),
+        rp_div=lambda df: df["logret"].shift(-1) - df["Rfree"],
+        log_d12=lambda df: df["D12"].apply(
+            lambda x: np.nan if pd.isna(x) else np.log(x)
+            ),
+        log_e12=lambda df: df["E12"].apply(
+            lambda x: np.nan if pd.isna(x) else np.log(x)),
+        dp=lambda df: df["log_d12"] - df["Index"].apply(
+            lambda x: np.nan if pd.isna(x) else np.log(x)),
+        dy=lambda df: df["log_d12"] - df["Index"].shift(1).apply(
+            lambda x: np.nan if pd.isna(x) else np.log(x)
+            ),
+        ep=lambda df: df["log_e12"] - df["Index"].apply(
+            lambda x: np.nan if pd.isna(x) else np.log(x)
+            ),
+        de=lambda df: df["log_d12"] - df["log_e12"],
+        tms=lambda df: df["lty"] - df["tbl"],
+        dfy=lambda df: df["BAA"] - df["AAA"]
+    )
+
+    processed_data = raw_data[[
+        "date", "rp_div", "dp", "dy", "ep", "de", "svar", "b/m", "ntis",
+        "tbl", "lty", "ltr", "tms", "dfy", "infl"
+        ]]
+    processed_data = (processed_data
+                      .rename(columns={col: col.replace("/", "")
+                                       for col in processed_data.columns}
+                              )
+                      .dropna()
+                      )
+
+    if start_date and end_date:
+        raw_data = raw_data.query('@start_date <= date <= @end_date')
+
+    return processed_data
 
 
 def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
@@ -595,9 +703,8 @@ def _return_datetime(dates):
     """Return date without time and change period to timestamp."""
     dates = pd.Series(dates)
     if isinstance(dates.iloc[0], pd.Period):  # Check if 'Date' is a Period
-        return dates.dt.to_timestamp(how='start').dt.date
-    else:
-        return pd.to_datetime(dates, errors='coerce').dt.date
+        dates = dates.dt.to_timestamp(how='start').dt.date
+    dates = pd.to_datetime(dates, errors='coerce')
 
 
 
