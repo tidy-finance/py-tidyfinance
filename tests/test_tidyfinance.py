@@ -12,7 +12,8 @@ sys.path.insert(0,
 
 from tidyfinance.tidyfinance import (add_lag_columns, download_data_factors,
                                      download_data_macro_predictors,
-                                     download_data_fred
+                                     download_data_fred,
+                                     download_data_stock_prices
                                      )
 
 
@@ -154,13 +155,26 @@ def test_download_data_macro_predictors_invalid_url():
                                         sheet_id="invalid_sheet_id")
     assert df.empty, "Expected an empty DataFrame due to download failure."
 
+
 def test_download_data_fred_empty():
     df = download_data_fred("INVALID_SERIES")
     assert df.empty
 
+
 def test_download_data_fred_valid_structure():
     df = download_data_fred("GDP", "2020-01-01", "2020-12-31")
     assert set(df.columns) == {"date", "value", "series"}
+
+
+def test_download_data_stock_prices_returns_dataframe():
+    """Test that the function returns a DataFrame with correct columns."""
+    df = download_data_stock_prices(["AAPL"], "2022-01-01", "2022-02-02")
+    expected_columns = {"symbol", "date", "volume", "open", "low",
+                        "high", "close", "adjusted_close"}
+    assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
+    assert not df.empty, "Returned DataFrame should not be empty"
+    assert expected_columns.issubset(df.columns), "Missing expected columns"
+
 
 if __name__ == "__main__":
     # Run all tests

@@ -578,6 +578,93 @@ def download_data_fred(
     return fred_data
 
 
+def download_data_stock_prices(
+    symbols: str | list,
+    start_date: str = None,
+    end_date: str = None,
+) -> pd.DataFrame:
+    """
+    Download historical stock data from Yahoo Finance.
+
+    Parameters
+    ----------
+    symbols : list
+        A list of stock symbols to download data for.
+        At least one symbol must be provided.
+    start_date : str, optional
+        Start date in "YYYY-MM-DD" format. Defaults to "2000-01-01".
+    end_date : str, optional
+        End date in "YYYY-MM-DD" format. Defaults to today's date.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame containing columns: symbol, date, volume, open, low,
+        high, close, adjusted_close.
+    """
+    if isinstance(symbols, str):
+        symbols = [symbols]
+    elif not isinstance(symbols, list) or not all(isinstance(sym, str) for sym in symbols):
+        raise ValueError("symbols must be a list of stock symbols (strings).")
+
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    if start_date is None:
+        start_date = pd.Timestamp.today() - pd.DateOffset(years=2)
+    if end_date is None:
+        end_date = pd.Timestamp.today()
+
+    start_timestamp = int(pd.Timestamp(start_date).timestamp())
+    end_timestamp = int(pd.Timestamp(end_date).timestamp())
+
+    all_data = []
+
+    for symbol in symbols:
+        url = f"https://query2.finance.yahoo.com/v8/finance/chart/{symbol}?period1={start_timestamp}&period2={end_timestamp}&interval=1d"
+
+        headers = {"User-Agent": get_random_user_agent()}
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:
+            raw_data = response.json().get("chart", {}).get("result", [])
+
+            if (not raw_data) or ('timestamp' not in raw_data[0]):
+                print(f"Warning: No data found for {symbol}.")
+                continue
+
+            timestamps = raw_data[0]["timestamp"]
+            indicators = raw_data[0]["indicators"]["quote"][0]
+            adjusted_close = (raw_data[0]["indicators"]["adjclose"][0]
+                              ["adjclose"]
+                              )
+
+            processed_data_symbol = (
+                pd.DataFrame()
+                .assign(date=pd.to_datetime(pd.to_datetime(timestamps,
+                                                           utc=True,
+                                                           unit="s").date),
+                        symbol=symbol,
+                        volume=indicators.get("volume"),
+                        open=indicators.get("open"),
+                        low=indicators.get("low"),
+                        high=indicators.get("high"),
+                        close=indicators.get("close"),
+                        adjusted_close=adjusted_close
+                        )
+                .dropna()
+                )
+
+            all_data.append(processed_data_symbol)
+
+        else:
+            print(f"Failed to retrieve data for {symbol} (Status code: "
+                  f"{response.status_code})")
+
+    all_data = pd.concat(all_data,
+                         ignore_index=True) if all_data else pd.DataFrame()
+    return all_data
+
+
 def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
     """Estimate rolling betas for a specified model.
 
