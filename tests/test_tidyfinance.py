@@ -10,10 +10,12 @@ sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              '..')))
 
-from tidyfinance.tidyfinance import (add_lag_columns, download_data_factors,
+from tidyfinance.tidyfinance import (add_lag_columns,
+                                     download_data_factors,
                                      download_data_macro_predictors,
                                      download_data_fred,
-                                     download_data_stock_prices
+                                     download_data_stock_prices,
+                                     download_data_osap
                                      )
 
 
@@ -174,6 +176,13 @@ def test_download_data_stock_prices_returns_dataframe():
     assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
     assert not df.empty, "Returned DataFrame should not be empty"
     assert expected_columns.issubset(df.columns), "Missing expected columns"
+
+
+def test_download_data_osap_returns_dataframe():
+    """Test that the function returns a DataFrame with correct columns."""
+    df = download_data_osap()
+    assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
+    assert not df.empty, "Returned DataFrame should not be empty"
 
 
 if __name__ == "__main__":

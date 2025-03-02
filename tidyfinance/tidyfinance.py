@@ -665,6 +665,60 @@ def download_data_stock_prices(
     return all_data
 
 
+def download_data_osap(
+    start_date: str = None,
+    end_date: str = None,
+    sheet_id: str = "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY"
+) -> pd.DataFrame:
+    """
+    Download and process Open Source Asset Pricing (OSAP) data.
+
+    Parameters
+    ----------
+    start_date : str, optional
+        Start date in "YYYY-MM-DD" format. If None, full dataset is returned.
+    end_date : str, optional
+        End date in "YYYY-MM-DD" format. If None, full dataset is returned.
+    sheet_id : str, optional
+        Google Sheet ID from which to download the dataset.
+        Default is "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY".
+
+    Returns
+    -------
+    pd.DataFrame
+        Processed dataset with snake_case column names,
+        filtered by date range if provided.
+    """
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    # Google Drive direct download link
+    url = f"https://drive.google.com/uc?export=download&id={sheet_id}"
+
+    try:
+        raw_data = pd.read_csv(url)
+    except Exception:
+        print("Returning an empty dataset due to download failure.")
+        return pd.DataFrame()
+
+    if raw_data.empty:
+        print("Returning an empty dataset due to download failure.")
+        return raw_data
+
+    # Convert date column to datetime format
+    if "date" in raw_data.columns:
+        raw_data["date"] = pd.to_datetime(raw_data["date"], errors="coerce")
+
+    # Convert column names to snake_case
+    raw_data.columns = [_transfrom_to_snake_case(col)
+                        for col in raw_data.columns]
+
+    # Filter data based on date range
+    if start_date and end_date:
+        raw_data = raw_data.query('@start_date <= date <= @end_date')
+
+    return raw_data
+
+
 def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
     """Estimate rolling betas for a specified model.
 
@@ -875,6 +929,26 @@ def _return_datetime(dates):
     if isinstance(dates.iloc[0], pd.Period):  # Check if 'Date' is a Period
         dates = dates.dt.to_timestamp(how='start').dt.date
     dates = pd.to_datetime(dates, errors='coerce')
+
+
+def _transfrom_to_snake_case(column_name):
+    """
+    Convert a string to snake_case.
+
+    - Converts uppercase letters to lowercase.
+    - Replaces spaces and special characters with underscores.
+    - Ensures no multiple underscores.
+    """
+    column_name = column_name.replace(" ", "_").replace("-", "_").lower()
+    column_name = "".join(c if c.isalnum() or c == "_" else "_"
+                          for c in column_name)
+
+    # Remove multiple underscores
+    while "__" in column_name:
+        column_name = column_name.replace("__", "_")
+
+    # Remove leading/trailing underscores
+    return column_name.strip("_")
 
 
 
