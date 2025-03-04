@@ -920,13 +920,39 @@ def get_wrds_connection():
     pass
 
 
-def list_supported_indexes():
-    """List supported financial indexes.
-
-    Returns:
-        pd.DataFrame: DataFrame with supported indexes and their URLs.
+def list_supported_indexes(
+) -> pd.DataFrame:
     """
-    pass
+    Return a DataFrame containing information on supported financial indexes.
+
+    Each index is associated with a URL pointing to a CSV file containing
+    the holdings of the index and a `skip` value indicating the number of
+    lines to skip when reading the CSV.
+
+    Returns
+    -------
+        pd.DataFrame: A DataFrame with three columns:
+            - index (str): The name of the financial index
+            (e.g., "DAX", "S&P 500").
+            - url (str): The URL to the CSV file containing holdings data.
+            - skip (int): The number of lines to skip when reading CSV file.
+    """
+    data = [
+        ("DAX", "https://www.ishares.com/de/privatanleger/de/produkte/251464/ishares-dax-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=DAXEX_holdings&dataType=fund", 2),
+        ("EURO STOXX 50", "https://www.ishares.com/de/privatanleger/de/produkte/251783/ishares-euro-stoxx-50-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXW1_holdings&dataType=fund", 2),
+        ("Dow Jones Industrial Average", "https://www.ishares.com/de/privatanleger/de/produkte/251770/ishares-dow-jones-industrial-average-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXI3_holdings&dataType=fund", 2),
+        ("Russell 1000", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239707/ishares-russell-1000-etf/1495092304805.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund", 9),
+        ("Russell 2000", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239710/ishares-russell-2000-etf/1495092304805.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund", 9),
+        ("Russell 3000", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239714/ishares-russell-3000-etf/1495092304805.ajax?fileType=csv&fileName=IWV_holdings&dataType=fund", 9),
+        ("S&P 100", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239723/ishares-sp-100-etf/1495092304805.ajax?fileType=csv&fileName=OEF_holdings&dataType=fund", 9),
+        ("S&P 500", "https://www.ishares.com/de/privatanleger/de/produkte/253743/ishares-sp-500-b-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=SXR8_holdings&dataType=fund", 2),
+        ("Nasdaq 100", "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund", 2),
+        ("FTSE 100", "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1478358465952.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund", 2),
+        ("MSCI World", "https://www.ishares.com/de/privatanleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund", 2),
+        ("Nikkei 225", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/253742/ishares-nikkei-225-ucits-etf/1495092304805.ajax?fileType=csv&fileName=CSNKY_holdings&dataType=fund", 2),
+        ("TOPIX", "https://www.blackrock.com/jp/individual-en/en/products/279438/fund/1480664184455.ajax?fileType=csv&fileName=1475_holdings&dataType=fund", 2)
+    ]
+    return pd.DataFrame(data, columns=["index", "url", "skip"])
 
 
 def list_supported_types(domain=None, as_vector=False):
@@ -975,7 +1001,6 @@ def list_tidy_finance_chapters(
         "cover-and-logo-design",
         "clean-enhanced-trace-with-r",
         "proofs",
-        "hex-sticker",
         "changelog"
     ]
 
