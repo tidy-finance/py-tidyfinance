@@ -1,5 +1,7 @@
 """Main module for tidyfinance package."""
 
+import os
+import yaml
 import pandas as pd
 import numpy as np
 import requests
@@ -846,13 +848,83 @@ def open_tidy_finance_website(chapter=None):
     pass
 
 
-def set_wrds_credentials():
+def set_wrds_credentials() -> None:
     """Set WRDS credentials in the environment.
 
-    Returns:
-        None
+    Prompts the user for WRDS credentials and stores them in a YAML
+    configuration file.
+
+    The user can choose to store the credentials in the project directory or
+    the home directory. If credentials already exist, the user is prompted for
+    confirmation before overwriting them. Additionally, the user is given an
+    option to add the configuration file to .gitignore.
+
+    Returns
+    -------
+        - Saves the WRDS credentials in a `config.yaml` file
+        - Optionally adds `config.yaml` to `.gitignore`
     """
-    pass
+    wrds_user = input("Enter your WRDS username: ")
+    wrds_password = input("Enter your WRDS password: ")
+    location_choice = (input("Where do you want to store the config.yaml "
+                             "file? Enter 'project' for project directory or "
+                             "'home' for home directory: ")
+                       .strip().lower()
+                       )
+
+    if location_choice == "project":
+        config_path = os.path.join(os.getcwd(), "config.yaml")
+        gitignore_path = os.path.join(os.getcwd(), ".gitignore")
+    elif location_choice == "home":
+        config_path = os.path.join(os.path.expanduser("~"), "config.yaml")
+        gitignore_path = os.path.join(os.path.expanduser("~"), ".gitignore")
+    else:
+        print("Invalid choice. Please start again and enter "
+              "'project' or 'home'.")
+        return
+
+    config: dict = {}
+    if os.path.exists(config_path):
+        with open(config_path, "r") as file:
+            config = yaml.safe_load(file) or {}
+
+    if "WRDS" in config and "USER" in config["WRDS"] and "PASSWORD" in config["WRDS"]:
+        overwrite_choice = (input("Credentials already exist. Do you want to "
+                                  "overwrite them? Enter 'yes' or 'no': ")
+                            .strip().lower()
+                            )
+        if overwrite_choice != "yes":
+            print("Aborted. Credentials already exist and are not "
+                  "overwritten.")
+            return
+
+    if os.path.exists(gitignore_path):
+        add_gitignore = (input("Do you want to add config.yaml to .gitignore? "
+                               "It is highly recommended! "
+                               "Enter 'yes' or 'no': ")
+                         .strip().lower()
+                         )
+        if add_gitignore == "yes":
+            with open(gitignore_path, "r") as file:
+                gitignore_lines = file.readlines()
+            if "config.yaml\n" not in gitignore_lines:
+                with open(gitignore_path, "a") as file:
+                    file.write("config.yaml\n")
+                print("config.yaml added to .gitignore.")
+        elif add_gitignore == "no":
+            print("config.yaml NOT added to .gitignore.")
+        else:
+            print("Invalid choice. Please start again "
+                  "and enter 'yes' or 'no'.")
+            return
+
+    config["WRDS"] = {"USER": wrds_user, "PASSWORD": wrds_password}
+
+    with open(config_path, "w") as file:
+        yaml.safe_dump(config, file)
+
+    print("WRDS credentials have been set and saved in config.yaml in your "
+          f"{location_choice} directory.")
 
 
 def trim(x, cut):

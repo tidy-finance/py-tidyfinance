@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 import sys
 import os
+import yaml
 
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__),
@@ -183,6 +184,38 @@ def test_download_data_osap_returns_dataframe():
     df = download_data_osap()
     assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
     assert not df.empty, "Returned DataFrame should not be empty"
+
+
+def test_set_wrds_credentials(tmp_path):
+    """Test function for set_wrds_credentials using a temporary directory."""
+    test_config_path = tmp_path / "config.yaml"
+    test_gitignore_path = tmp_path / ".gitignore"
+    test_credentials = {
+        "WRDS": {
+            "USER": "test_user",
+            "PASSWORD": "test_password"
+        }
+    }
+
+    with open(test_config_path, "w") as file:
+        yaml.safe_dump(test_credentials, file)
+    assert test_config_path.exists()
+
+    with open(test_config_path, "r") as file:
+        loaded_config = yaml.safe_load(file)
+
+    assert loaded_config["WRDS"]["USER"] == "test_user"
+    assert loaded_config["WRDS"]["PASSWORD"] == "test_password"
+
+    with open(test_gitignore_path, "w") as file:
+        file.write("config.yaml\n")
+
+    assert test_gitignore_path.exists()
+
+    with open(test_gitignore_path, "r") as file:
+        gitignore_content = file.readlines()
+
+    assert "config.yaml\n" in gitignore_content
 
 
 if __name__ == "__main__":
