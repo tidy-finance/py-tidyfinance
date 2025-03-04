@@ -16,7 +16,9 @@ from tidyfinance.tidyfinance import (add_lag_columns,
                                      download_data_macro_predictors,
                                      download_data_fred,
                                      download_data_stock_prices,
-                                     download_data_osap
+                                     download_data_osap,
+                                     create_wrds_dummy_database,
+                                     _winsorize
                                      )
 
 
@@ -186,6 +188,20 @@ def test_download_data_osap_returns_dataframe():
     assert not df.empty, "Returned DataFrame should not be empty"
 
 
+def test_create_wrds_dummy_database(tmp_path):
+    """Test that the function correctly downloads and saves a file."""
+    test_path = tmp_path / "test_wrds_dummy.sqlite"
+    create_wrds_dummy_database(str(test_path))
+    assert test_path.exists(), "Database file was not created."
+    assert test_path.stat().st_size > 0, "Database file is empty."
+
+
+def test_create_wrds_dummy_database_invalid_path():
+    """Test that the function raises an error when no path is given."""
+    with pytest.raises(ValueError):
+        create_wrds_dummy_database("")
+
+
 def test_set_wrds_credentials(tmp_path):
     """Test function for set_wrds_credentials using a temporary directory."""
     test_config_path = tmp_path / "config.yaml"
@@ -217,6 +233,37 @@ def test_set_wrds_credentials(tmp_path):
 
     assert "config.yaml\n" in gitignore_content
 
+
+def test_winsorize_correct_adjustment():
+    """Test that winsorize correctly adjusts extreme values."""
+    np.random.seed(123)
+    x = np.random.randn(100)
+    cut = 0.05
+    winsorized_x = _winsorize(x, cut)
+
+    assert np.min(winsorized_x) == np.quantile(x, cut), "Lower bound not correctly applied"
+    assert np.max(winsorized_x) == np.quantile(x, 1 - cut), "Upper bound not correctly applied"
+    assert np.all(winsorized_x >= np.quantile(x, cut)), "Values below lower bound not adjusted"
+    assert np.all(winsorized_x <= np.quantile(x, 1 - cut)), "Values above upper bound not adjusted"
+
+
+def test_winsorize_handles_na():
+    """Test that winsorize correctly handles NaN values."""
+    x = np.array([np.nan, 1, 2, 3, 4, 5, np.nan])
+    cut = 0.1
+    winsorized_x = _winsorize(x, cut)
+
+    assert len(winsorized_x) == len(x), "Output length should match input length"
+    assert np.all(np.isnan(winsorized_x) == np.isnan(x)), "NaN values should remain unchanged"
+    assert np.all(winsorized_x[~np.isnan(winsorized_x)] >= np.nanquantile(x, cut)), "Non-NaN values below lower bound not adjusted"
+    assert np.all(winsorized_x[~np.isnan(winsorized_x)] <= np.nanquantile(x, 1 - cut)), "Non-NaN values above upper bound not adjusted"
+
+
+def test_winsorize_edge_cases():
+    """Test winsorize with edge cases (empty input and identical values)."""
+    assert np.array_equal(_winsorize([], 0.1), np.array([])), ("Empty array should return empty array"
+    x = np.full(10, 1.0)
+    assert np.array_equal(_winsorize(x, 0.1), x), "Identical values should remain unchanged"
 
 if __name__ == "__main__":
     # Run all tests

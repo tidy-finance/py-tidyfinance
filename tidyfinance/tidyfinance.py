@@ -79,7 +79,23 @@ def assign_portfolio(data, sorting_variable, breakpoint_options=None, breakpoint
     Returns:
         pd.Series: Portfolio assignments for each row.
     """
+    #     breakpoints = (data
+    #                    .query("exchange == 'NYSE'")
+    #                    .get(sorting_variable)
+    #                    .quantile(percentiles, interpolation="linear")
+    #                    )
+    # breakpoints.iloc[0] = -np.Inf
+    # breakpoints.iloc[breakpoints.size-1] = np.Inf
+    
+    # assigned_portfolios = pd.cut(
+    #   data[sorting_variable],
+    #   bins=breakpoints,
+    #   labels=pd.Series(range(1, breakpoints.size)),
+    #   include_lowest=True,
+    #   right=False
+    # )
     pass
+    # return assigned_portfolios
 
 
 def breakpoint_options(n_portfolios=None, percentiles=None, breakpoint_exchanges=None, smooth_bunching=False, **kwargs):
@@ -97,8 +113,12 @@ def breakpoint_options(n_portfolios=None, percentiles=None, breakpoint_exchanges
     """
     pass
 
-
-def compute_breakpoints(data, sorting_variable, breakpoint_options, data_options=None):
+def compute_breakpoints(
+    data: pd.DataFrame,
+    sorting_variable: str,
+    breakpoint_options: dict,
+    data_options: dict = None
+) -> np.ndarray:
     """Compute breakpoints based on a sorting variable.
 
     Parameters:
@@ -164,17 +184,47 @@ def create_summary_statistics(data, *args, by=None, detail=False, drop_na=False)
     pass
 
 
-def create_wrds_dummy_database(path, url=None):
-    """Download and save the WRDS dummy database.
-
-    Parameters:
-        path (str): File path for the SQLite database.
-        url (str, optional): URL of the WRDS dummy database.
-
-    Returns:
-        None
+def create_wrds_dummy_database(
+    path: str,
+    url: str = ("https://github.com/tidy-finance/website/raw/main/blog/"
+                "tidy-finance-dummy-data/data/tidy_finance.sqlite")
+) -> None:
     """
-    pass
+    Download the WRDS dummy database from the Tidy Finance GitHub repository.
+
+    It saves it to the specified path. If the file already exists,
+    the user is prompted before it is replaced.
+
+    Parameters
+    ----------
+        path (str): The file path where the SQLite database should be saved.
+        url (str, optional): The URL where the SQLite database is stored.
+
+    Returns
+    -------
+        None: Side effect - downloads a file to the specified path.
+    """
+    if not path:
+        raise ValueError("Please provide a file path for the SQLite database. "
+                         "We recommend 'data/tidy_finance.sqlite'.")
+
+    if os.path.exists(path):
+        response = input("The database file already exists at this path. Do "
+                         "you want to replace it? (Y/n): ")
+        if response.strip().lower() != "y":
+            print("Operation aborted by the user.")
+            return
+
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        with open(path, "wb") as file:
+            for chunk in response.iter_content(chunk_size=8192):
+                print(chunk)
+                file.write(chunk)
+        print(f"Downloaded WRDS dummy database to {path}.")
+    except requests.RequestException as e:
+        print(f"Error downloading the WRDS dummy database: {e}")
 
 
 def data_options(id="permno", date="date", exchange="exchange", mktcap_lag="mktcap_lag", ret_excess="ret_excess", portfolio="portfolio", **kwargs):
@@ -721,6 +771,70 @@ def download_data_osap(
     return raw_data
 
 
+def download_data_wrds(
+    data_type: str,
+    start_date: str = None,
+    end_date: str = None,
+    **kwargs
+) -> dict:
+    """
+    Download data from WRDS based on the specified type.
+
+    Parameters
+    ----------
+    data_type (str): Type of data to download
+        (e.g., "wrds_crsp", "wrds_compustat").
+    start_date (str, optional): Start date in "YYYY-MM-DD" format.
+    end_date (str, optional): End date in "YYYY-MM-DD" format.
+    **kwargs: Additional parameters specific to the dataset type.
+
+    Returns
+    -------
+        dict: A dictionary representing the downloaded data.
+    """
+    if "wrds_crsp" in data_type:
+        return download_data_wrds_crsp(
+            data_type, start_date, end_date, **kwargs
+            )
+    elif "wrds_compustat" in data_type:
+        return download_data_wrds_compustat(
+            data_type, start_date, end_date, **kwargs
+            )
+    elif "wrds_ccm_links" in data_type:
+        return download_data_wrds_ccm_links(**kwargs)
+    elif "wrds_fisd" in data_type:
+        return download_data_wrds_fisd(**kwargs)
+    elif "wrds_trace_enhanced" in data_type:
+        return download_data_wrds_trace_enhanced(
+            start_date, end_date, **kwargs
+            )
+    else:
+        raise ValueError("Unsupported data type.")
+    return {}
+
+# Placeholder functions for actual WRDS data retrieval
+def download_data_wrds_crsp(
+    data_type: str,
+    start_date: str,
+    end_date: str,
+    **kwargs
+) -> dict:
+    return {"type": data_type, "start_date": start_date, "end_date": end_date, "data": "CRSP data"}
+
+def download_data_wrds_compustat(data_type: str, start_date: str, end_date: str, **kwargs) -> dict:
+    return {"type": data_type, "start_date": start_date, "end_date": end_date, "data": "Compustat data"}
+
+def download_data_wrds_ccm_links(**kwargs) -> dict:
+    return {"type": "wrds_ccm_links", "data": "CCM Links data"}
+
+def download_data_wrds_fisd(**kwargs) -> dict:
+    return {"type": "wrds_fisd", "data": "FISD data"}
+
+def download_data_wrds_trace_enhanced(start_date: str, end_date: str, **kwargs) -> dict:
+    return {"type": "wrds_trace_enhanced", "start_date": start_date, "end_date": end_date, "data": "TRACE Enhanced data"}
+
+
+
 def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
     """Estimate rolling betas for a specified model.
 
@@ -940,17 +1054,35 @@ def trim(x, cut):
     pass
 
 
-def winsorize(x, cut):
+def _winsorize(
+    x: np.ndarray,
+    cut: float
+) -> np.ndarray:
     """Winsorize a numeric vector by replacing extreme values.
 
-    Parameters:
+    Parameters
+    ----------
         x (pd.Series): Numeric vector to winsorize.
         cut (float): Proportion to replace at both ends.
 
-    Returns:
+    Returns
+    -------
         pd.Series: Winsorized vector.
     """
-    pass
+    if not isinstance(x, np.ndarray):
+        x = np.array(x)
+        #raise ValueError("x must be an numpy array")
+
+    if not (0 <= cut <= 0.5):
+        raise ValueError("'cut' must be inside [0, 0.5].")
+
+    if x.size == 0:
+        return x
+    
+    x = np.array(x)  # Convert input to numpy array if not already
+    lb, ub = np.nanquantile(x, [cut, 1 - cut])  # Compute quantiles
+    x = np.clip(x, lb, ub)  # Winsorize values
+    return x
 
 
 def _validate_dates(
