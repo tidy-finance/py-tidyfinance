@@ -5,6 +5,7 @@ import yaml
 import pandas as pd
 import numpy as np
 import requests
+import webbrowser
 import pandas_datareader as pdr
 
 
@@ -941,25 +942,69 @@ def list_supported_types(domain=None, as_vector=False):
     pass
 
 
-def list_tidy_finance_chapters():
-    """List available chapters in the Tidy Finance resource.
-
-    Returns:
-        list: Names of chapters in Tidy Finance.
+def list_tidy_finance_chapters(
+) -> list:
     """
-    pass
+    Return a list of available chapters in the Tidy Finance resource.
+
+    Returns
+    -------
+        list: A list where each element is the name of a chapter available in
+        the Tidy Finance resource.
+    """
+    return [
+        "setting-up-your-environment",
+        "introduction-to-tidy-finance",
+        "accessing-and-managing-financial-data",
+        "wrds-crsp-and-compustat",
+        "trace-and-fisd",
+        "other-data-providers",
+        "beta-estimation",
+        "univariate-portfolio-sorts",
+        "size-sorts-and-p-hacking",
+        "value-and-bivariate-sorts",
+        "replicating-fama-and-french-factors",
+        "fama-macbeth-regressions",
+        "fixed-effects-and-clustered-standard-errors",
+        "difference-in-differences",
+        "factor-selection-via-machine-learning",
+        "option-pricing-via-machine-learning",
+        "parametric-portfolio-policies",
+        "constrained-optimization-and-backtesting",
+        "wrds-dummy-data",
+        "cover-and-logo-design",
+        "clean-enhanced-trace-with-r",
+        "proofs",
+        "hex-sticker",
+        "changelog"
+    ]
 
 
-def open_tidy_finance_website(chapter=None):
+def open_tidy_finance_website(
+    chapter: str = None
+) -> None:
     """Open the Tidy Finance website or a specific chapter in a browser.
 
-    Parameters:
+    Parameters
+    ----------
         chapter (str, optional): Name of the chapter to open. Defaults to None.
 
-    Returns:
+    Returns
+    -------
         None
     """
-    pass
+    base_url = "https://www.tidy-finance.org/python/"
+
+    if chapter:
+        tidy_finance_chapters = list_tidy_finance_chapters()
+        if chapter in tidy_finance_chapters:
+            final_url = f"{base_url}{chapter}.html"
+        else:
+            final_url = base_url
+    else:
+        final_url = base_url
+
+    webbrowser.open(final_url)
 
 
 def set_wrds_credentials() -> None:
