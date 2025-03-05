@@ -814,23 +814,58 @@ def download_data_wrds(
         raise ValueError("Unsupported data type.")
     return {}
 
-# Placeholder functions for actual WRDS data retrieval
-def download_data_wrds_crsp(
-    data_type: str,
-    start_date: str,
-    end_date: str,
-    **kwargs
-) -> dict:
-    return {"type": data_type, "start_date": start_date, "end_date": end_date, "data": "CRSP data"}
+
+def download_data_wrds_ccm_links(
+    linktype: list[str] = ["LU", "LC"],
+    linkprim: list[str] = ["P", "C"]
+) -> pd.DataFrame:
+    """
+    Download data from the WRDS CRSP/Compustat Merged (CCM) links database.
+
+    Parameters
+    ----------
+        linktype (list): A list of strings indicating the types of links to
+        download. Default is ["LU", "LC"].
+        linkprim (list): A list of strings indicating the primacy of the links.
+        Default is ["P", "C"].
+
+    Returns
+    -------
+        pd.DataFrame: A DataFrame containing columns:
+            - `permno` (int): CRSP permanent number.
+            - `gvkey` (str): Global company key.
+            - `linkdt`: Start date of the link.
+            - `linkenddt`: End date of the link
+            (missing values replaced with today's date).
+    """
+    conn = get_wrds_connection()
+
+    query = f"""
+        SELECT lpermno AS permno, gvkey, linkdt, linkenddt
+        FROM crsp.ccmxpf_lnkhist
+        WHERE linktype IN ({','.join(f"'{lt}'" for lt in linktype)})
+        AND linkprim IN ({','.join(f"'{lp}'" for lp in linkprim)})
+    """
+
+    ccm_links = pd.read_sql(query, conn)
+
+    # Replace missing linkenddt with today's date
+    ccm_links['linkenddt'] = (ccm_links['linkenddt']
+                              .fillna(pd.Timestamp.today())
+                              )
+
+    disconnect_wrds_connection(conn)
+
+    return ccm_links
+
 
 def download_data_wrds_compustat(data_type: str, start_date: str, end_date: str, **kwargs) -> dict:
     return {"type": data_type, "start_date": start_date, "end_date": end_date, "data": "Compustat data"}
 
-def download_data_wrds_ccm_links(**kwargs) -> dict:
-    return {"type": "wrds_ccm_links", "data": "CCM Links data"}
 
 def download_data_wrds_fisd(**kwargs) -> dict:
     return {"type": "wrds_fisd", "data": "FISD data"}
+
 
 def download_data_wrds_trace_enhanced(start_date: str, end_date: str, **kwargs) -> dict:
     return {"type": "wrds_trace_enhanced", "start_date": start_date, "end_date": end_date, "data": "TRACE Enhanced data"}
@@ -1183,19 +1218,6 @@ def set_wrds_credentials() -> None:
           f"{location_choice} directory.")
 
 
-def trim(x, cut):
-    """Trim a numeric vector by removing extreme values.
-
-    Parameters:
-        x (pd.Series): Numeric vector to trim.
-        cut (float): Proportion to trim from both ends.
-
-    Returns:
-        pd.Series: Trimmed vector.
-    """
-    pass
-
-
 def _trim(
     x: np.ndarray,
     cut: float
@@ -1206,7 +1228,7 @@ def _trim(
     Parameters
     ----------
         x (np.ndarray): A numeric array to be trimmed.
-        cut (float): The proportion of data to be trimmed from both ends 
+        cut (float): The proportion of data to be trimmed from both ends
         (must be between [0, 0.5]).
 
     Returns
@@ -1239,14 +1261,14 @@ def _winsorize(
     """
     if not isinstance(x, np.ndarray):
         x = np.array(x)
-        #raise ValueError("x must be an numpy array")
+        # raise ValueError("x must be an numpy array")
 
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")
 
     if x.size == 0:
         return x
-    
+
     x = np.array(x)  # Convert input to numpy array if not already
     lb, ub = np.nanquantile(x, [cut, 1 - cut])  # Compute quantiles
     x = np.clip(x, lb, ub)  # Winsorize values
