@@ -18,6 +18,7 @@ from tidyfinance.tidyfinance import (add_lag_columns,
                                      download_data_stock_prices,
                                      download_data_osap,
                                      create_wrds_dummy_database,
+                                     _trim,
                                      _winsorize
                                      )
 
@@ -261,9 +262,36 @@ def test_winsorize_handles_na():
 
 def test_winsorize_edge_cases():
     """Test winsorize with edge cases (empty input and identical values)."""
-    assert np.array_equal(_winsorize([], 0.1), np.array([])), ("Empty array should return empty array"
+    assert np.array_equal(_winsorize([], 0.1), np.array([])), ("Empty array should return empty array")
     x = np.full(10, 1.0)
     assert np.array_equal(_winsorize(x, 0.1), x), "Identical values should remain unchanged"
+
+
+def test_trim_correct_removal():
+    """Test that trim correctly removes extreme values."""
+    np.random.seed(123)
+    x = np.random.randn(100)
+    cut = 0.05
+
+    trimmed_x = _trim(x, cut)
+
+    assert np.min(trimmed_x) >= np.quantile(x, cut), "Lower bound not correctly applied"
+    assert np.max(trimmed_x) <= np.quantile(x, 1 - cut), "Upper bound not correctly applied"
+
+
+def test_trim_handles_na():
+    """Test that trim correctly handles NaN values."""
+    x = np.array([np.nan, 1, 2, 3, 4, 5, np.nan])
+    cut = 0.1
+
+    trimmed_x = _trim(x, cut)
+
+    assert not np.any(np.isnan(trimmed_x)), "NaN values should be removed"
+
+def test_trim_edge_cases():
+    """Test trim with edge cases such as empty input and identical values."""
+    x = np.full(10, 1.0)
+    assert np.array_equal(_trim(x, 0.1), x), "Identical values should remain unchanged"
 
 if __name__ == "__main__":
     # Run all tests

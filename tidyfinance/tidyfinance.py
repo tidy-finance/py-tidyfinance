@@ -1196,6 +1196,32 @@ def trim(x, cut):
     pass
 
 
+def _trim(
+    x: np.ndarray,
+    cut: float
+) -> np.ndarray:
+    """
+    Remove values in a numeric vector beyond the specified quantiles.
+
+    Parameters
+    ----------
+        x (np.ndarray): A numeric array to be trimmed.
+        cut (float): The proportion of data to be trimmed from both ends 
+        (must be between [0, 0.5]).
+
+    Returns
+    -------
+        np.ndarray: A numeric array with extreme values removed.
+    """
+    if not (0 <= cut <= 0.5):
+        raise ValueError("'cut' must be inside [0, 0.5].")
+
+    lb = np.nanquantile(x, cut)
+    ub = np.nanquantile(x, 1 - cut)
+
+    return x[(x >= lb) & (x <= ub)]
+
+
 def _winsorize(
     x: np.ndarray,
     cut: float
