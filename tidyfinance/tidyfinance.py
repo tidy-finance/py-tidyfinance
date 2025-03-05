@@ -7,6 +7,7 @@ import numpy as np
 import requests
 import webbrowser
 import pandas_datareader as pdr
+from sqlalchemy import create_engine
 
 
 def add_lag_columns(
@@ -911,13 +912,51 @@ def get_random_user_agent():
     return str(np.random.choice(user_agents))
 
 
-def get_wrds_connection():
-    """Establish a connection to the WRDS database.
-
-    Returns:
-        Any: Database connection object.
+def get_wrds_connection(config_path: str = "config.yaml") -> object:
     """
-    pass
+    Establish a connection to Wharton Research Data Services (WRDS) database.
+
+    The function retrieves WRDS credentials from environment variables or
+    a config.yaml file  and connects to the WRDS PostgreSQL database using
+    SQLAlchemy.
+
+    Parameters
+    ----------
+        config_path (str): Path to the configuration file.
+        Default is "config.yaml".
+
+    Returns
+    -------
+        object: A connection object to interact with the WRDS database.
+    """
+    wrds_user, wrds_password = load_wrds_credentials(config_path)
+
+    engine = create_engine((f"postgresql://{wrds_user}:{wrds_password}"
+                            "@wrds-pgdata.wharton.upenn.edu:9737/wrds"
+                            ),
+                           connect_args={"sslmode": "require"}
+                           )
+    return engine.connect()
+
+
+def disconnect_wrds_connection(
+    connection: object
+) -> bool:
+    """Close the WRDS database connection.
+
+    Parameters
+    ----------
+        connection (object): The active database connection to be closed.
+
+    Returns
+    -------
+        bool: True if disconnection was successful, False otherwise.
+    """
+    try:
+        connection.close()
+        return True
+    except Exception:
+        return False
 
 
 def list_supported_indexes(
@@ -1003,6 +1042,39 @@ def list_tidy_finance_chapters(
         "proofs",
         "changelog"
     ]
+
+
+def load_wrds_credentials(
+    config_path: str = "config.yaml"
+) -> tuple:
+    """
+    Load WRDS credentials from a config.yaml file if env variables are not set.
+
+    Parameters
+    ----------
+        config_path (str): Path to the configuration file.
+        Default is "config.yaml".
+
+    Returns
+    -------
+        tuple: A tuple containing (wrds_user (str), wrds_password (str)).
+    """
+    wrds_user: str = os.getenv("WRDS_USER")
+    wrds_password: str = os.getenv("WRDS_PASSWORD")
+
+    if not wrds_user or not wrds_password:
+        if os.path.exists(config_path):
+            with open(config_path, "r") as file:
+                config = yaml.safe_load(file)
+                wrds_user = config.get("WRDS", {}).get("USER", "")
+                wrds_password = config.get("WRDS", {}).get("PASSWORD", "")
+
+    if not wrds_user or not wrds_password:
+        raise ValueError("WRDS credentials not found. Please set 'WRDS_USER' "
+                         "and 'WRDS_PASSWORD' as environment variables or "
+                         "in config.yaml.")
+
+    return wrds_user, wrds_password
 
 
 def open_tidy_finance_website(
