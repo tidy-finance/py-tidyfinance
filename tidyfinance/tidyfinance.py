@@ -863,8 +863,88 @@ def download_data_wrds_compustat(data_type: str, start_date: str, end_date: str,
     return {"type": data_type, "start_date": start_date, "end_date": end_date, "data": "Compustat data"}
 
 
-def download_data_wrds_fisd(**kwargs) -> dict:
-    return {"type": "wrds_fisd", "data": "FISD data"}
+def download_data_wrds_fisd(
+    additional_columns: list = None
+) -> pd.DataFrame:
+    """
+    Download a filtered subset of the FISD from WRDS.
+
+    Parameters
+    ----------
+        additional_columns (list, optional): Additional columns from the FISD
+        table to include.
+
+    Returns
+    -------
+        pd.DataFrame: A DataFrame containing filtered FISD data with bond
+        characteristics and issuer information.
+    """
+    wrds_connection = get_wrds_connection()
+
+    fisd_query = (
+        "SELECT complete_cusip, maturity, offering_amt, offering_date, "
+            "dated_date, interest_frequency, coupon, last_interest_date, "
+            "issue_id, issuer_id "
+        "FROM fisd.fisd_mergedissue "
+            "WHERE security_level = 'SEN' "
+            "AND (slob = 'N' OR slob IS NULL) "
+            "AND security_pledge IS NULL "
+            "AND (asset_backed = 'N' OR asset_backed IS NULL) "
+            "AND (defeased = 'N' OR defeased IS NULL) "
+            "AND defeased_date IS NULL "
+            "AND bond_type IN ('CDEB', 'CMTN', 'CMTZ', 'CZ', 'USBN') "
+            "AND (pay_in_kind != 'Y' OR pay_in_kind IS NULL) "
+            "AND pay_in_kind_exp_date IS NULL "
+            "AND (yankee = 'N' OR yankee IS NULL) "
+            "AND (canadian = 'N' OR canadian IS NULL) "
+            "AND foreign_currency = 'N' "
+            "AND coupon_type IN ('F', 'Z') "
+            "AND fix_frequency IS NULL "
+            "AND coupon_change_indicator = 'N' "
+            "AND interest_frequency IN ('0', '1', '2', '4', '12') "
+            "AND rule_144a = 'N' "
+            "AND (private_placement = 'N' OR private_placement IS NULL) "
+            "AND defaulted = 'N' "
+            "AND filing_date IS NULL "
+            "AND settlement IS NULL "
+            "AND convertible = 'N' "
+            "AND exchange IS NULL "
+            "AND (putable = 'N' OR putable IS NULL) "
+            "AND (unit_deal = 'N' OR unit_deal IS NULL) "
+            "AND (exchangeable = 'N' OR exchangeable IS NULL) "
+            "AND perpetual = 'N' "
+            "AND (preferred_security = 'N' OR preferred_security IS NULL)"
+        )
+
+    fisd = pd.read_sql_query(
+        sql=fisd_query,
+        con=wrds_connection,
+        dtype={"complete_cusip": str, "interest_frequency": str,
+               "issue_id": int, "issuer_id": int},
+        parse_dates={"maturity", "offering_date",
+                     "dated_date", "last_interest_date"}
+        )
+
+    fisd_issuer_query = (
+        "SELECT issuer_id, sic_code, country_domicile "
+        "FROM fisd.fisd_mergedissuer"
+        )
+
+    fisd_issuer = pd.read_sql_query(
+        sql=fisd_issuer_query,
+        con=wrds_connection,
+        dtype={"issuer_id": int, "sic_code": str, "country_domicile": str}
+        )
+
+    fisd = (fisd
+            .merge(fisd_issuer, how="inner", on="issuer_id")
+            .query("country_domicile == 'USA'")
+            .drop(columns="country_domicile")
+            )
+
+    disconnect_wrds_connection(wrds_connection)
+
+    return fisd
 
 
 def download_data_wrds_trace_enhanced(start_date: str, end_date: str, **kwargs) -> dict:
