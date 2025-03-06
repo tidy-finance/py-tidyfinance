@@ -7,7 +7,7 @@ import numpy as np
 import requests
 import webbrowser
 import pandas_datareader as pdr
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 
 def add_lag_columns(
@@ -859,9 +859,137 @@ def download_data_wrds_ccm_links(
     return ccm_links
 
 
-def download_data_wrds_compustat(data_type: str, start_date: str, end_date: str, **kwargs) -> dict:
-    return {"type": data_type, "start_date": start_date, "end_date": end_date, "data": "Compustat data"}
+def download_data_wrds_compustat(
+    dataset_type: str = "compustat_quarterly",
+    start_date: str = None,
+    end_date: str = None,
+    additional_columns: list = None
+) -> pd.DataFrame:
+    """
+    Download financial data from WRDS Compustat.
 
+    Parameters
+    ----------
+        type (str): Type of financial data to download. Expected values:
+            "compustat_annual" or "compustat_quarterly".
+        start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
+        end_date (str or None): End date in "YYYY-MM-DD" format (optional).
+        additional_columns (list or None): A list of additional column names
+        to retrieve (optional).
+
+    Returns
+    -------
+        pandas.DataFrame: A DataFrame containing financial data for the
+            specified period, including computed variables such as book equity
+            (be), operating profitability (op), and investment (inv)
+            for annual data.
+    """
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    # Connect to WRDS
+    wrds_connection = get_wrds_connection()
+    additional_columns = (", ".join(additional_columns)
+                          if additional_columns else ""
+                          )
+
+    if "compustat_annual" in dataset_type:
+        query = text(f"""
+            SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
+                pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga
+                {", " + additional_columns if additional_columns else ""}
+            FROM comp.funda
+            WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
+            AND datadate BETWEEN '{start_date}' AND '{end_date}'
+        """)
+
+        compustat = pd.read_sql(query, wrds_connection)
+        wrds_connection.dispose()
+
+        # Compute Book Equity (be)
+        compustat = compustat.assign(
+            be=lambda df: (
+                df["seq"].fillna(df["ceq"] + df["pstk"])
+                .fillna(df["at"] - df["lt"])
+                + df["txditc"].fillna(df["txdb"] + df["itcb"])
+                - df[["pstkrv", "pstkl", "pstk"]].fillna(0).sum(axis=1)
+            )
+        ).query("be > 0")
+
+        # Compute Operating Profitability (op)
+        compustat = compustat.assign(
+            op=lambda df: (df["sale"] - df[["cogs", "xsga", "xint"]]
+                           .fillna(0).sum(axis=1)) / df["be"]
+        )
+        # Keep the latest report per company per year
+        compustat = (
+            compustat
+            .assign(year=lambda df: pd.to_datetime(df["datadate"]).dt.year)
+            .sort_values("datadate")
+            .groupby(["gvkey", "year"])
+            .apply(lambda x: x.iloc[-1])  # Keep last record per group
+            .reset_index(drop=True)
+            .assign(date=lambda df: pd.to_datetime(df["datadate"])
+                    .dt.to_period("M").dt.start_time)
+        )
+        # Compute Investment (inv)
+        at_lag = (compustat.copy()
+                  .get(["gvkey", "year", "at"])
+                  .assign(year=lambda df: df["year"] + 1)
+                  )
+        compustat = (
+            compustat
+            .merge(at_lag,
+                   on=["gvkey", "year"],
+                   how="left",
+                   suffixes=("", "_lag"))
+            .assign(inv=lambda df: (df["at"] / df["at_lag"]) - 1)
+            .query("at_lag > 0")
+        )
+
+        processed_data = compustat.drop(columns=["year", "at_lag"])
+
+    elif "compustat_quarterly" in dataset_type:
+        query = text(f"""
+            SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq
+                {", " + additional_columns if additional_columns else ""}
+            FROM comp.fundq
+            WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
+            AND datadate BETWEEN '{start_date}' AND '{end_date}'
+        """)
+
+        compustat = pd.read_sql(query, wrds_connection)
+        wrds_connection.dispose()
+
+        # Ensure necessary columns are not missing
+        compustat = (compustat
+                     .dropna(subset=["gvkey", "datadate", "fyearq", "fqtr"])
+                     .assign(date=lambda df:
+                             pd.to_datetime(df["datadate"])
+                             .dt.to_period("M").dt.start_time
+                             )
+                     .sort_values("datadate")
+                     .groupby(["gvkey", "fyearq", "fqtr"])
+                     .last()
+                     .reset_index()
+                     .sort_values(["gvkey", "date", "rdq"])
+                     .groupby(["gvkey", "date"])
+                     .first()
+                     .reset_index()
+                     .query("rdq.isna() or date < rdq")
+                     )
+
+        processed_data = (
+            compustat
+            .get(["gvkey", "date", "datadate", "atq", "ceqq"]
+                 + ([col for col in additional_columns.split(", ")]
+                    if additional_columns else [])
+                 )
+            )
+    else:
+        raise ValueError("Invalid type specified. Use 'compustat_annual' or "
+                         "'compustat_quarterly'.")
+
+    return processed_data
 
 def download_data_wrds_fisd(
     additional_columns: list = None

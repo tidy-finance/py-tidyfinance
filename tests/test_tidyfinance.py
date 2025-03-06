@@ -18,6 +18,7 @@ from tidyfinance.tidyfinance import (add_lag_columns,
                                      download_data_stock_prices,
                                      download_data_osap,
                                      create_wrds_dummy_database,
+                                     download_data_wrds_compustat,
                                      _trim,
                                      _winsorize
                                      )
@@ -292,6 +293,13 @@ def test_trim_edge_cases():
     """Test trim with edge cases such as empty input and identical values."""
     x = np.full(10, 1.0)
     assert np.array_equal(_trim(x, 0.1), x), "Identical values should remain unchanged"
+
+
+def test_invalid_type_parameter():
+    """Test that an invalid type parameter raises a ValueError."""
+    with pytest.raises(ValueError, match="Invalid type specified. Use 'compustat_annual' or 'compustat_quarterly'."):
+        download_data_wrds_compustat(dataset_type="invalid_type")
+
 
 if __name__ == "__main__":
     # Run all tests
