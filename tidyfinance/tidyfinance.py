@@ -9,6 +9,15 @@ import webbrowser
 import pandas_datareader as pdr
 from sqlalchemy import create_engine, text
 
+from _internal import (_trim,
+                        _winsorize,
+                        _validate_dates,
+                        _return_datetime,
+                        _transfrom_to_snake_case,
+                        _assign_exchange,
+                        _assign_industry
+                        )
+
 
 def add_lag_columns(
     data: pd.DataFrame,
@@ -658,7 +667,8 @@ def download_data_stock_prices(
     """
     if isinstance(symbols, str):
         symbols = [symbols]
-    elif not isinstance(symbols, list) or not all(isinstance(sym, str) for sym in symbols):
+    elif not isinstance(symbols, list) or not all(isinstance(sym, str)
+                                                  for sym in symbols):
         raise ValueError("symbols must be a list of stock symbols (strings).")
 
     start_date, end_date = _validate_dates(start_date, end_date)
@@ -815,6 +825,198 @@ def download_data_wrds(
     return {}
 
 
+def download_data_wrds_crsp(
+    dataset_type: str = "crsp_monthly",
+    start_date: str = None,
+    end_date: str = None,
+    batch_size: int = 500,
+    version: str = "v2",
+    additional_columns: list = None
+) -> pd.DataFrame:
+    """
+    Download stock return data from WRDS CRSP.
+
+    Parameters
+    ----------
+        type (str): The type of CRSP data to download. Expected values:
+            "crsp_monthly" or "crsp_daily".
+        start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
+        end_date (str or None): End date in "YYYY-MM-DD" format (optional).
+        batch_size (int): The batch size for processing daily data
+            (default: 500).
+        version (str): CRSP version to use ("v2" for updated, "v1" for legacy).
+        additional_columns (list or None): List of additional column names
+            to retrieve (optional).
+
+    Returns
+    -------
+        pandas.DataFrame: A DataFrame containing CRSP stock return data,
+            adjusted for delistings.
+    """
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    # Validate batch_size
+    batch_size = int(batch_size)
+    if batch_size <= 0:
+        raise ValueError("batch_size must be an integer larger than 0.")
+
+    # Validate version
+    if version not in ["v1", "v2"]:
+        raise ValueError("version must be 'v1' or 'v2'.")
+
+    # Connect to WRDS
+    wrds_connection = get_wrds_connection()
+    additional_columns = (", ".join(additional_columns)
+                          if additional_columns else ""
+                          )
+
+    crsp_data = pd.DataFrame()
+    if "crsp_monthly" in dataset_type:
+        if version == "v1":
+            pass
+        if version == "v2":
+
+            crsp_query = (
+                f"""
+                SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
+                    AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
+                    AS altprc, ssih.primaryexch, ssih.siccd
+                    {", " + additional_columns if additional_columns else ""}
+                FROM crsp.msf_v2 AS msf
+                INNER JOIN crsp.stksecurityinfohist AS ssih
+                ON msf.permno = ssih.permno AND
+                    ssih.secinfostartdt <= msf.mthcaldt AND
+                    msf.mthcaldt <= ssih.secinfoenddt
+                WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
+                AND ssih.sharetype = 'NS'
+                AND ssih.securitytype = 'EQTY'
+                AND ssih.securitysubtype = 'COM'
+                AND ssih.usincflg = 'Y'
+                AND ssih.issuertype in ('ACOR', 'CORP')
+                AND ssih.primaryexch in ('N', 'A', 'Q')
+                AND ssih.conditionaltype in ('RW', 'NW')
+                AND ssih.tradingstatusflg = 'A'
+                """)
+
+            crsp_monthly = (
+                pd.read_sql_query(
+                    sql=crsp_query,
+                    con=wrds_connection,
+                    dtype={"permno": int, "siccd": int},
+                    parse_dates={"date"}
+                    )
+                .assign(shrout=lambda x: x["shrout"]*1000)
+                .assign(mktcap=lambda x: x["shrout"]*x["altprc"]/1000000)
+                .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                )
+
+            mktcap_lag = (
+                crsp_monthly
+                .assign(date=lambda x: x["date"]+pd.DateOffset(months=1),
+                        mktcap_lag=lambda x: x["mktcap"]
+                        )
+                .get(["permno", "date", "mktcap_lag"])
+                )
+
+            crsp_monthly = (
+                crsp_monthly
+                .merge(mktcap_lag, how="left", on=["permno", "date"])
+                .assign(exchange=lambda x:
+                        x["primaryexch"].apply(_assign_exchange),
+                        industry=lambda x: x["siccd"].apply(_assign_industry)
+                        )
+                )
+            factors_ff3_monthly = download_data_factors_ff(
+                'F-F_Research_Data_Factors')
+
+            crsp_monthly = (
+                crsp_monthly
+                .merge(factors_ff3_monthly, how="left", on="date")
+                .assign(ret_excess=lambda x: x["ret"]-x["rf"])
+                .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
+                .drop(columns=["rf"])
+                .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
+                )
+            return crsp_monthly
+    elif "crsp_daily" in dataset_type:
+        if version == "v1":
+            pass
+        if version == "v2":
+
+            permnos = pd.read_sql(
+                sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
+                con=wrds_connection,
+                dtype={"permno": int}
+                )
+            permnos = list(permnos["permno"].astype(str))
+            batches = np.ceil(len(permnos)/batch_size).astype(int)
+
+            for j in range(1, batches+1):
+                permno_batch = permnos[((j-1)*batch_size):(min(j*batch_size,
+                                                               len(permnos)))
+                                       ]
+                permno_batch_formatted = (", ".join(f"'{permno}'"
+                                                    for permno in permno_batch)
+                                          )
+                permno_string = f"({permno_batch_formatted})"
+
+                crsp_daily_sub_query = (
+                    f"""
+                    SELECT dsf.permno, dlycaldt AS date, dlyret AS ret
+                        {", " + additional_columns if additional_columns
+                         else ""}
+                    FROM crsp.dsf_v2 AS dsf
+                    INNER JOIN crsp.stksecurityinfohist AS ssih
+                    ON dsf.permno = ssih.permno AND
+                        ssih.secinfostartdt <= dsf.dlycaldt AND
+                        dsf.dlycaldt <= ssih.secinfoenddt
+                    WHERE dsf.permno IN {permno_string}
+                    AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+                    AND ssih.sharetype = 'NS'
+                    AND ssih.securitytype = 'EQTY'
+                    AND ssih.securitysubtype = 'COM'
+                    AND ssih.usincflg = 'Y'
+                    AND ssih.issuertype in ('ACOR', 'CORP')
+                    AND ssih.primaryexch in ('N', 'A', 'Q')
+                    AND ssih.conditionaltype in ('RW', 'NW')
+                    AND ssih.tradingstatusflg = 'A'
+                    """)
+
+                crsp_daily_sub = (pd.read_sql_query(
+                    sql=crsp_daily_sub_query,
+                    con=wrds_connection,
+                    dtype={"permno": int},
+                    parse_dates={"date"}
+                    )
+                    .dropna()
+                    )
+
+                if not crsp_daily_sub.empty:
+
+                    factors_ff3_daily = download_data_factors_ff(
+                        'F-F_Research_Data_Factors_Daily')
+
+                    crsp_daily_sub = (
+                        crsp_daily_sub
+                        .merge(factors_ff3_daily[["date", "rf"]],
+                               on="date",
+                               how="left")
+                        .assign(ret_excess=lambda x:
+                                ((x["ret"] - x["rf"]).clip(lower=-1))
+                                )
+                        .get(["permno", "date", "ret_excess"])
+                        )
+
+                print(f"Batch {j} out of {batches} done "
+                      "({(j/batches)*100:.2f}%)\n")
+
+                crsp_data = pd.concat([crsp_data, crsp_daily_sub])
+            return crsp_data
+    else:
+        raise ValueError("Invalid type specified. Use 'crsp_monthly' "
+                         "or 'crsp_daily'.")
+
+
 def download_data_wrds_ccm_links(
     linktype: list[str] = ["LU", "LC"],
     linkprim: list[str] = ["P", "C"]
@@ -906,15 +1108,24 @@ def download_data_wrds_compustat(
         wrds_connection.dispose()
 
         # Compute Book Equity (be)
-        compustat = compustat.assign(
-            be=lambda df: (
-                df["seq"].fillna(df["ceq"] + df["pstk"])
-                .fillna(df["at"] - df["lt"])
-                + df["txditc"].fillna(df["txdb"] + df["itcb"])
-                - df[["pstkrv", "pstkl", "pstk"]].fillna(0).sum(axis=1)
+        compustat = (
+            compustat
+            .assign(
+                be=lambda x:
+                (x["seq"].combine_first(x["ceq"] + x["pstk"])
+                 .combine_first(x["at"]-x["lt"]) +
+                 x["txditc"].combine_first(x["txdb"]+x["itcb"]).fillna(0) -
+                 x["pstkrv"].combine_first(x["pstkl"])
+                 .combine_first(x["pstk"]).fillna(0))
+                )
+            .assign(be=lambda x: x["be"]
+                    .apply(lambda y: np.nan if y <= 0 else y)
+                    )
+            .assign(op=lambda x:
+                    ((x["sale"]-x["cogs"].fillna(0) - x["xsga"].fillna(0)
+                      - x["xint"].fillna(0))/x["be"])
+                    )
             )
-        ).query("be > 0")
-
         # Compute Operating Profitability (op)
         compustat = compustat.assign(
             op=lambda df: (df["sale"] - df[["cogs", "xsga", "xint"]]
@@ -923,28 +1134,26 @@ def download_data_wrds_compustat(
         # Keep the latest report per company per year
         compustat = (
             compustat
-            .assign(year=lambda df: pd.to_datetime(df["datadate"]).dt.year)
+            .assign(year=lambda x: pd.DatetimeIndex(x["datadate"]).year)
             .sort_values("datadate")
             .groupby(["gvkey", "year"])
-            .apply(lambda x: x.iloc[-1])  # Keep last record per group
-            .reset_index(drop=True)
-            .assign(date=lambda df: pd.to_datetime(df["datadate"])
-                    .dt.to_period("M").dt.start_time)
-        )
+            .tail(1)
+            .reset_index()
+            )
         # Compute Investment (inv)
-        at_lag = (compustat.copy()
-                  .get(["gvkey", "year", "at"])
-                  .assign(year=lambda df: df["year"] + 1)
-                  )
+        compustat_lag = (
+            compustat
+            .get(["gvkey", "year", "at"])
+            .assign(year=lambda x: x["year"]+1)
+            .rename(columns={"at": "at_lag"})
+            )
+
         compustat = (
             compustat
-            .merge(at_lag,
-                   on=["gvkey", "year"],
-                   how="left",
-                   suffixes=("", "_lag"))
-            .assign(inv=lambda df: (df["at"] / df["at_lag"]) - 1)
-            .query("at_lag > 0")
-        )
+            .merge(compustat_lag, how="left", on=["gvkey", "year"])
+            .assign(inv=lambda x: x["at"]/x["at_lag"]-1)
+            .assign(inv=lambda x: np.where(x["at_lag"] <= 0, np.nan, x["inv"]))
+            )
 
         processed_data = compustat.drop(columns=["year", "at_lag"])
 
@@ -1708,131 +1917,6 @@ def set_wrds_credentials() -> None:
           f"{location_choice} directory.")
 
 
-def _trim(
-    x: np.ndarray,
-    cut: float
-) -> np.ndarray:
-    """
-    Remove values in a numeric vector beyond the specified quantiles.
-
-    Parameters
-    ----------
-        x (np.ndarray): A numeric array to be trimmed.
-        cut (float): The proportion of data to be trimmed from both ends
-        (must be between [0, 0.5]).
-
-    Returns
-    -------
-        np.ndarray: A numeric array with extreme values removed.
-    """
-    if not (0 <= cut <= 0.5):
-        raise ValueError("'cut' must be inside [0, 0.5].")
-
-    lb = np.nanquantile(x, cut)
-    ub = np.nanquantile(x, 1 - cut)
-
-    return x[(x >= lb) & (x <= ub)]
-
-
-def _winsorize(
-    x: np.ndarray,
-    cut: float
-) -> np.ndarray:
-    """Winsorize a numeric vector by replacing extreme values.
-
-    Parameters
-    ----------
-        x (pd.Series): Numeric vector to winsorize.
-        cut (float): Proportion to replace at both ends.
-
-    Returns
-    -------
-        pd.Series: Winsorized vector.
-    """
-    if not isinstance(x, np.ndarray):
-        x = np.array(x)
-        # raise ValueError("x must be an numpy array")
-
-    if not (0 <= cut <= 0.5):
-        raise ValueError("'cut' must be inside [0, 0.5].")
-
-    if x.size == 0:
-        return x
-
-    x = np.array(x)  # Convert input to numpy array if not already
-    lb, ub = np.nanquantile(x, [cut, 1 - cut])  # Compute quantiles
-    x = np.clip(x, lb, ub)  # Winsorize values
-    return x
-
-
-def _validate_dates(
-    start_date: str = None,
-    end_date: str = None,
-    use_default_range: bool = False
-) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
-    """
-    Validate and process start and end dates.
-
-    Parameters
-    ----------
-    start_date : str, optional
-        The start date in "YYYY-MM-DD" format.
-    end_date : str, optional
-        The end date in "YYYY-MM-DD" format.
-    use_default_range : bool, optional
-        Whether to use a default date range if no dates are provided.
-
-    Returns
-    -------
-    tuple
-        A tuple containing the validated start and end dates.
-    """
-    if start_date is None or end_date is None:
-        if use_default_range:
-            end_date = pd.Timestamp.today()
-            start_date = end_date - pd.DateOffset(years=2)
-            print("No start_date or end_date provided. Using the range "
-                  f"{start_date.date()} to {end_date.date()} to avoid "
-                  "downloading large amounts of data.")
-            return start_date.date(), end_date.date()
-        else:
-            print("No start_date or end_date provided. Returning the full "
-                  "dataset.")
-            return None, None
-    else:
-        start_date = pd.to_datetime(start_date).date()
-        end_date = pd.to_datetime(end_date).date()
-        if start_date > end_date:
-            raise ValueError("start_date cannot be after end_date.")
-        return start_date, end_date
-
-
-def _return_datetime(dates):
-    """Return date without time and change period to timestamp."""
-    dates = pd.Series(dates)
-    if isinstance(dates.iloc[0], pd.Period):  # Check if 'Date' is a Period
-        dates = dates.dt.to_timestamp(how='start').dt.date
-    dates = pd.to_datetime(dates, errors='coerce')
-
-
-def _transfrom_to_snake_case(column_name):
-    """
-    Convert a string to snake_case.
-
-    - Converts uppercase letters to lowercase.
-    - Replaces spaces and special characters with underscores.
-    - Ensures no multiple underscores.
-    """
-    column_name = column_name.replace(" ", "_").replace("-", "_").lower()
-    column_name = "".join(c if c.isalnum() or c == "_" else "_"
-                          for c in column_name)
-
-    # Remove multiple underscores
-    while "__" in column_name:
-        column_name = column_name.replace("__", "_")
-
-    # Remove leading/trailing underscores
-    return column_name.strip("_")
 
 
 
