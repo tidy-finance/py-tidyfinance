@@ -1,21 +1,9 @@
 """Main module for tidyfinance package."""
 
-import os
 import pandas as pd
 import numpy as np
-import requests
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
-
-
-from ._internal import (_trim,
-                        _winsorize,
-                        _validate_dates,
-                        _return_datetime,
-                        _transfrom_to_snake_case,
-                        _assign_exchange,
-                        _assign_industry
-                        )
 
 
 def add_lag_columns(
@@ -178,20 +166,68 @@ def compute_portfolio_returns(sorting_data, sorting_variables, sorting_method, r
     pass
 
 
-def create_summary_statistics(data, *args, by=None, detail=False, drop_na=False):
-    """Create summary statistics for specified variables.
-
-    Parameters:
-        data (pd.DataFrame): Data containing variables to summarize.
-        *args: Variables to summarize.
-        by (str, optional): Grouping variable.
-        detail (bool): Whether to include detailed statistics.
-        drop_na (bool): Whether to drop missing values.
-
-    Returns:
-        pd.DataFrame: Summary statistics.
+def create_summary_statistics(
+    data: pd.DataFrame,
+    variables: list,
+    by: str = None,
+    detail: bool = False,
+    drop_na: bool = False
+) -> pd.DataFrame:
     """
-    pass
+    Compute summary statistics for specified numeric variables in a DataFrame.
+
+    Parameters
+    ----------
+    data (pd.DataFrame): A DataFrame containing the data to summarize.
+    variables (list): List of column names to summarize
+        (must be numeric or boolean).
+    by (str, optional): A column name to group data before summarization.
+        Default is None.
+    detail (bool, optional): Whether to include detailed quantiles.
+        Default is False.
+    drop_na (bool, optional): Whether to drop missing values before
+        summarizing. Default is False.
+
+    Returns
+    -------
+    pd.DataFrame: A DataFrame containing summary statistics for
+        each selected variable.
+    """
+    # Check that all specified variables are numeric or boolean
+    non_numeric_vars = [var for var in variables
+                        if not np.issubdtype(data[var].dtype, np.number)
+                        ]
+    if non_numeric_vars:
+        raise ValueError("The following columns are not numeric or boolean: "
+                         f"{', '.join(non_numeric_vars)}"
+                         )
+
+    # Drop missing values if specified
+    if drop_na:
+        data = data.dropna(subset=variables)
+
+    # Compute summary statistics using describe
+    percentiles = [0.5] if not detail else [0.01, 0.05, 0.10, 0.25, 0.50,
+                                            0.75, 0.90, 0.95, 0.99]
+
+    if by:
+        summary_df = (
+            data.groupby(by)
+            .describe(percentiles=percentiles)
+            .get(variables)
+            .reset_index()
+            .rename(columns={'index': 'variable'})
+            )
+    else:
+        summary_df = (
+            data.get(variables)
+            .describe(percentiles=percentiles)
+            .transpose()
+            .reset_index()
+            .rename(columns={'index': 'variable'})
+            )
+
+    return summary_df.round(3)
 
 
 def data_options(id="permno", date="date", exchange="exchange", mktcap_lag="mktcap_lag", ret_excess="ret_excess", portfolio="portfolio", **kwargs):

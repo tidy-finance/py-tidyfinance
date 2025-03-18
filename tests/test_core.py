@@ -11,7 +11,8 @@ sys.path.insert(0,
                                              '..')))
 from tidyfinance.core import (add_lag_columns,
                               estimate_betas,
-                              estimate_fama_macbeth
+                              estimate_fama_macbeth,
+                              create_summary_statistics
                               )
 
 
@@ -176,6 +177,32 @@ def test_estimate_fama_macbeth_vcov(sample_data: pd.DataFrame) -> None:
         )
     assert "t_statistic" in result.columns, "Output should include t-statistics based on vcov choice"
 
+
+# Test cases using pytest
+def sample_data_summary() -> pd.DataFrame:
+    np.random.seed(42)
+    data = pd.DataFrame({
+        'group': np.random.choice(['A', 'B'], size=100),
+        'x': np.random.randn(100),
+        'y': np.random.randint(0, 100, size=100),
+        'z': np.random.randint(0, 100, size=100)
+    })
+    return data
+
+def test_create_summary_statistics_basic(sample_data) -> None:
+    result = create_summary_statistics(sample_data_summary(), ['x', 'y'])
+    assert not result.empty, "Result should not be empty"
+    assert 'mean' in result.columns, "Output should include mean calculation"
+
+def test_create_summary_statistics_by_group(sample_data) -> None:
+    result = create_summary_statistics(sample_data_summary(), ['x', 'y'], by='group')
+    assert 'group' in result.columns, "Output should include group column"
+    assert 'mean' in result.columns.get_level_values(1), "Output should include mean calculation"
+
+def test_create_summary_statistics_detail(sample_data) -> None:
+    result = create_summary_statistics(sample_data_summary(), ['x', 'y'], detail=True)
+    assert '1%' in result.columns, "Detailed statistics should include 1st percentile"
+    assert '99%' in result.columns, "Detailed statistics should include 99th percentile"
 
 if __name__ == "__main__":
     # Run all tests
