@@ -9,7 +9,10 @@ import os
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              '..')))
-from tidyfinance.core import add_lag_columns, estimate_rolling_betas
+from tidyfinance.core import (add_lag_columns,
+                              estimate_betas,
+                              estimate_fama_macbeth
+                              )
 
 
 # Helper function to create test data
@@ -128,8 +131,8 @@ def sample_data() -> pd.DataFrame:
 
 def test_estimate_rolling_betas_basic(sample_data: pd.DataFrame) -> None:
     lookback = 30
-    result = estimate_rolling_betas(sample_data, "ret_excess ~ mkt_excess",
-                                    lookback)
+    result = estimate_betas(sample_data, "ret_excess ~ mkt_excess",
+                            lookback)
     assert not result.empty, "Result should not be empty"
     assert 'mkt_excess' in result.columns, "Output should include beta estimate for mkt_excess"
 
@@ -137,11 +140,41 @@ def test_estimate_rolling_betas_basic(sample_data: pd.DataFrame) -> None:
 def test_estimate_rolling_betas_min_obs(sample_data: pd.DataFrame) -> None:
     lookback = 30
     min_obs = 10
-    result = estimate_rolling_betas(sample_data, "ret_excess ~ mkt_excess",
-                                    lookback,
-                                    min_obs=min_obs)
+    result = estimate_betas(sample_data, "ret_excess ~ mkt_excess",
+                            lookback,
+                            min_obs=min_obs)
     assert result.shape[0] > 0, "Result should have valid estimates"
     assert result['mkt_excess'].isna().sum() > 0, "Some estimates should be NaN due to min_obs constraint"
+
+
+def sample_data_fmb() -> pd.DataFrame:
+    np.random.seed(42)
+    dates = pd.date_range(start='2020-01-01', periods=12, freq='ME')
+    permnos = range(50)
+    data = pd.DataFrame({
+        'date': np.tile(dates, len(permnos)),
+        'permno': np.repeat(permnos, len(dates)),
+        'ret_excess': np.random.randn(len(dates) * len(permnos)),
+        'beta': np.random.randn(len(dates) * len(permnos)),
+        'bm': np.random.randn(len(dates) * len(permnos)),
+        'log_mktcap': np.random.randn(len(dates) * len(permnos)),
+    })
+    return data
+
+
+def test_estimate_fama_macbeth_basic(sample_data: pd.DataFrame) -> None:
+    result = estimate_fama_macbeth(
+        sample_data_fmb(), "ret_excess ~ beta + bm + log_mktcap"
+        )
+    assert not result.empty, "Result should not be empty"
+    assert "risk_premium" in result.columns, "Output should include risk premia estimates"
+
+
+def test_estimate_fama_macbeth_vcov(sample_data: pd.DataFrame) -> None:
+    result = estimate_fama_macbeth(
+        sample_data_fmb(), "ret_excess ~ beta + bm + log_mktcap", vcov="iid"
+        )
+    assert "t_statistic" in result.columns, "Output should include t-statistics based on vcov choice"
 
 
 if __name__ == "__main__":

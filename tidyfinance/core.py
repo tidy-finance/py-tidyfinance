@@ -1,11 +1,10 @@
 """Main module for tidyfinance package."""
 
 import os
-
 import pandas as pd
 import numpy as np
 import requests
-import statsmodels.api as sm
+import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
 
@@ -278,34 +277,85 @@ def estimate_betas(
     return betas_df
 
 
-def estimate_fama_macbeth(data, model, vcov="newey-west", vcov_options=None, data_options=None):
-    """Estimate Fama-MacBeth regressions.
-
-    Parameters:
-        data (pd.DataFrame): Data for cross-sectional regressions.
-        model (str): Formula for the regression model.
-        vcov (str): Type of standard errors ('iid' or 'newey-west').
-        vcov_options (dict, optional): Options for covariance matrix estimation.
-        data_options (dict, optional): Additional data options.
-
-    Returns:
-        pd.DataFrame: Regression results with risk premiums and t-statistics.
+def estimate_fama_macbeth(
+    data: pd.DataFrame,
+    model: str,
+    vcov: str = "newey-west",
+    vcov_options: dict = None,
+    date_col: str = "date"
+) -> pd.DataFrame:
     """
-    pass
+    Estimate Fama-MacBeth regressions by running cross-sectional regressions.
 
+    Parameters
+    ----------
+    data (pd.DataFrame): A DataFrame containing the data for the regression.
+    model (str): A formula representing the regression model.
+    vcov (str): Type of standard errors to compute. Options are "iid" or
+        "newey-west".
+    vcov_options (dict, optional): Additional options for the Newey-West
+        standard errors.
+    date_col (str): Column name representing the time periods.
 
-def estimate_model(data, model, min_obs=1):
-    """Estimate coefficients of a linear model.
-
-    Parameters:
-        data (pd.DataFrame): Data for model estimation.
-        model (str): Formula for the model (e.g., 'ret_excess ~ mkt_excess').
-        min_obs (int): Minimum observations for estimation.
-
-    Returns:
-        pd.DataFrame: Model coefficients.
+    Returns
+    -------
+    pd.DataFrame: A DataFrame containing estimated risk premia,
+        standard errors, and t-statistics.
     """
-    pass
+    if vcov not in ["iid", "newey-west"]:
+        raise ValueError("vcov must be either 'iid' or 'newey-west'.")
+
+    if date_col not in data.columns:
+        raise ValueError(f"The data must contain a {date_col} column.")
+
+    # Run cross-sectional regressions
+    cross_section_results = []
+    for date, group in data.groupby(date_col):
+        if len(group) <= len(model.split('~')[1].split('+')):
+            continue
+
+        model_fit = smf.ols(model, data=group).fit()
+        params = model_fit.params.to_dict()
+        params[date_col] = date
+        cross_section_results.append(params)
+
+    risk_premiums = pd.DataFrame(cross_section_results)
+
+    # Compute time-series averages
+    price_of_risk = (
+        risk_premiums
+        .melt(id_vars=date_col, var_name="factor", value_name="estimate")
+        .groupby("factor")["estimate"]
+        .mean()
+        .reset_index()
+        .rename(columns={"estimate": "risk_premium"})
+    )
+
+    # Compute standard errors based on vcov choice
+    def compute_t_statistic(x):
+        model = smf.ols("estimate ~ 1", x)
+        if vcov == "newey-west":
+            fit = model.fit(cov_type="HAC", cov_kwds={"maxlags": 6})
+        else:
+            fit = model.fit()
+        return x["estimate"].mean() / fit.bse["Intercept"]
+
+    price_of_risk_t_stat = (
+        risk_premiums
+        .melt(id_vars=date_col, var_name="factor", value_name="estimate")
+        .groupby("factor")
+        .apply(compute_t_statistic, include_groups=False)
+        .reset_index()
+        .rename(columns={0: "t_statistic"})
+    )
+
+    result_df = (
+        price_of_risk
+        .merge(price_of_risk_t_stat, on="factor")
+        .round(3)
+    )
+
+    return result_df
 
 
 def list_supported_types(domain=None, as_vector=False):
