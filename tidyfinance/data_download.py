@@ -14,7 +14,7 @@ from ._internal import (_validate_dates,
                         )
 from .utilities import (get_random_user_agent,
                         get_wrds_connection,
-                        disconnect_wrds_connection,
+                        disconnect_connection,
                         process_trace_data
                         )
 
@@ -853,7 +853,7 @@ def download_data_wrds_ccm_links(
                               .fillna(pd.Timestamp.today())
                               )
 
-    disconnect_wrds_connection(conn)
+    disconnect_connection(conn)
 
     return ccm_links
 
@@ -1079,7 +1079,7 @@ def download_data_wrds_fisd(
             .drop(columns="country_domicile")
             )
 
-    disconnect_wrds_connection(wrds_connection)
+    disconnect_connection(wrds_connection)
 
     return fisd
 

@@ -212,18 +212,6 @@ def data_options(id="permno", date="date", exchange="exchange", mktcap_lag="mktc
     pass
 
 
-def disconnection_connection(con):
-    """Disconnect a database connection.
-
-    Parameters:
-        con (Any): Database connection object.
-
-    Returns:
-        bool: True if disconnection was successful, False otherwise.
-    """
-    pass
-
-
 def estimate_betas(
     data: pd.DataFrame,
     model: str,

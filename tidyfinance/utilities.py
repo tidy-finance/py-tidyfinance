@@ -63,10 +63,10 @@ def get_wrds_connection(config_path: str = "config.yaml") -> object:
     return engine.connect()
 
 
-def disconnect_wrds_connection(
+def disconnect_connection(
     connection: object
 ) -> bool:
-    """Close the WRDS database connection.
+    """Close the database connection.
 
     Parameters
     ----------
