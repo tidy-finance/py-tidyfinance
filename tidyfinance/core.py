@@ -64,71 +64,209 @@ def add_lag_columns(
     return result
 
 
-def assign_portfolio(data, sorting_variable, breakpoint_options=None, breakpoint_function=None, data_options=None):
-    """Assign data points to portfolios based on a sorting variable.
-
-    Parameters:
-        data (pd.DataFrame): Data for portfolio assignment.
-        sorting_variable (str): Column name used for sorting.
-        breakpoint_options (dict, optional): Arguments for the breakpoint function.
-        breakpoint_function (callable, optional): Function to compute breakpoints.
-        data_options (dict, optional): Additional data processing options.
-
-    Returns:
-        pd.Series: Portfolio assignments for each row.
+def assign_portfolio(
+    data: pd.DataFrame,
+    sorting_variable: str,
+    breakpoint_options: dict = None,
+    breakpoint_function=None,
+) -> pd.Series:
     """
-    #     breakpoints = (data
-    #                    .query("exchange == 'NYSE'")
-    #                    .get(sorting_variable)
-    #                    .quantile(percentiles, interpolation="linear")
-    #                    )
-    # breakpoints.iloc[0] = -np.Inf
-    # breakpoints.iloc[breakpoints.size-1] = np.Inf
+    Assign portfolio labels based on a sorting variable and breakpoints.
 
-    # assigned_portfolios = pd.cut(
-    #   data[sorting_variable],
-    #   bins=breakpoints,
-    #   labels=pd.Series(range(1, breakpoints.size)),
-    #   include_lowest=True,
-    #   right=False
-    # )
-    pass
-    # return assigned_portfolios
+    Parameters
+    ----------
+    data (pd.DataFrame): DataFrame containing the dataset for
+        portfolio assignment.
+    sorting_variable (str): Column name used for sorting and
+        portfolio assignment.
+    breakpoint_options (dict, optional): Named arguments passed
+        to the breakpoint function.
+    breakpoint_function (callable, optional): Function to compute breakpoints.
+        Must return an ascending vector of breakpoints.
 
-
-def breakpoint_options(n_portfolios=None, percentiles=None, breakpoint_exchanges=None, smooth_bunching=False, **kwargs):
-    """Create structured options for defining breakpoints.
-
-    Parameters:
-        n_portfolios (int, optional): Number of portfolios to create.
-        percentiles (list, optional): Percentile thresholds for breakpoints.
-        breakpoint_exchanges (list, optional): Exchanges for which breakpoints apply.
-        smooth_bunching (bool): Whether to apply smooth bunching.
-        kwargs: Additional optional parameters.
-
-    Returns:
-        dict: Breakpoint options.
+    Returns
+    -------
+    pd.Series: A Series of portfolio assignments.
     """
-    pass
+    if sorting_variable not in data.columns:
+        raise ValueError(f"Sorting variable '{sorting_variable}' not "
+                         "found in data."
+                         )
+
+    if len(data[sorting_variable].unique()) == 1:
+        print("Warning: The sorting variable is constant, "
+              "assigning all to portfolio 1."
+              )
+        return pd.Series(1, index=data.index, dtype=int)
+
+    if breakpoint_function is None:
+        raise ValueError("A valid breakpoint function must be provided.")
+
+    # Compute breakpoints
+    breakpoints = breakpoint_function(data,
+                                      sorting_variable,
+                                      breakpoint_options)
+
+    # Assign portfolios using pd.cut
+    assigned_portfolios = pd.cut(
+        data[sorting_variable],
+        bins=breakpoints,
+        labels=range(1, breakpoints.size),
+        include_lowest=True,
+        right=False
+    )
+
+    return assigned_portfolios.astype(int)
+
+
+def breakpoint_options(
+    n_portfolios: int = None,
+    percentiles: list = None,
+    breakpoint_exchanges: str = None,
+    smooth_bunching: bool = False,
+    **kwargs
+) -> dict:
+    """
+    Create a dictionary of options for breakpoints in portfolio sorting.
+
+    Parameters
+    ----------
+    n_portfolios (int, optional): Number of portfolios to create.
+        Must be a positive integer.
+    percentiles (list, optional): List of percentile thresholds
+        (values between 0 and 1).
+    breakpoint_exchanges (str, optional): Exchange for
+        which the breakpoints apply.
+    smooth_bunching (bool, optional): Whether smooth bunching
+        should be applied. Default is False.
+    **kwargs: Additional optional arguments.
+
+    Returns
+    -------
+    dict: A dictionary containing breakpoint options.
+    """
+    # Validate n_portfolios
+    if n_portfolios is not None:
+        if not isinstance(n_portfolios, int) or n_portfolios <= 0:
+            raise ValueError("n_portfolios must be a positive integer.")
+
+    # Validate percentiles
+    if percentiles is not None:
+        if not all(isinstance(p, (int, float)) and 0 <= p <= 1
+                   for p in percentiles):
+            raise ValueError("percentiles must be a list of values between "
+                             "0 and 1."
+                             )
+
+    # Validate breakpoint_exchanges
+    if breakpoint_exchanges is not None:
+        if not isinstance(breakpoint_exchanges, str) or (not
+                                                         breakpoint_exchanges):
+            raise ValueError("breakpoint_exchanges must be a non-empty "
+                             "string."
+                             )
+
+    # Validate smooth_bunching
+    if not isinstance(smooth_bunching, bool):
+        raise ValueError("smooth_bunching must be a boolean value.")
+
+    options = {
+        "n_portfolios": n_portfolios,
+        "percentiles": percentiles,
+        "breakpoint_exchanges": breakpoint_exchanges,
+        "smooth_bunching": smooth_bunching,
+        **kwargs
+    }
+    return options
+
 
 def compute_breakpoints(
     data: pd.DataFrame,
     sorting_variable: str,
-    breakpoint_options: dict,
-    data_options: dict = None
+    breakpoint_options: dict
 ) -> np.ndarray:
-    """Compute breakpoints based on a sorting variable.
-
-    Parameters:
-        data (pd.DataFrame): Data for breakpoint computation.
-        sorting_variable (str): Column name for sorting.
-        breakpoint_options (dict): Options for breakpoints.
-        data_options (dict, optional): Additional data processing options.
-
-    Returns:
-        list: Computed breakpoints.
     """
-    pass
+    Compute breakpoints based on a sorting variable for portfolios.
+
+    Parameters
+    ----------
+    data (pd.DataFrame): DataFrame with the dataset for breakpoint computation.
+    sorting_variable (str): Column name used to determine breakpoints.
+    breakpoint_options (dict): Dictionary containing breakpoint parameters,
+        including:
+        - "n_portfolios" (int, optional): Number of equally sized portfolios
+        - "percentiles" (list, optional): Custom percentiles for breakpoints
+        - "breakpoint_exchanges" (list, optional):
+                Exchanges to filter the data before computing breakpoints
+        - "smooth_bunching" (bool, optional): To smooth edge breakpoints or not
+
+    Returns
+    -------
+    np.ndarray: A sorted array of breakpoints.
+    """
+    if not isinstance(breakpoint_options, dict):
+        raise ValueError("breakpoint_options must be a dictionary.")
+
+    n_portfolios = breakpoint_options.get("n_portfolios")
+    percentiles = breakpoint_options.get("percentiles")
+    exchanges = breakpoint_options.get("breakpoint_exchanges")
+    smooth_bunching = breakpoint_options.get("smooth_bunching", False)
+
+    if n_portfolios is not None and percentiles is not None:
+        raise ValueError("Provide either 'n_portfolios' or 'percentiles', "
+                         "not both."
+                         )
+    elif n_portfolios is None and percentiles is None:
+        raise ValueError("Either 'n_portfolios' or 'percentiles' must be "
+                         "specified."
+                         )
+
+    if exchanges is not None:
+        if "exchange" not in data.columns:
+            raise ValueError("Data must contain an 'exchange' column to use "
+                             "breakpoint_exchanges."
+                             )
+        data = data.query(f"exchange in {exchanges}")
+
+    if n_portfolios is not None:
+        if n_portfolios <= 1:
+            raise ValueError("n_portfolios must be greater than 1.")
+        breakpoints = (
+            data.get(sorting_variable)
+            .quantile(np.linspace(0, 1, num=n_portfolios+1),
+                      interpolation="linear")
+            .drop_duplicates()
+        )
+    else:
+        breakpoints = (
+            data.get(sorting_variable)
+            .quantile([0] + percentiles + [1], interpolation="linear")
+            .drop_duplicates()
+        )
+    try:
+        breakpoints.iloc[0] = -np.inf
+        breakpoints.iloc[-1] = np.inf
+    except AttributeError:
+        breakpoints.iloc[0] = -np.Inf
+        breakpoints.iloc[-1] = np.Inf
+
+    if smooth_bunching:
+        if (breakpoints[0] == breakpoints[1]) and (breakpoints[-2] == breakpoints[-1]):
+            print("Warning: Clustering at extreme breakpoints detected. "
+                  "Adjusting non-edge portfolios."
+                  )
+            new_values = (
+                data[sorting_variable][(data[sorting_variable]
+                                        > breakpoints[0]) &
+                                       (data[sorting_variable]
+                                        < breakpoints[-1])
+                                       ]
+                )
+            new_probs = np.linspace(0, 1, len(breakpoints) - 2)
+            breakpoints[1:-1] = np.quantile(new_values, new_probs)
+
+    breakpoints.loc[1:] += 1e-20  # Ensure proper binning
+    return breakpoints
 
 
 def compute_long_short_returns(
@@ -188,7 +326,18 @@ def compute_long_short_returns(
     return long_short_df[[date_col, "long_short_return"]]
 
 
-def compute_portfolio_returns(sorting_data, sorting_variables, sorting_method, rebalancing_month=None, breakpoint_options_main=None, breakpoint_options_secondary=None, breakpoint_function_main=None, breakpoint_function_secondary=None, min_portfolio_size=0, data_options=None):
+def compute_portfolio_returns(
+    sorting_data,
+    sorting_variables,
+    sorting_method,
+    rebalancing_month=None,
+    breakpoint_options_main=None,
+    breakpoint_options_secondary=None,
+    breakpoint_function_main=None,
+    breakpoint_function_secondary=None,
+    min_portfolio_size=0,
+    data_options=None
+):
     """Compute portfolio returns based on sorting variables and methods.
 
     Parameters:

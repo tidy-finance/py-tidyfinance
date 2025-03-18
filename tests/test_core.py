@@ -14,7 +14,9 @@ from tidyfinance.core import (add_lag_columns,
                               estimate_fama_macbeth,
                               create_summary_statistics,
                               compute_long_short_returns,
-                              create_data_options
+                              create_data_options,
+                              breakpoint_options,
+                              compute_breakpoints
                               )
 
 
@@ -243,6 +245,45 @@ def test_create_data_options_invalid():
         create_data_options(id=123)  # Not a string
     with pytest.raises(ValueError):
         create_data_options(date="")  # Empty string
+
+
+def test_breakpoint_options_default():
+    options = breakpoint_options()
+    assert options["smooth_bunching"] is False, "Default smooth_bunching should be False"
+
+def test_breakpoint_options_custom():
+    options = breakpoint_options(n_portfolios=5, percentiles=[0.2, 0.4, 0.6, 0.8], breakpoint_exchanges="NYSE")
+    assert options["n_portfolios"] == 5, "Custom n_portfolios should be 5"
+    assert options["breakpoint_exchanges"] == "NYSE", "Custom exchange should be 'NYSE'"
+
+def test_breakpoint_options_invalid():
+    with pytest.raises(ValueError):
+        breakpoint_options(n_portfolios=-1)  # Invalid n_portfolios
+    with pytest.raises(ValueError):
+        breakpoint_options(percentiles=[-0.1, 1.2])  # Invalid percentiles
+
+
+def sample_data_breakpoints() -> pd.DataFrame:
+    np.random.seed(42)
+    return pd.DataFrame({
+        'id': np.arange(1, 101),
+        'exchange': np.random.choice(['NYSE', 'NASDAQ'], 100),
+        'market_cap': np.random.uniform(100, 1000, 100)
+    })
+
+def test_compute_breakpoints_n_portfolios(sample_data=sample_data_breakpoints()):
+    breakpoints = compute_breakpoints(sample_data, "market_cap", {"n_portfolios": 5})
+    assert len(breakpoints) >= 2, "Breakpoints should include at least min/max boundaries"
+
+def test_compute_breakpoints_percentiles(sample_data=sample_data_breakpoints()):
+    breakpoints = compute_breakpoints(sample_data, "market_cap", {"percentiles": [0.2, 0.4, 0.6, 0.8]})
+    assert len(breakpoints) >= 2, "Breakpoints should include at least min/max boundaries"
+
+def test_compute_breakpoints_invalid_options(sample_data=sample_data_breakpoints()):
+    with pytest.raises(ValueError):
+        compute_breakpoints(sample_data, "market_cap", {"n_portfolios": 5, "percentiles": [0.2, 0.4]})
+    with pytest.raises(ValueError):
+        compute_breakpoints(sample_data, "market_cap", {})
 
 
 if __name__ == "__main__":
