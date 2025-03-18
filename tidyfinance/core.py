@@ -131,18 +131,61 @@ def compute_breakpoints(
     pass
 
 
-def compute_long_short_returns(data, direction="top_minus_bottom", data_options=None):
-    """Calculate long-short returns based on portfolio returns.
-
-    Parameters:
-        data (pd.DataFrame): Data containing portfolio returns.
-        direction (str): Calculation direction ('top_minus_bottom' or 'bottom_minus_top').
-        data_options (dict, optional): Additional data processing options.
-
-    Returns:
-        pd.DataFrame: DataFrame with computed long-short returns.
+def compute_long_short_returns(
+    data: pd.DataFrame,
+    direction: str = "top_minus_bottom",
+    date_col: str = "date",
+    portfolio_col: str = "portfolio",
+    ret_excess_col: str = "ret_excess"
+) -> pd.DataFrame:
     """
-    pass
+    Compute long-short returns based on portfolio returns.
+
+    Parameters
+    ----------
+    data (pd.DataFrame): DataFrame containing portfolio returns with columns
+        for portfolio ID, date, and return measurements.
+    direction (str, optional): Direction of calculation. "top_minus_bottom"
+        (default) or "bottom_minus_top".
+    date_col (str, optional): Column name indicating dates.
+    portfolio_col (str, optional): Column name indicating portfolio
+        identifiers.
+    ret_excess_col (str, optional): Column name prefix for excess return
+        measurements.
+
+    Returns
+    -------
+    pd.DataFrame: A DataFrame with computed long-short returns.
+    """
+    if direction not in ["top_minus_bottom", "bottom_minus_top"]:
+        raise ValueError("direction must be either 'top_minus_bottom' or"
+                         "'bottom_minus_top'"
+                         )
+    data = data.copy()
+
+    # Identify top and bottom portfolios
+    grouped = data.groupby(date_col)
+    top_bottom = grouped.filter(lambda x: x[portfolio_col].nunique() >= 2)
+    top_bottom["portfolio"] = np.where(
+        top_bottom[portfolio_col] == top_bottom[portfolio_col].max(),
+        "top", "bottom"
+    )
+
+    # Pivot data to get top and bottom returns
+    long_short_df = (
+        top_bottom.pivot_table(index=[date_col],
+                               columns="portfolio",
+                               values=ret_excess_col)
+        .dropna()
+        .reset_index()
+    )
+
+    # Compute long-short returns
+    long_short_df["long_short_return"] = (
+        long_short_df["top"] - long_short_df["bottom"]
+    ) * (-1 if direction == "bottom_minus_top" else 1)
+
+    return long_short_df[[date_col, "long_short_return"]]
 
 
 def compute_portfolio_returns(sorting_data, sorting_variables, sorting_method, rebalancing_month=None, breakpoint_options_main=None, breakpoint_options_secondary=None, breakpoint_function_main=None, breakpoint_function_secondary=None, min_portfolio_size=0, data_options=None):

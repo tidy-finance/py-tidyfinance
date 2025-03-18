@@ -12,7 +12,8 @@ sys.path.insert(0,
 from tidyfinance.core import (add_lag_columns,
                               estimate_betas,
                               estimate_fama_macbeth,
-                              create_summary_statistics
+                              create_summary_statistics,
+                              compute_long_short_returns
                               )
 
 
@@ -178,7 +179,6 @@ def test_estimate_fama_macbeth_vcov(sample_data: pd.DataFrame) -> None:
     assert "t_statistic" in result.columns, "Output should include t-statistics based on vcov choice"
 
 
-# Test cases using pytest
 def sample_data_summary() -> pd.DataFrame:
     np.random.seed(42)
     data = pd.DataFrame({
@@ -203,6 +203,29 @@ def test_create_summary_statistics_detail(sample_data) -> None:
     result = create_summary_statistics(sample_data_summary(), ['x', 'y'], detail=True)
     assert '1%' in result.columns, "Detailed statistics should include 1st percentile"
     assert '99%' in result.columns, "Detailed statistics should include 99th percentile"
+
+
+def sample_data_ls() -> pd.DataFrame:
+    np.random.seed(42)
+    dates = pd.date_range(start='2020-01-01', periods=10, freq='ME')
+    portfolios = [1, 2]
+    data = pd.DataFrame({
+        'date': np.tile(dates, len(portfolios)),
+        'portfolio': np.repeat(portfolios, len(dates)),
+        'ret_excess': np.random.randn(len(dates) * len(portfolios))
+    })
+    return data
+
+def test_compute_long_short_returns_basic(sample_data) -> None:
+    result = compute_long_short_returns(sample_data_ls())
+    assert not result.empty, "Result should not be empty"
+    assert "long_short_return" in result.columns, "Output should include long-short return calculation"
+
+def test_compute_long_short_returns_direction(sample_data) -> None:
+    result_top_bottom = compute_long_short_returns(sample_data_ls(), direction="top_minus_bottom")
+    result_bottom_top = compute_long_short_returns(sample_data_ls(), direction="bottom_minus_top")
+    assert (result_top_bottom["long_short_return"] == -result_bottom_top["long_short_return"]).all(), "Reversing direction should invert returns"
+
 
 if __name__ == "__main__":
     # Run all tests
