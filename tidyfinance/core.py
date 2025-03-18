@@ -5,6 +5,8 @@ import os
 import pandas as pd
 import numpy as np
 import requests
+import statsmodels.api as sm
+from statsmodels.regression.rolling import RollingOLS
 
 
 from ._internal import (_trim,
@@ -223,21 +225,57 @@ def disconnection_connection(con):
     pass
 
 
-def estimate_betas(data, model, lookback, min_obs=None, use_furrr=False, data_options=None):
-    """Estimate rolling betas for a specified model.
-
-    Parameters:
-        data (pd.DataFrame): Data containing identifiers and model variables.
-        model (str): Formula for the model (e.g., 'ret_excess ~ mkt_excess').
-        lookback (int): Lookback period for rolling estimation.
-        min_obs (int, optional): Minimum observations for estimation.
-        use_furrr (bool): Whether to use parallel processing.
-        data_options (dict, optional): Additional data options.
-
-    Returns:
-        pd.DataFrame: Estimated betas.
+def estimate_betas(
+    data: pd.DataFrame,
+    model: str,
+    lookback: pd.Timedelta,
+    min_obs: int = None,
+    id_col: str = 'permno'
+) -> pd.DataFrame:
     """
-    pass
+    Estimate rolling betas using RollingOLS.from_formula from statsmodels.
+
+    Parameters
+    ----------
+    data (pd.DataFrame): DataFrame containing stock return data with date and
+        stock identifier columns.
+    model (str): A formula representing the regression model
+        (e.g., 'ret_excess ~ mkt_excess').
+    lookback (int): The period window size to estimate rolling betas.
+    min_obs (int, optional): Minimum number of observations required for a
+        valid estimate. Defaults to 80% of lookback.
+    id_col (str, optional): Column name representing the stock identifier.
+        Defaults to 'permno'.
+
+    Returns
+    -------
+    pd.DataFrame: A DataFrame with estimated rolling betas for each stock
+        and time period.
+    """
+    if min_obs is None:
+        min_obs = int(lookback * 0.8)
+    elif min_obs <= 0:
+        raise ValueError("min_obs must be a positive integer.")
+
+    results = []
+    for stock_id, group in data.groupby(id_col):
+        group = group.sort_values('date')
+
+        rolling_model = (RollingOLS.from_formula(
+            formula=model,
+            data=group,
+            window=lookback,
+            min_nobs=min_obs,
+            missing="drop"
+        ).fit())
+
+        betas = rolling_model.params
+        betas[id_col] = stock_id
+        betas['date'] = group['date'].values
+        results.append(betas)
+
+    betas_df = pd.concat(results).reset_index()
+    return betas_df
 
 
 def estimate_fama_macbeth(data, model, vcov="newey-west", vcov_options=None, data_options=None):
