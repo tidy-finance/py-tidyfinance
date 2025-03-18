@@ -273,22 +273,48 @@ def create_summary_statistics(
     return summary_df.round(3)
 
 
-def data_options(id="permno", date="date", exchange="exchange", mktcap_lag="mktcap_lag", ret_excess="ret_excess", portfolio="portfolio", **kwargs):
-    """Create a dictionary of data options for analysis.
-
-    Parameters:
-        id (str): Identifier variable name.
-        date (str): Date variable name.
-        exchange (str): Exchange variable name.
-        mktcap_lag (str): Market capitalization lag variable.
-        ret_excess (str): Excess return variable.
-        portfolio (str): Portfolio variable.
-        kwargs: Additional options.
-
-    Returns:
-        dict: Data options.
+def create_data_options(
+    id: str = "permno",
+    date: str = "date",
+    exchange: str = "exchange",
+    mktcap_lag: str = "mktcap_lag",
+    ret_excess: str = "ret_excess",
+    portfolio: str = "portfolio",
+    **kwargs
+) -> dict:
     """
-    pass
+    Create a dictionary of data options used in financial data analysis.
+
+    Parameters
+    ----------
+    id (str): Identifier variable (default: "permno").
+    date (str): Date variable (default: "date").
+    exchange (str): Exchange variable (default: "exchange").
+    mktcap_lag (str): Market capitalization lag variable
+        (default: "mktcap_lag").
+    ret_excess (str): Excess return variable (default: "ret_excess").
+    portfolio (str): Portfolio variable (default: "portfolio").
+    **kwargs: Additional key-value pairs to include in the options.
+
+    Returns
+    -------
+    dict: A dictionary containing the specified data options.
+    """
+    # Validate inputs
+    for key, value in locals().items():
+        if key != "kwargs" and (not isinstance(value, str) or len(value) == 0):
+            raise ValueError(f"{key} must be a non-empty string.")
+
+    options = {
+        "id": id,
+        "date": date,
+        "exchange": exchange,
+        "mktcap_lag": mktcap_lag,
+        "ret_excess": ret_excess,
+        "portfolio": portfolio,
+        **kwargs
+    }
+    return options
 
 
 def estimate_betas(
@@ -428,11 +454,13 @@ def estimate_fama_macbeth(
 def list_supported_types(domain=None, as_vector=False):
     """List all supported dataset types.
 
-    Parameters:
+    Parameters
+    ----------
         domain (list, optional): Filter for specific domains.
         as_vector (bool): Whether to return as a list instead of DataFrame.
 
-    Returns:
+    Returns
+    -------
         Union[pd.DataFrame, list]: Supported dataset types.
     """
     pass

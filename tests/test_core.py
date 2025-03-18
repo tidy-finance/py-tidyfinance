@@ -13,7 +13,8 @@ from tidyfinance.core import (add_lag_columns,
                               estimate_betas,
                               estimate_fama_macbeth,
                               create_summary_statistics,
-                              compute_long_short_returns
+                              compute_long_short_returns,
+                              create_data_options
                               )
 
 
@@ -225,6 +226,23 @@ def test_compute_long_short_returns_direction(sample_data) -> None:
     result_top_bottom = compute_long_short_returns(sample_data_ls(), direction="top_minus_bottom")
     result_bottom_top = compute_long_short_returns(sample_data_ls(), direction="bottom_minus_top")
     assert (result_top_bottom["long_short_return"] == -result_bottom_top["long_short_return"]).all(), "Reversing direction should invert returns"
+
+
+def test_create_data_options_default():
+    options = create_data_options()
+    assert options["id"] == "permno", "Default id should be 'permno'"
+    assert options["date"] == "date", "Default date should be 'date'"
+
+def test_create_data_options_custom():
+    options = create_data_options(id="custom_id", date="custom_date")
+    assert options["id"] == "custom_id", "Custom id should be 'custom_id'"
+    assert options["date"] == "custom_date", "Custom date should be 'custom_date'"
+
+def test_create_data_options_invalid():
+    with pytest.raises(ValueError):
+        create_data_options(id=123)  # Not a string
+    with pytest.raises(ValueError):
+        create_data_options(date="")  # Empty string
 
 
 if __name__ == "__main__":
