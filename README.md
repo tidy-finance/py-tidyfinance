@@ -105,6 +105,57 @@ download_data(
 )
 ```
 
+## Download WRDS Data
+
+To access data from the [Wharton Research Data Services (WRDS)](https://wrds-www.wharton.upenn.edu/), you need to set your credentials first:
+
+```python
+from tidyfinance import set_wrds_credentials
+set_wrds_credentials()
+```
+
+```python
+download_data(
+  domain="wrds",
+  dataset="crsp_monthly", 
+  start_date="2020-01-01", 
+  end_date="2020-12-31"
+)
+```
+
+```python
+download_data(
+  domain="wrds",
+  dataset="compustat_annual", 
+  start_date="2020-01-01", 
+  end_date="2020-12-31"
+)
+```
+
+```python
+download_data(
+  domain="wrds",
+  dataset="ccm_links"
+)
+```
+
+```python
+download_data(
+  domain="wrds",
+  dataset="fisd"
+)
+```
+
+```python
+download_data(
+  domain="wrds",
+  dataset="trace_enhanced",
+  cusips=["00101JAH9"],
+  start_date="2019-01-01", 
+  end_date="2021-12-31"
+)
+```
+
 ## Other Helpers
 
 We include functions to check out content from tidy-finance.org:
@@ -121,11 +172,11 @@ We also include (experimental) functions that can be used for different applicat
 ```python
 import tidyfinance as tf
 # For portfolio sorts
-?tf.assign_portfolio
+help(tf.assign_portfolio)
 
 # For beta estimation
-?tf.estimate_betas
+help(tf.estimate_betas)
 
 # For Fama-MacBeth estimation
-?tf.estimate_fama_macbeth
+help(tf.estimate_fama_macbeth)
 ```
