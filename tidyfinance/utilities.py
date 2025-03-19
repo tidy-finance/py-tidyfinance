@@ -7,6 +7,7 @@ import yaml
 import webbrowser
 from sqlalchemy import create_engine
 
+
 def get_random_user_agent():
     """Retrieve a random user agent string.
 
@@ -30,8 +31,8 @@ def get_random_user_agent():
         "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:116.0) Gecko/20100101 Firefox/116.0",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.141 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_6_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_7_8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36 Edg/116.0.1938.69"
-        ]
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_7_8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36 Edg/116.0.1938.69",
+    ]
     return str(np.random.choice(user_agents))
 
 
@@ -54,17 +55,17 @@ def get_wrds_connection(config_path: str = "config.yaml") -> object:
     """
     wrds_user, wrds_password = load_wrds_credentials(config_path)
 
-    engine = create_engine((f"postgresql://{wrds_user}:{wrds_password}"
-                            "@wrds-pgdata.wharton.upenn.edu:9737/wrds"
-                            ),
-                           connect_args={"sslmode": "require"}
-                           )
+    engine = create_engine(
+        (
+            f"postgresql://{wrds_user}:{wrds_password}"
+            "@wrds-pgdata.wharton.upenn.edu:9737/wrds"
+        ),
+        connect_args={"sslmode": "require"},
+    )
     return engine.connect()
 
 
-def disconnect_connection(
-    connection: object
-) -> bool:
+def disconnect_connection(connection: object) -> bool:
     """Close the database connection.
 
     Parameters
@@ -82,8 +83,7 @@ def disconnect_connection(
         return False
 
 
-def list_supported_indexes(
-) -> pd.DataFrame:
+def list_supported_indexes() -> pd.DataFrame:
     """
     Return a DataFrame containing information on supported financial indexes.
 
@@ -100,25 +100,76 @@ def list_supported_indexes(
             - skip (int): The number of lines to skip when reading CSV file.
     """
     data = [
-        ("DAX", "https://www.ishares.com/de/privatanleger/de/produkte/251464/ishares-dax-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=DAXEX_holdings&dataType=fund", 2),
-        ("EURO STOXX 50", "https://www.ishares.com/de/privatanleger/de/produkte/251783/ishares-euro-stoxx-50-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXW1_holdings&dataType=fund", 2),
-        ("Dow Jones Industrial Average", "https://www.ishares.com/de/privatanleger/de/produkte/251770/ishares-dow-jones-industrial-average-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXI3_holdings&dataType=fund", 2),
-        ("Russell 1000", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239707/ishares-russell-1000-etf/1495092304805.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund", 9),
-        ("Russell 2000", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239710/ishares-russell-2000-etf/1495092304805.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund", 9),
-        ("Russell 3000", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239714/ishares-russell-3000-etf/1495092304805.ajax?fileType=csv&fileName=IWV_holdings&dataType=fund", 9),
-        ("S&P 100", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239723/ishares-sp-100-etf/1495092304805.ajax?fileType=csv&fileName=OEF_holdings&dataType=fund", 9),
-        ("S&P 500", "https://www.ishares.com/de/privatanleger/de/produkte/253743/ishares-sp-500-b-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=SXR8_holdings&dataType=fund", 2),
-        ("Nasdaq 100", "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund", 2),
-        ("FTSE 100", "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1478358465952.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund", 2),
-        ("MSCI World", "https://www.ishares.com/de/privatanleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund", 2),
-        ("Nikkei 225", "https://www.ishares.com/ch/professionelle-anleger/de/produkte/253742/ishares-nikkei-225-ucits-etf/1495092304805.ajax?fileType=csv&fileName=CSNKY_holdings&dataType=fund", 2),
-        ("TOPIX", "https://www.blackrock.com/jp/individual-en/en/products/279438/fund/1480664184455.ajax?fileType=csv&fileName=1475_holdings&dataType=fund", 2)
+        (
+            "DAX",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251464/ishares-dax-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=DAXEX_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "EURO STOXX 50",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251783/ishares-euro-stoxx-50-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXW1_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "Dow Jones Industrial Average",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251770/ishares-dow-jones-industrial-average-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXI3_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "Russell 1000",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239707/ishares-russell-1000-etf/1495092304805.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund",
+            9,
+        ),
+        (
+            "Russell 2000",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239710/ishares-russell-2000-etf/1495092304805.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund",
+            9,
+        ),
+        (
+            "Russell 3000",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239714/ishares-russell-3000-etf/1495092304805.ajax?fileType=csv&fileName=IWV_holdings&dataType=fund",
+            9,
+        ),
+        (
+            "S&P 100",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239723/ishares-sp-100-etf/1495092304805.ajax?fileType=csv&fileName=OEF_holdings&dataType=fund",
+            9,
+        ),
+        (
+            "S&P 500",
+            "https://www.ishares.com/de/privatanleger/de/produkte/253743/ishares-sp-500-b-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=SXR8_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "Nasdaq 100",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "FTSE 100",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1478358465952.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "MSCI World",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "Nikkei 225",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/253742/ishares-nikkei-225-ucits-etf/1495092304805.ajax?fileType=csv&fileName=CSNKY_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "TOPIX",
+            "https://www.blackrock.com/jp/individual-en/en/products/279438/fund/1480664184455.ajax?fileType=csv&fileName=1475_holdings&dataType=fund",
+            2,
+        ),
     ]
     return pd.DataFrame(data, columns=["index", "url", "skip"])
 
 
-def list_tidy_finance_chapters(
-) -> list:
+def list_tidy_finance_chapters() -> list:
     """
     Return a list of available chapters in the Tidy Finance resource.
 
@@ -154,13 +205,11 @@ def list_tidy_finance_chapters(
         "cover-and-logo-design",
         "clean-enhanced-trace-with-r",
         "proofs",
-        "changelog"
+        "changelog",
     ]
 
 
-def load_wrds_credentials(
-    config_path: str = "./config.yaml"
-) -> tuple:
+def load_wrds_credentials(config_path: str = "./config.yaml") -> tuple:
     """
     Load WRDS credentials from a config.yaml file if env variables are not set.
 
@@ -184,16 +233,16 @@ def load_wrds_credentials(
                 wrds_password = config.get("WRDS", {}).get("PASSWORD", "")
 
     if not wrds_user or not wrds_password:
-        raise ValueError("WRDS credentials not found. Please set 'WRDS_USER' "
-                         "and 'WRDS_PASSWORD' as environment variables or "
-                         "in config.yaml.")
+        raise ValueError(
+            "WRDS credentials not found. Please set 'WRDS_USER' "
+            "and 'WRDS_PASSWORD' as environment variables or "
+            "in config.yaml."
+        )
 
     return wrds_user, wrds_password
 
 
-def open_tidy_finance_website(
-    chapter: str = None
-) -> None:
+def open_tidy_finance_website(chapter: str = None) -> None:
     """Open the Tidy Finance website or a specific chapter in a browser.
 
     Parameters
@@ -218,9 +267,7 @@ def open_tidy_finance_website(
     webbrowser.open(final_url)
 
 
-def process_trace_data(
-    trace_all: pd.DataFrame
-) -> pd.DataFrame:
+def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     """
     Process TRACE data by filtering trades, handling exception.
 
@@ -234,81 +281,98 @@ def process_trace_data(
     """
     # Enhanced Trace: Post 06-02-2012 -----------------------------------------
     # Trades (trc_st = T) and correction (trc_st = R)
-    trace_all['trd_rpt_dt'] = pd.to_datetime(trace_all['trd_rpt_dt'])
-    trace_post_TR = (trace_all
-                     .query("trc_st in ['T', 'R']")
-                     .query("trd_rpt_dt >= '2012-02-06'")
-                     )
+    trace_all["trd_rpt_dt"] = pd.to_datetime(trace_all["trd_rpt_dt"])
+    trace_post_TR = trace_all.query("trc_st in ['T', 'R']").query(
+        "trd_rpt_dt >= '2012-02-06'"
+    )
     # Cancelations (trc_st = X) and correction cancelations (trc_st = C)
-    trace_post_XC = (trace_all
-                     .query("trc_st in ['X', 'C']")
-                     .query("trd_rpt_dt >= '2012-02-06'")
-                     )
+    trace_post_XC = trace_all.query("trc_st in ['X', 'C']").query(
+        "trd_rpt_dt >= '2012-02-06'"
+    )
     # Cleaning corrected and cancelled trades
-    trace_post_TR = (trace_post_TR
-                     .merge(trace_post_XC,
-                            on=["cusip_id", "msg_seq_nb", "entrd_vol_qt",
-                                "rptd_pr", "rpt_side_cd", "cntra_mp_id",
-                                "trd_exctn_dt", "trd_exctn_tm"],
-                            how='left',
-                            indicator=True
-                            )
-                     .query("_merge == 'left_only'")
-                     .drop(columns=['_merge'])
-                     )
+    trace_post_TR = (
+        trace_post_TR.merge(
+            trace_post_XC,
+            on=[
+                "cusip_id",
+                "msg_seq_nb",
+                "entrd_vol_qt",
+                "rptd_pr",
+                "rpt_side_cd",
+                "cntra_mp_id",
+                "trd_exctn_dt",
+                "trd_exctn_tm",
+            ],
+            how="left",
+            indicator=True,
+        )
+        .query("_merge == 'left_only'")
+        .drop(columns=["_merge"])
+    )
 
     # Reversals (trc_st = Y)
-    trace_post_Y = (trace_all
-                    .query("trc_st == 'S'")
-                    .query("trd_rpt_dt >= '2012-02-06'")
-                    )
+    trace_post_Y = trace_all.query("trc_st == 'S'").query(
+        "trd_rpt_dt >= '2012-02-06'"
+    )
 
     # Clean reversals
     # match the orig_msg_seq_nb of the Y-message to
     # the msg_seq_nb of the main message
-    trace_post = (trace_post_TR
-                  .merge(trace_post_Y
-                         .rename(columns={"orig_msg_seq_nb": "msg_seq_nb"}),
-                         on=["cusip_id", "msg_seq_nb", "entrd_vol_qt",
-                             "rptd_pr", "rpt_side_cd", "cntra_mp_id",
-                             "trd_exctn_dt", "trd_exctn_tm"],
-                         how='left',
-                         indicator=True
-                         )
-                  .query("_merge == 'left_only'")
-                  .drop(columns=['_merge'])
-                  )
+    trace_post = (
+        trace_post_TR.merge(
+            trace_post_Y.rename(columns={"orig_msg_seq_nb": "msg_seq_nb"}),
+            on=[
+                "cusip_id",
+                "msg_seq_nb",
+                "entrd_vol_qt",
+                "rptd_pr",
+                "rpt_side_cd",
+                "cntra_mp_id",
+                "trd_exctn_dt",
+                "trd_exctn_tm",
+            ],
+            how="left",
+            indicator=True,
+        )
+        .query("_merge == 'left_only'")
+        .drop(columns=["_merge"])
+    )
 
     # Enhanced TRACE: Pre 06-02-2012 ------------------------------------------
     # Cancelations (trc_st = C)
-    trace_pre_C = (trace_all
-                   .query("trc_st == 'C'")
-                   .query("trd_rpt_dt < '2012-02-06'")
-                   )
+    trace_pre_C = trace_all.query("trc_st == 'C'").query(
+        "trd_rpt_dt < '2012-02-06'"
+    )
 
     # Trades w/o cancelations
     # match the orig_msg_seq_nb of the C-message
     # to the msg_seq_nb of the main message
-    trace_pre_T = (trace_all
-                   .query("trc_st == 'T'")
-                   .query("trd_rpt_dt < '2012-02-06'")
-                   .merge(trace_pre_C
-                          .rename(columns={"orig_msg_seq_nb": "msg_seq_nb"}),
-                          on=["cusip_id", "msg_seq_nb", "entrd_vol_qt",
-                              "rptd_pr", "rpt_side_cd", "cntra_mp_id",
-                              "trd_exctn_dt", "trd_exctn_tm"],
-                          how='left',
-                          indicator=True
-                          )
-                   .query("_merge == 'left_only'")
-                   .drop(columns=['_merge'])
-                   )
+    trace_pre_T = (
+        trace_all.query("trc_st == 'T'")
+        .query("trd_rpt_dt < '2012-02-06'")
+        .merge(
+            trace_pre_C.rename(columns={"orig_msg_seq_nb": "msg_seq_nb"}),
+            on=[
+                "cusip_id",
+                "msg_seq_nb",
+                "entrd_vol_qt",
+                "rptd_pr",
+                "rpt_side_cd",
+                "cntra_mp_id",
+                "trd_exctn_dt",
+                "trd_exctn_tm",
+            ],
+            how="left",
+            indicator=True,
+        )
+        .query("_merge == 'left_only'")
+        .drop(columns=["_merge"])
+    )
 
     # Corrections (trc_st = W) - W can also correct a previous W
-    trace_pre_W = (trace_all
-                   .query("trc_st == 'W'")
-                   .query("trd_rpt_dt < '2012-02-06'")
-                   )
+    trace_pre_W = trace_all.query("trc_st == 'W'").query(
+        "trd_rpt_dt < '2012-02-06'"
+    )
     # Implement corrections in a loop
     # Correction control
     correction_control = trace_pre_W.shape[0]
@@ -317,41 +381,42 @@ def process_trace_data(
     # Correction loop
     while correction_control > 0:
         # Corrections that correct some messages
-        trace_pre_W_correcting = (trace_pre_W.merge(
+        trace_pre_W_correcting = trace_pre_W.merge(
             trace_pre_T.rename(columns={"msg_seq_nb": "orig_msg_seq_nb"}),
             on=["cusip_id", "trd_exctn_dt", "orig_msg_seq_nb"],
-            how="inner"
-            )
-            .get(trace_pre_W.columns)
-            )
+            how="inner",
+        ).get(trace_pre_W.columns)
 
         # Corrections that do not correct some messages (anti-join)
-        trace_pre_W = (trace_pre_W.merge(
-            trace_pre_T.rename(columns={"msg_seq_nb": "orig_msg_seq_nb"}),
-            on=["cusip_id", "trd_exctn_dt", "orig_msg_seq_nb"],
-            how="left",
-            indicator=True
+        trace_pre_W = (
+            trace_pre_W.merge(
+                trace_pre_T.rename(columns={"msg_seq_nb": "orig_msg_seq_nb"}),
+                on=["cusip_id", "trd_exctn_dt", "orig_msg_seq_nb"],
+                how="left",
+                indicator=True,
             )
             .query('_merge == "left_only"')
             .drop(columns=["_merge"])
-            )
+        )
 
         # Delete messages that are corrected and add correction messages
-        trace_pre_T = (trace_pre_T.merge(
-            trace_pre_W_correcting
-            .rename(columns={"orig_msg_seq_nb": "msg_seq_nb"}),
-            on=["cusip_id", "trd_exctn_dt", "msg_seq_nb"],
-            how="left",
-            indicator=True
+        trace_pre_T = (
+            trace_pre_T.merge(
+                trace_pre_W_correcting.rename(
+                    columns={"orig_msg_seq_nb": "msg_seq_nb"}
+                ),
+                on=["cusip_id", "trd_exctn_dt", "msg_seq_nb"],
+                how="left",
+                indicator=True,
             )
             .query('_merge == "left_only"')
             .drop(columns=["_merge"])
-            )
+        )
 
         # Append correction messages
-        trace_pre_T = pd.concat([trace_pre_T, trace_pre_W_correcting],
-                                ignore_index=True
-                                )
+        trace_pre_T = pd.concat(
+            [trace_pre_T, trace_pre_W_correcting], ignore_index=True
+        )
 
         # Escape if no corrections remain or they cannot be matched
         correction_control = trace_pre_W.shape[0]
@@ -364,37 +429,64 @@ def process_trace_data(
     # Clean reversals
     # Record reversals
     trace_pre_R = (
-        trace_pre_T
-        .query("asof_cd == 'R'")
-        .groupby(['cusip_id', 'trd_exctn_dt', 'entrd_vol_qt',
-                  'rptd_pr', 'rpt_side_cd', 'cntra_mp_id'])
-        .apply(lambda x: x.sort_values(['trd_exctn_tm', 'trd_rpt_dt',
-                                        'trd_rpt_tm'])
-               .reset_index(drop=True)
-               .assign(seq=range(1, len(x) + 1))
-               )
+        trace_pre_T.query("asof_cd == 'R'")
+        .groupby(
+            [
+                "cusip_id",
+                "trd_exctn_dt",
+                "entrd_vol_qt",
+                "rptd_pr",
+                "rpt_side_cd",
+                "cntra_mp_id",
+            ]
+        )
+        .apply(
+            lambda x: x.sort_values(
+                ["trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
+            )
+            .reset_index(drop=True)
+            .assign(seq=range(1, len(x) + 1))
+        )
         .reset_index(drop=True)
     )
 
     # Remove reversals and the reversed trade
     trace_pre = (
-        trace_pre_T
-        .query("asof_cd.isna() or asof_cd not in ['R', 'X', 'D']")
-        .groupby(['cusip_id', 'trd_exctn_dt', 'entrd_vol_qt',
-                  'rptd_pr', 'rpt_side_cd', 'cntra_mp_id'])
-        .apply(lambda x: x.sort_values(['trd_exctn_tm', 'trd_rpt_dt',
-                                        'trd_rpt_tm'])
-               .reset_index(drop=True)
-               .assign(seq=range(1, len(x) + 1))
-               )
+        trace_pre_T.query("asof_cd.isna() or asof_cd not in ['R', 'X', 'D']")
+        .groupby(
+            [
+                "cusip_id",
+                "trd_exctn_dt",
+                "entrd_vol_qt",
+                "rptd_pr",
+                "rpt_side_cd",
+                "cntra_mp_id",
+            ]
+        )
+        .apply(
+            lambda x: x.sort_values(
+                ["trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
+            )
+            .reset_index(drop=True)
+            .assign(seq=range(1, len(x) + 1))
+        )
         .reset_index(drop=True)
-        .merge(trace_pre_R,
-               on=['cusip_id', 'trd_exctn_dt', 'entrd_vol_qt',
-                   'rptd_pr', 'rpt_side_cd', 'cntra_mp_id', 'seq'],
-               how='left',
-               indicator=True)
+        .merge(
+            trace_pre_R,
+            on=[
+                "cusip_id",
+                "trd_exctn_dt",
+                "entrd_vol_qt",
+                "rptd_pr",
+                "rpt_side_cd",
+                "cntra_mp_id",
+                "seq",
+            ],
+            how="left",
+            indicator=True,
+        )
         .query("_merge == 'left_only'")
-        .drop(columns=['seq', '_merge'])
+        .drop(columns=["seq", "_merge"])
     )
 
     # Agency trades -----------------------------------------------------------
@@ -403,60 +495,70 @@ def process_trace_data(
 
     # Keep angency sells and unmatched agency buys
     # Agency sells
-    trace_agency_sells = (trace_clean
-                          .query("cntra_mp_id == 'D'")
-                          .query("rpt_side_cd == 'S'")
-                          )
+    trace_agency_sells = trace_clean.query("cntra_mp_id == 'D'").query(
+        "rpt_side_cd == 'S'"
+    )
 
     # Agency buys that are unmatched
     trace_agency_buys_filtered = (
-        trace_clean
-        .query("cntra_mp_id == 'D'")
+        trace_clean.query("cntra_mp_id == 'D'")
         .query("rpt_side_cd == 'B'")
-        .merge(trace_agency_sells,
-               on=["cusip_id", "trd_exctn_dt", "entrd_vol_qt", "rptd_pr"],
-               how="left",
-               indicator=True)
+        .merge(
+            trace_agency_sells,
+            on=["cusip_id", "trd_exctn_dt", "entrd_vol_qt", "rptd_pr"],
+            how="left",
+            indicator=True,
+        )
         .query('_merge == "left_only"')
         .drop(columns=["_merge"])
     )
 
     # Agency clean
-    trace_clean = (
-        trace_clean
-        .query("cntra_mp_id == 'C'")
-        .pipe(pd.concat,
-              [trace_agency_sells, trace_agency_buys_filtered],
-              ignore_index=True
-              )
+    trace_clean = trace_clean.query("cntra_mp_id == 'C'").pipe(
+        pd.concat,
+        [trace_agency_sells, trace_agency_buys_filtered],
+        ignore_index=True,
     )
 
     # Additional Filters
-    trace_clean["days_to_sttl_ct2"] = (trace_clean["stlmnt_dt"]
-                                       .sub(trace_clean["trd_exctn_dt"])
-                                       )
+    trace_clean["days_to_sttl_ct2"] = trace_clean["stlmnt_dt"].sub(
+        trace_clean["trd_exctn_dt"]
+    )
 
     trace_add_filters = (
-        trace_clean
-        .query("days_to_sttl_ct.isna() or days_to_sttl_ct.astype(float) <= 7")
+        trace_clean.query(
+            "days_to_sttl_ct.isna() or days_to_sttl_ct.astype(float) <= 7"
+        )
         .query("days_to_sttl_ct2.isna() or days_to_sttl_ct2.astype(float)<=7")
         .query("wis_fl == 'N'")
         .query("spcl_trd_fl.isna() or spcl_trd_fl == ''")
         .query("asof_cd.isna() or asof_cd == ''")
-        )
+    )
 
     # Output ------------------------------------------------------------------
     # Only keep necessary columns
     trace_final = (
-        trace_add_filters
-        .sort_values(["cusip_id", "trd_exctn_dt", "trd_exctn_tm"])
-        .get(["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "rptd_pr",
-              "entrd_vol_qt", "yld_pt", "rpt_side_cd", "cntra_mp_id"]
-             )
-        .assign(trd_exctn_tm=lambda x:
-                pd.to_datetime(x["trd_exctn_tm"]).dt.strftime("%H:%M:%S")
-                )
+        trace_add_filters.sort_values(
+            ["cusip_id", "trd_exctn_dt", "trd_exctn_tm"]
         )
+        .get(
+            [
+                "cusip_id",
+                "trd_exctn_dt",
+                "trd_exctn_tm",
+                "rptd_pr",
+                "entrd_vol_qt",
+                "yld_pt",
+                "rpt_side_cd",
+                "cntra_mp_id",
+            ]
+        )
+        .assign(
+            trd_exctn_tm=lambda x: pd.to_datetime(
+                x["trd_exctn_tm"]
+            ).dt.strftime("%H:%M:%S")
+        )
+    )
 
     return trace_final
 
@@ -479,11 +581,15 @@ def set_wrds_credentials() -> None:
     """
     wrds_user = input("Enter your WRDS username: ")
     wrds_password = input("Enter your WRDS password: ")
-    location_choice = (input("Where do you want to store the config.yaml "
-                             "file? Enter 'project' for project directory or "
-                             "'home' for home directory: ")
-                       .strip().lower()
-                       )
+    location_choice = (
+        input(
+            "Where do you want to store the config.yaml "
+            "file? Enter 'project' for project directory or "
+            "'home' for home directory: "
+        )
+        .strip()
+        .lower()
+    )
 
     if location_choice == "project":
         config_path = os.path.join(os.getcwd(), "config.yaml")
@@ -492,8 +598,9 @@ def set_wrds_credentials() -> None:
         config_path = os.path.join(os.path.expanduser("~"), "config.yaml")
         gitignore_path = os.path.join(os.path.expanduser("~"), ".gitignore")
     else:
-        print("Invalid choice. Please start again and enter "
-              "'project' or 'home'.")
+        print(
+            "Invalid choice. Please start again and enter 'project' or 'home'."
+        )
         return
 
     config: dict = {}
@@ -501,22 +608,33 @@ def set_wrds_credentials() -> None:
         with open(config_path, "r") as file:
             config = yaml.safe_load(file) or {}
 
-    if "WRDS" in config and "USER" in config["WRDS"] and "PASSWORD" in config["WRDS"]:
-        overwrite_choice = (input("Credentials already exist. Do you want to "
-                                  "overwrite them? Enter 'yes' or 'no': ")
-                            .strip().lower()
-                            )
+    if (
+        "WRDS" in config
+        and "USER" in config["WRDS"]
+        and "PASSWORD" in config["WRDS"]
+    ):
+        overwrite_choice = (
+            input(
+                "Credentials already exist. Do you want to "
+                "overwrite them? Enter 'yes' or 'no': "
+            )
+            .strip()
+            .lower()
+        )
         if overwrite_choice != "yes":
-            print("Aborted. Credentials already exist and are not "
-                  "overwritten.")
+            print("Aborted. Credentials already exist and are not overwritten.")
             return
 
     if os.path.exists(gitignore_path):
-        add_gitignore = (input("Do you want to add config.yaml to .gitignore? "
-                               "It is highly recommended! "
-                               "Enter 'yes' or 'no': ")
-                         .strip().lower()
-                         )
+        add_gitignore = (
+            input(
+                "Do you want to add config.yaml to .gitignore? "
+                "It is highly recommended! "
+                "Enter 'yes' or 'no': "
+            )
+            .strip()
+            .lower()
+        )
         if add_gitignore == "yes":
             with open(gitignore_path, "r") as file:
                 gitignore_lines = file.readlines()
@@ -527,8 +645,7 @@ def set_wrds_credentials() -> None:
         elif add_gitignore == "no":
             print("config.yaml NOT added to .gitignore.")
         else:
-            print("Invalid choice. Please start again "
-                  "and enter 'yes' or 'no'.")
+            print("Invalid choice. Please start again and enter 'yes' or 'no'.")
             return
 
     config["WRDS"] = {"USER": wrds_user, "PASSWORD": wrds_password}
@@ -536,13 +653,13 @@ def set_wrds_credentials() -> None:
     with open(config_path, "w") as file:
         yaml.safe_dump(config, file)
 
-    print("WRDS credentials have been set and saved in config.yaml in your "
-          f"{location_choice} directory.")
+    print(
+        "WRDS credentials have been set and saved in config.yaml in your "
+        f"{location_choice} directory."
+    )
 
-def winsorize(
-    x: np.ndarray,
-    cut: float
-) -> np.ndarray:
+
+def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
     """Winsorize a numeric vector by replacing extreme values.
 
     Parameters
@@ -569,10 +686,8 @@ def winsorize(
     x = np.clip(x, lb, ub)  # Winsorize values
     return x
 
-def trim(
-    x: np.ndarray,
-    cut: float
-) -> np.ndarray:
+
+def trim(x: np.ndarray, cut: float) -> np.ndarray:
     """
     Remove values in a numeric vector beyond the specified quantiles.
 
@@ -593,4 +708,3 @@ def trim(
     ub = np.nanquantile(x, 1 - cut)
 
     return x[(x >= lb) & (x <= ub)]
-

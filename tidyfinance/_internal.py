@@ -1,6 +1,5 @@
 """Internal utility functions for tidyfinance."""
 
-import numpy as np
 import pandas as pd
 
 
@@ -63,10 +62,11 @@ def _assign_industry(siccd):
     else:
         return "Missing"
 
+
 def _validate_dates(
     start_date: str = None,
     end_date: str = None,
-    use_default_range: bool = False
+    use_default_range: bool = False,
 ) -> tuple[pd.Timestamp | None, pd.Timestamp | None]:
     """
     Validate and process start and end dates.
@@ -89,13 +89,16 @@ def _validate_dates(
         if use_default_range:
             end_date = pd.Timestamp.today()
             start_date = end_date - pd.DateOffset(years=2)
-            print("No start_date or end_date provided. Using the range "
-                  f"{start_date.date()} to {end_date.date()} to avoid "
-                  "downloading large amounts of data.")
+            print(
+                "No start_date or end_date provided. Using the range "
+                f"{start_date.date()} to {end_date.date()} to avoid "
+                "downloading large amounts of data."
+            )
             return start_date.date(), end_date.date()
         else:
-            print("No start_date or end_date provided. Returning the full "
-                  "dataset.")
+            print(
+                "No start_date or end_date provided. Returning the full dataset."
+            )
             return None, None
     else:
         start_date = pd.to_datetime(start_date).date()
@@ -109,8 +112,8 @@ def _return_datetime(dates):
     """Return date without time and change period to timestamp."""
     dates = pd.Series(dates)
     if isinstance(dates.iloc[0], pd.Period):  # Check if 'Date' is a Period
-        dates = dates.dt.to_timestamp(how='start').dt.date
-    dates = pd.to_datetime(dates, errors='coerce')
+        dates = dates.dt.to_timestamp(how="start").dt.date
+    dates = pd.to_datetime(dates, errors="coerce")
 
 
 def _transfrom_to_snake_case(column_name):
@@ -122,8 +125,9 @@ def _transfrom_to_snake_case(column_name):
     - Ensures no multiple underscores.
     """
     column_name = column_name.replace(" ", "_").replace("-", "_").lower()
-    column_name = "".join(c if c.isalnum() or c == "_" else "_"
-                          for c in column_name)
+    column_name = "".join(
+        c if c.isalnum() or c == "_" else "_" for c in column_name
+    )
 
     # Remove multiple underscores
     while "__" in column_name:

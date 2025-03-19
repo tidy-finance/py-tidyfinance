@@ -5,6 +5,7 @@ import numpy as np
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
+
 def add_lag_columns(
     data: pd.DataFrame,
     cols: list[str],
@@ -12,7 +13,7 @@ def add_lag_columns(
     lag: int = 0,
     max_lag: int | None = None,
     drop_na: bool = False,
-    date_col: str = "date"
+    date_col: str = "date",
 ) -> pd.DataFrame:
     """
     Add lagged versions of specified columns to a Pandas DataFrame.
@@ -33,9 +34,11 @@ def add_lag_columns(
         pd.DataFrame: DataFrame with lagged columns appended.
     """
     if lag < 0 or (max_lag is not None and max_lag < lag):
-        raise ValueError("`lag` must be non-negative, "
-                         "and `max_lag` must be greater than or "
-                         "equal to `lag`.")
+        raise ValueError(
+            "`lag` must be non-negative, "
+            "and `max_lag` must be greater than or "
+            "equal to `lag`."
+        )
 
     if max_lag is None:
         max_lag = lag
@@ -88,23 +91,23 @@ def assign_portfolio(
     pd.Series: A Series of portfolio assignments.
     """
     if sorting_variable not in data.columns:
-        raise ValueError(f"Sorting variable '{sorting_variable}' not "
-                         "found in data."
-                         )
+        raise ValueError(
+            f"Sorting variable '{sorting_variable}' not found in data."
+        )
 
     if len(data[sorting_variable].unique()) == 1:
-        print("Warning: The sorting variable is constant, "
-              "assigning all to portfolio 1."
-              )
+        print(
+            "Warning: The sorting variable is constant, assigning all to portfolio 1."
+        )
         return pd.Series(1, index=data.index, dtype=int)
 
     if breakpoint_function is None:
         raise ValueError("A valid breakpoint function must be provided.")
 
     # Compute breakpoints
-    breakpoints = breakpoint_function(data,
-                                      sorting_variable,
-                                      breakpoint_options)
+    breakpoints = breakpoint_function(
+        data, sorting_variable, breakpoint_options
+    )
 
     # Assign portfolios using pd.cut
     assigned_portfolios = pd.cut(
@@ -112,7 +115,7 @@ def assign_portfolio(
         bins=breakpoints,
         labels=range(1, breakpoints.size),
         include_lowest=True,
-        right=False
+        right=False,
     )
 
     return assigned_portfolios.astype(int)
@@ -123,7 +126,7 @@ def breakpoint_options(
     percentiles: list = None,
     breakpoint_exchanges: str = None,
     smooth_bunching: bool = False,
-    **kwargs
+    **kwargs,
 ) -> dict:
     """
     Create a dictionary of options for breakpoints in portfolio sorting.
@@ -151,19 +154,19 @@ def breakpoint_options(
 
     # Validate percentiles
     if percentiles is not None:
-        if not all(isinstance(p, (int, float)) and 0 <= p <= 1
-                   for p in percentiles):
-            raise ValueError("percentiles must be a list of values between "
-                             "0 and 1."
-                             )
+        if not all(
+            isinstance(p, (int, float)) and 0 <= p <= 1 for p in percentiles
+        ):
+            raise ValueError(
+                "percentiles must be a list of values between 0 and 1."
+            )
 
     # Validate breakpoint_exchanges
     if breakpoint_exchanges is not None:
-        if not isinstance(breakpoint_exchanges, str) or (not
-                                                         breakpoint_exchanges):
-            raise ValueError("breakpoint_exchanges must be a non-empty "
-                             "string."
-                             )
+        if not isinstance(breakpoint_exchanges, str) or (
+            not breakpoint_exchanges
+        ):
+            raise ValueError("breakpoint_exchanges must be a non-empty string.")
 
     # Validate smooth_bunching
     if not isinstance(smooth_bunching, bool):
@@ -174,15 +177,13 @@ def breakpoint_options(
         "percentiles": percentiles,
         "breakpoint_exchanges": breakpoint_exchanges,
         "smooth_bunching": smooth_bunching,
-        **kwargs
+        **kwargs,
     }
     return options
 
 
 def compute_breakpoints(
-    data: pd.DataFrame,
-    sorting_variable: str,
-    breakpoint_options: dict
+    data: pd.DataFrame, sorting_variable: str, breakpoint_options: dict
 ) -> np.ndarray:
     """
     Compute breakpoints based on a sorting variable for portfolios.
@@ -212,19 +213,19 @@ def compute_breakpoints(
     smooth_bunching = breakpoint_options.get("smooth_bunching", False)
 
     if n_portfolios is not None and percentiles is not None:
-        raise ValueError("Provide either 'n_portfolios' or 'percentiles', "
-                         "not both."
-                         )
+        raise ValueError(
+            "Provide either 'n_portfolios' or 'percentiles', not both."
+        )
     elif n_portfolios is None and percentiles is None:
-        raise ValueError("Either 'n_portfolios' or 'percentiles' must be "
-                         "specified."
-                         )
+        raise ValueError(
+            "Either 'n_portfolios' or 'percentiles' must be specified."
+        )
 
     if exchanges is not None:
         if "exchange" not in data.columns:
-            raise ValueError("Data must contain an 'exchange' column to use "
-                             "breakpoint_exchanges."
-                             )
+            raise ValueError(
+                "Data must contain an 'exchange' column to use breakpoint_exchanges."
+            )
         data = data.query(f"exchange in {exchanges}")
 
     if n_portfolios is not None:
@@ -232,8 +233,9 @@ def compute_breakpoints(
             raise ValueError("n_portfolios must be greater than 1.")
         breakpoints = (
             data.get(sorting_variable)
-            .quantile(np.linspace(0, 1, num=n_portfolios+1),
-                      interpolation="linear")
+            .quantile(
+                np.linspace(0, 1, num=n_portfolios + 1), interpolation="linear"
+            )
             .drop_duplicates()
         )
     else:
@@ -250,17 +252,17 @@ def compute_breakpoints(
         breakpoints.iloc[-1] = np.Inf
 
     if smooth_bunching:
-        if (breakpoints[0] == breakpoints[1]) and (breakpoints[-2] == breakpoints[-1]):
-            print("Warning: Clustering at extreme breakpoints detected. "
-                  "Adjusting non-edge portfolios."
-                  )
-            new_values = (
-                data[sorting_variable][(data[sorting_variable]
-                                        > breakpoints[0]) &
-                                       (data[sorting_variable]
-                                        < breakpoints[-1])
-                                       ]
-                )
+        if (breakpoints[0] == breakpoints[1]) and (
+            breakpoints[-2] == breakpoints[-1]
+        ):
+            print(
+                "Warning: Clustering at extreme breakpoints detected. "
+                "Adjusting non-edge portfolios."
+            )
+            new_values = data[sorting_variable][
+                (data[sorting_variable] > breakpoints[0])
+                & (data[sorting_variable] < breakpoints[-1])
+            ]
             new_probs = np.linspace(0, 1, len(breakpoints) - 2)
             breakpoints[1:-1] = np.quantile(new_values, new_probs)
 
@@ -273,7 +275,7 @@ def compute_long_short_returns(
     direction: str = "top_minus_bottom",
     date_col: str = "date",
     portfolio_col: str = "portfolio",
-    ret_excess_col: str = "ret_excess"
+    ret_excess_col: str = "ret_excess",
 ) -> pd.DataFrame:
     """
     Compute long-short returns based on portfolio returns.
@@ -295,9 +297,9 @@ def compute_long_short_returns(
     pd.DataFrame: A DataFrame with computed long-short returns.
     """
     if direction not in ["top_minus_bottom", "bottom_minus_top"]:
-        raise ValueError("direction must be either 'top_minus_bottom' or"
-                         "'bottom_minus_top'"
-                         )
+        raise ValueError(
+            "direction must be either 'top_minus_bottom' or'bottom_minus_top'"
+        )
     data = data.copy()
 
     # Identify top and bottom portfolios
@@ -305,14 +307,15 @@ def compute_long_short_returns(
     top_bottom = grouped.filter(lambda x: x[portfolio_col].nunique() >= 2)
     top_bottom["portfolio"] = np.where(
         top_bottom[portfolio_col] == top_bottom[portfolio_col].max(),
-        "top", "bottom"
+        "top",
+        "bottom",
     )
 
     # Pivot data to get top and bottom returns
     long_short_df = (
-        top_bottom.pivot_table(index=[date_col],
-                               columns="portfolio",
-                               values=ret_excess_col)
+        top_bottom.pivot_table(
+            index=[date_col], columns="portfolio", values=ret_excess_col
+        )
         .dropna()
         .reset_index()
     )
@@ -335,7 +338,7 @@ def compute_portfolio_returns(
     breakpoint_function_main=None,
     breakpoint_function_secondary=None,
     min_portfolio_size=0,
-    data_options=None
+    data_options=None,
 ):
     """Compute portfolio returns based on sorting variables and methods.
 
@@ -362,7 +365,7 @@ def create_summary_statistics(
     variables: list,
     by: str = None,
     detail: bool = False,
-    drop_na: bool = False
+    drop_na: bool = False,
 ) -> pd.DataFrame:
     """
     Compute summary statistics for specified numeric variables in a DataFrame.
@@ -385,21 +388,27 @@ def create_summary_statistics(
         each selected variable.
     """
     # Check that all specified variables are numeric or boolean
-    non_numeric_vars = [var for var in variables
-                        if not np.issubdtype(data[var].dtype, np.number)
-                        ]
+    non_numeric_vars = [
+        var
+        for var in variables
+        if not np.issubdtype(data[var].dtype, np.number)
+    ]
     if non_numeric_vars:
-        raise ValueError("The following columns are not numeric or boolean: "
-                         f"{', '.join(non_numeric_vars)}"
-                         )
+        raise ValueError(
+            "The following columns are not numeric or boolean: "
+            f"{', '.join(non_numeric_vars)}"
+        )
 
     # Drop missing values if specified
     if drop_na:
         data = data.dropna(subset=variables)
 
     # Compute summary statistics using describe
-    percentiles = [0.5] if not detail else [0.01, 0.05, 0.10, 0.25, 0.50,
-                                            0.75, 0.90, 0.95, 0.99]
+    percentiles = (
+        [0.5]
+        if not detail
+        else [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
+    )
 
     if by:
         summary_df = (
@@ -407,16 +416,16 @@ def create_summary_statistics(
             .describe(percentiles=percentiles)
             .get(variables)
             .reset_index()
-            .rename(columns={'index': 'variable'})
-            )
+            .rename(columns={"index": "variable"})
+        )
     else:
         summary_df = (
             data.get(variables)
             .describe(percentiles=percentiles)
             .transpose()
             .reset_index()
-            .rename(columns={'index': 'variable'})
-            )
+            .rename(columns={"index": "variable"})
+        )
 
     return summary_df.round(3)
 
@@ -428,7 +437,7 @@ def create_data_options(
     mktcap_lag: str = "mktcap_lag",
     ret_excess: str = "ret_excess",
     portfolio: str = "portfolio",
-    **kwargs
+    **kwargs,
 ) -> dict:
     """
     Create a dictionary of data options used in financial data analysis.
@@ -460,7 +469,7 @@ def create_data_options(
         "mktcap_lag": mktcap_lag,
         "ret_excess": ret_excess,
         "portfolio": portfolio,
-        **kwargs
+        **kwargs,
     }
     return options
 
@@ -470,7 +479,7 @@ def estimate_betas(
     model: str,
     lookback: pd.Timedelta,
     min_obs: int = None,
-    id_col: str = 'permno'
+    id_col: str = "permno",
 ) -> pd.DataFrame:
     """
     Estimate rolling betas using RollingOLS.from_formula from statsmodels.
@@ -499,19 +508,19 @@ def estimate_betas(
 
     results = []
     for stock_id, group in data.groupby(id_col):
-        group = group.sort_values('date')
+        group = group.sort_values("date")
 
-        rolling_model = (RollingOLS.from_formula(
+        rolling_model = RollingOLS.from_formula(
             formula=model,
             data=group,
             window=lookback,
             min_nobs=min_obs,
-            missing="drop"
-        ).fit())
+            missing="drop",
+        ).fit()
 
         betas = rolling_model.params
         betas[id_col] = stock_id
-        betas['date'] = group['date'].values
+        betas["date"] = group["date"].values
         results.append(betas)
 
     betas_df = pd.concat(results).reset_index()
@@ -523,7 +532,7 @@ def estimate_fama_macbeth(
     model: str,
     vcov: str = "newey-west",
     vcov_options: dict = None,
-    date_col: str = "date"
+    date_col: str = "date",
 ) -> pd.DataFrame:
     """
     Estimate Fama-MacBeth regressions by running cross-sectional regressions.
@@ -552,7 +561,7 @@ def estimate_fama_macbeth(
     # Run cross-sectional regressions
     cross_section_results = []
     for date, group in data.groupby(date_col):
-        if len(group) <= len(model.split('~')[1].split('+')):
+        if len(group) <= len(model.split("~")[1].split("+")):
             continue
 
         model_fit = smf.ols(model, data=group).fit()
@@ -564,8 +573,9 @@ def estimate_fama_macbeth(
 
     # Compute time-series averages
     price_of_risk = (
-        risk_premiums
-        .melt(id_vars=date_col, var_name="factor", value_name="estimate")
+        risk_premiums.melt(
+            id_vars=date_col, var_name="factor", value_name="estimate"
+        )
         .groupby("factor")["estimate"]
         .mean()
         .reset_index()
@@ -582,19 +592,16 @@ def estimate_fama_macbeth(
         return x["estimate"].mean() / fit.bse["Intercept"]
 
     price_of_risk_t_stat = (
-        risk_premiums
-        .melt(id_vars=date_col, var_name="factor", value_name="estimate")
+        risk_premiums.melt(
+            id_vars=date_col, var_name="factor", value_name="estimate"
+        )
         .groupby("factor")
         .apply(compute_t_statistic, include_groups=False)
         .reset_index()
         .rename(columns={0: "t_statistic"})
     )
 
-    result_df = (
-        price_of_risk
-        .merge(price_of_risk_t_stat, on="factor")
-        .round(3)
-    )
+    result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor").round(3)
 
     return result_df
 

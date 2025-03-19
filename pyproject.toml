@@ -38,3 +38,6 @@ Changelog = "https://github.com/tidy-finance/py-tidyfinance/blob/master/CHANGELO
 filterwarnings = [
     "ignore:distutils Version classes are deprecated:DeprecationWarning"
 ]
+
+[tool.ruff]
+line-length = 80
