@@ -7,7 +7,6 @@ import yaml
 import webbrowser
 from sqlalchemy import create_engine
 
-
 def get_random_user_agent():
     """Retrieve a random user agent string.
 
@@ -130,7 +129,11 @@ def list_tidy_finance_chapters(
     """
     return [
         "setting-up-your-environment",
-        "introduction-to-tidy-finance",
+        "working-with-stock-returns",
+        "modern-portfolio-theory",
+        "capital-asset-pricing-model",
+        "financial-statement-analysis",
+        "discounted-cash-flow-analysis",
         "accessing-and-managing-financial-data",
         "wrds-crsp-and-compustat",
         "trace-and-fisd",
@@ -535,3 +538,59 @@ def set_wrds_credentials() -> None:
 
     print("WRDS credentials have been set and saved in config.yaml in your "
           f"{location_choice} directory.")
+
+def winsorize(
+    x: np.ndarray,
+    cut: float
+) -> np.ndarray:
+    """Winsorize a numeric vector by replacing extreme values.
+
+    Parameters
+    ----------
+        x (pd.Series): Numeric vector to winsorize.
+        cut (float): Proportion to replace at both ends.
+
+    Returns
+    -------
+        pd.Series: Winsorized vector.
+    """
+    if not isinstance(x, np.ndarray):
+        x = np.array(x)
+        # raise ValueError("x must be an numpy array")
+
+    if not (0 <= cut <= 0.5):
+        raise ValueError("'cut' must be inside [0, 0.5].")
+
+    if x.size == 0:
+        return x
+
+    x = np.array(x)  # Convert input to numpy array if not already
+    lb, ub = np.nanquantile(x, [cut, 1 - cut])  # Compute quantiles
+    x = np.clip(x, lb, ub)  # Winsorize values
+    return x
+
+def trim(
+    x: np.ndarray,
+    cut: float
+) -> np.ndarray:
+    """
+    Remove values in a numeric vector beyond the specified quantiles.
+
+    Parameters
+    ----------
+        x (np.ndarray): A numeric array to be trimmed.
+        cut (float): The proportion of data to be trimmed from both ends
+        (must be between [0, 0.5]).
+
+    Returns
+    -------
+        np.ndarray: A numeric array with extreme values removed.
+    """
+    if not (0 <= cut <= 0.5):
+        raise ValueError("'cut' must be inside [0, 0.5].")
+
+    lb = np.nanquantile(x, cut)
+    ub = np.nanquantile(x, 1 - cut)
+
+    return x[(x >= lb) & (x <= ub)]
+
