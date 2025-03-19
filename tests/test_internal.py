@@ -9,7 +9,7 @@ import yaml
 sys.path.insert(0,
                 os.path.abspath(os.path.join(os.path.dirname(__file__),
                                              '..')))
-from tidyfinance._internal import _trim, _winsorize
+from tidyfinance.utilities import trim, winsorize
 
 
 def test_set_wrds_credentials(tmp_path):
@@ -49,7 +49,7 @@ def test_winsorize_correct_adjustment():
     np.random.seed(123)
     x = np.random.randn(100)
     cut = 0.05
-    winsorized_x = _winsorize(x, cut)
+    winsorized_x = winsorize(x, cut)
 
     assert np.min(winsorized_x) == np.quantile(x, cut), "Lower bound not correctly applied"
     assert np.max(winsorized_x) == np.quantile(x, 1 - cut), "Upper bound not correctly applied"
@@ -61,7 +61,7 @@ def test_winsorize_handles_na():
     """Test that winsorize correctly handles NaN values."""
     x = np.array([np.nan, 1, 2, 3, 4, 5, np.nan])
     cut = 0.1
-    winsorized_x = _winsorize(x, cut)
+    winsorized_x = winsorize(x, cut)
 
     assert len(winsorized_x) == len(x), "Output length should match input length"
     assert np.all(np.isnan(winsorized_x) == np.isnan(x)), "NaN values should remain unchanged"
@@ -71,9 +71,9 @@ def test_winsorize_handles_na():
 
 def test_winsorize_edge_cases():
     """Test winsorize with edge cases (empty input and identical values)."""
-    assert np.array_equal(_winsorize([], 0.1), np.array([])), ("Empty array should return empty array")
+    assert np.array_equal(winsorize([], 0.1), np.array([])), ("Empty array should return empty array")
     x = np.full(10, 1.0)
-    assert np.array_equal(_winsorize(x, 0.1), x), "Identical values should remain unchanged"
+    assert np.array_equal(winsorize(x, 0.1), x), "Identical values should remain unchanged"
 
 
 def test_trim_correct_removal():
@@ -82,7 +82,7 @@ def test_trim_correct_removal():
     x = np.random.randn(100)
     cut = 0.05
 
-    trimmed_x = _trim(x, cut)
+    trimmed_x = trim(x, cut)
 
     assert np.min(trimmed_x) >= np.quantile(x, cut), "Lower bound not correctly applied"
     assert np.max(trimmed_x) <= np.quantile(x, 1 - cut), "Upper bound not correctly applied"
@@ -93,14 +93,14 @@ def test_trim_handles_na():
     x = np.array([np.nan, 1, 2, 3, 4, 5, np.nan])
     cut = 0.1
 
-    trimmed_x = _trim(x, cut)
+    trimmed_x = trim(x, cut)
 
     assert not np.any(np.isnan(trimmed_x)), "NaN values should be removed"
 
 def test_trim_edge_cases():
     """Test trim with edge cases such as empty input and identical values."""
     x = np.full(10, 1.0)
-    assert np.array_equal(_trim(x, 0.1), x), "Identical values should remain unchanged"
+    assert np.array_equal(trim(x, 0.1), x), "Identical values should remain unchanged"
 
 
 if __name__ == "__main__":
