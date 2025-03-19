@@ -1,23 +1,25 @@
 """Data download and retrieval module for tidyfinance."""
 
-import pandas as pd
-import numpy as np
-import requests
-import os
 import io
+import os
+
+import numpy as np
+import pandas as pd
 import pandas_datareader as pdr
+import requests
 from sqlalchemy import text
+
 from ._internal import (
-    _validate_dates,
-    _return_datetime,
-    _transfrom_to_snake_case,
     _assign_exchange,
     _assign_industry,
+    _get_random_user_agent,
+    _return_datetime,
+    _transfrom_to_snake_case,
+    _validate_dates,
 )
 from .utilities import (
-    get_random_user_agent,
-    get_wrds_connection,
     disconnect_connection,
+    get_wrds_connection,
     process_trace_data,
 )
 
@@ -423,7 +425,7 @@ def download_data_constituents(index: str) -> pd.DataFrame:
     skip_rows = supported_indexes.loc[
         supported_indexes["index"] == index, "skip"
     ].values[0]
-    headers = {"User-Agent": get_random_user_agent()}
+    headers = {"User-Agent": _get_random_user_agent()}
 
     response = requests.get(url, headers=headers)
     if response.status_code != 200:
@@ -571,7 +573,7 @@ def download_data_fred(
 
     for s in series:
         url = f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv"
-        headers = {"User-Agent": get_random_user_agent()}
+        headers = {"User-Agent": _get_random_user_agent()}
 
         try:
             response = requests.get(url, headers=headers)
@@ -650,7 +652,7 @@ def download_data_stock_prices(
             "&interval=1d"
         )
 
-        headers = {"User-Agent": get_random_user_agent()}
+        headers = {"User-Agent": _get_random_user_agent()}
         response = requests.get(url, headers=headers)
 
         if response.status_code == 200:

@@ -1,7 +1,7 @@
 """Main module for tidyfinance package."""
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
