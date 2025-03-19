@@ -1,15 +1,17 @@
 """Test script for tidyfinance package."""
 
-import numpy as np
-import pytest
-import sys
 import os
+import sys
+
+import numpy as np
+import pandas as pd
+import pytest
 import yaml
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-from tidyfinance.utilities import trim, winsorize
+from tidyfinance.utilities import list_supported_indexes, trim, winsorize
 
 
 def test_set_wrds_credentials(tmp_path):
@@ -125,6 +127,15 @@ def test_trim_edge_cases():
     assert np.array_equal(trim(x, 0.1), x), (
         "Identical values should remain unchanged"
     )
+
+
+def test_list_supported_indexes():
+    """Test that the function returns a DataFrame with the expected columns."""
+    df = list_supported_indexes()
+    assert isinstance(df, pd.DataFrame)
+    assert "index" in df.columns
+    assert "url" in df.columns
+    assert "skip" in df.columns
 
 
 if __name__ == "__main__":

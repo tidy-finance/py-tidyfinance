@@ -2,6 +2,7 @@
 
 import io
 import os
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,7 @@ from ._internal import (
 from .utilities import (
     disconnect_connection,
     get_wrds_connection,
+    list_supported_indexes,
     process_trace_data,
 )
 
@@ -74,17 +76,15 @@ def create_wrds_dummy_database(
 
 
 def download_data(
-    data_set: str, start_date: str = None, end_date: str = None, **kwargs
+    domain: str, start_date: str = None, end_date: str = None, **kwargs
 ) -> pd.DataFrame:
     """
     Download and process data based on the specified type.
 
     Parameters
     ----------
-    data_set : str
-        The type of dataset to download, indicating either factor data or
-        macroeconomic predictors  (e.g., Fama-French factors, Global Q factors,
-                                   or macro predictors).
+    domain : str
+        The domain of the dataset to download.
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
@@ -99,29 +99,32 @@ def download_data(
         A DataFrame with processed data, including dates and relevant financial
         metrics, filtered by the specified date range.
     """
-    if "factors" in data_set:
+    if "factors" in domain:
         processed_data = download_data_factors(
-            data_set, start_date, end_date, **kwargs
+            domain=domain,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
         )
-    elif "macro_predictors" in data_set:
+    elif domain == "macro_predictors":
         processed_data = download_data_macro_predictors(
-            data_set, start_date, end_date, **kwargs
+            start_date=start_date, end_date=end_date, **kwargs
         )
-    elif "wrds" in data_set:
+    elif domain == "wrds":
         processed_data = download_data_wrds(
-            data_set, start_date, end_date, **kwargs
+            domain, start_date, end_date, **kwargs
         )
-    elif "constituents" in data_set:
+    elif domain == "constituents":
         processed_data = download_data_constituents(**kwargs)
-    elif "fred" in data_set:
+    elif domain == "fred":
         processed_data = download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif "stock_prices" in data_set:
+    elif domain == "stock_prices":
         processed_data = download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif "osap" in data_set:
+    elif domain == "osap":
         processed_data = download_data_osap(start_date, end_date, **kwargs)
     else:
         raise ValueError("Unsupported data type.")
@@ -129,15 +132,21 @@ def download_data(
 
 
 def download_data_factors(
-    data_set: str, start_date: str = None, end_date: str = None, **kwargs
+    domain: str,
+    dataset: str,
+    start_date: str = None,
+    end_date: str = None,
+    **kwargs,
 ) -> pd.DataFrame:
     """
     Download and process factor data for the specified type and date range.
 
     Parameters
     ----------
-    data_set : str
-        The type of dataset to download, indicating factor model and frequency.
+    domain : str
+        The domain of dataset to download.
+    dataset : str
+        The dataset to download
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
@@ -150,62 +159,60 @@ def download_data_factors(
         risk-free rates, market excess returns, and other factors,
         filtered by the specified date range.
     """
-    if "factors_ff" in data_set:
-        return download_data_factors_ff(data_set, start_date, end_date)
-    elif "factors_q" in data_set:
-        return download_data_factors_q(data_set, start_date, end_date)
+    if domain == "factors_ff":
+        return download_data_factors_ff(dataset, start_date, end_date)
+    elif domain == "factors_q":
+        return download_data_factors_q(dataset, start_date, end_date, **kwargs)
+    else:
+        raise ValueError("Unsupported factor domain.")
+
+
+def download_data_factors_ff(
+    dataset: str, start_date: str = None, end_date: str = None
+) -> pd.DataFrame:
+    """Download and process Fama-French factor data."""
+    start_date, end_date = _validate_dates(start_date, end_date)
+    all_datasets = pdr.famafrench.get_available_datasets()
+    if dataset in all_datasets:
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", FutureWarning)
+                raw_data = (
+                    pdr.famafrench.FamaFrenchReader(
+                        dataset, start=start_date, end=end_date
+                    )
+                    .read()[0]
+                    .div(100)
+                    .reset_index()
+                    .rename(
+                        columns=lambda x: x.lower()
+                        .replace("-rf", "_excess")
+                        .replace("rf", "risk_free")
+                    )
+                    .assign(date=lambda x: _return_datetime(x["date"]))
+                    .apply(
+                        lambda x: x.replace([-99.99, -999], pd.NA)
+                        if x.name != "date"
+                        else x
+                    )
+                )
+                raw_data = raw_data[
+                    ["date"]
+                    + [col for col in raw_data.columns if col != "date"]
+                ].reset_index(drop=True)
+                return raw_data
+        except Exception as e:
+            print(f"Returning an empty dataset due to download failure: {e}")
+            return pd.DataFrame()
     else:
         raise ValueError("Unsupported factor data type.")
 
 
-def download_data_factors_ff(
-    data_set: str, start_date: str = None, end_date: str = None
-) -> pd.DataFrame:
-    """Download and process Fama-French factor data."""
-    start_date, end_date = _validate_dates(start_date, end_date)
-    all_data_sets = pdr.famafrench.get_available_datasets()
-    if data_set in all_data_sets:
-        try:
-            raw_data = (
-                pdr.famafrench.FamaFrenchReader(
-                    data_set, start=start_date, end=end_date
-                )
-                .read()[0]
-                .div(100)
-                .reset_index()
-                .rename(
-                    columns=lambda x: x.lower()
-                    .replace("-rf", "_excess")
-                    .replace("rf", "risk_free")
-                )
-                .assign(date=lambda x: _return_datetime(x["date"]))
-                .apply(
-                    lambda x: x.replace([-99.99, -999], pd.NA)
-                    if x.name != "date"
-                    else x
-                )
-            )
-            raw_data = raw_data[
-                ["date"] + [col for col in raw_data.columns if col != "date"]
-            ].reset_index(drop=True)
-            return raw_data
-        except ValueError:
-            raise ValueError("Unsupported factor data type.")
-    else:
-        raise ValueError("Returning an empty data set due to download failure")
-        print(
-            f"{data_set} is not in list of available data sets. "
-            " Returns empty DataFrame. Choose a dataset from:"
-        )
-        print("")
-        print(all_data_sets)
-        return pd.DataFrame()
-
-
 def download_data_factors_q(
-    data_set: str,
+    dataset: str,
     start_date: str = None,
     end_date: str = None,
+    ref_year: int = 2024,
     url: str = "https://global-q.org/uploads/1/2/2/6/122679606/",
 ) -> pd.DataFrame:
     """
@@ -213,13 +220,14 @@ def download_data_factors_q(
 
     Parameters
     ----------
-    data_set : str
-        The type of dataset to download (e.g., "factors_q5_daily",
-                                         "factors_q5_monthly").
+    dataset : str
+        The type of dataset to download.
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
         The end date for filtering the data, in "YYYY-MM-DD" format.
+    ref_year : int, optional
+        The reference year for dataset selection (default is 2024).
     url : str, optional
         The base URL from which to download the dataset files.
 
@@ -230,8 +238,7 @@ def download_data_factors_q(
         risk-free rate, market excess return, and other factors.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
-    ref_year = pd.Timestamp.today().year - 1
-    all_data_sets = [
+    all_datasets = [
         f"q5_factors_daily_{ref_year}",
         f"q5_factors_weekly_{ref_year}",
         f"q5_factors_weekly_w2w_{ref_year}",
@@ -239,55 +246,54 @@ def download_data_factors_q(
         f"q5_factors_quarterly_{ref_year}",
         f"q5_factors_annual_{ref_year}",
     ]
-    if data_set in all_data_sets:
+    matched_dataset = next((d for d in all_datasets if dataset in d), None)
+
+    if matched_dataset:
         raw_data = (
-            pd.read_csv(f"{url}{data_set}.csv")
+            pd.read_csv(f"{url}{matched_dataset}.csv")
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
-        if "monthly" in data_set:
+
+        if "monthly" in matched_dataset:
             raw_data = raw_data.assign(
                 date=lambda x: pd.to_datetime(
                     x["year"].astype(str) + "-" + x["month"].astype(str) + "-01"
                 )
             ).drop(columns=["year", "month"])
-        if "annual" in data_set:
+        if "annual" in matched_dataset:
             raw_data = raw_data.assign(
                 date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
             ).drop(columns=["year"])
+
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(x["date"])
         ).apply(lambda x: x.div(100) if x.name != "date" else x)
+
         if start_date and end_date:
             raw_data = raw_data.query("@start_date <= date <= @end_date")
+
         raw_data = raw_data[
             ["date"] + [col for col in raw_data.columns if col != "date"]
         ].reset_index(drop=True)
         return raw_data
     else:
-        raise ValueError("Returning an empty data set due to download failure.")
-        print(
-            f"{data_set} might not be in list of available data sets: "
-            " Also check the provided URL. Choose a dataset from:"
-        )
-        print("")
-        print(all_data_sets)
-        return pd.DataFrame()
+        raise ValueError("No matching dataset found.")
 
 
 def download_data_macro_predictors(
-    data_set: str,
+    frequency: str = None,
     start_date: str = None,
     end_date: str = None,
     sheet_id: str = "1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG",
 ) -> pd.DataFrame:
     """
-    Download and process macroeconomic predictor data.
+    Download and process macroeconomic predictor data from
 
     Parameters
     ----------
-    data_set : str
-        The type of dataset to download ("Monthly", "Quarterly", "Annual")
+    frequency : str
+        The frequency of dataset to download ("monthly", "quarterly", "annual")
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
@@ -303,26 +309,25 @@ def download_data_macro_predictors(
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
-    if data_set in ["Monthly", "Quarterly", "Annual"]:
+    if frequency in ["monthly", "quarterly", "annual"]:
         try:
             macro_sheet_url = (
                 "https://docs.google.com/spreadsheets/d/"
                 f"{sheet_id}/gviz/tq?tqx=out:csv&sheet="
-                f"{data_set}"
+                f"{frequency.capitalize()}"
             )
             raw_data = pd.read_csv(macro_sheet_url)
-        except Exception:
-            print("Expected an empty DataFrame due to download failure.")
+        except Exception as e:
+            print(f"Returning an empty dataset due to download failure: {e}")
             return pd.DataFrame()
     else:
         raise ValueError("Unsupported macro predictor type.")
-        return pd.DataFrame()
 
-    if data_set == "Monthly":
+    if frequency == "monthly":
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(x["yyyymm"], format="%Y%m")
         ).drop(columns=["yyyymm"])
-    if data_set == "Quarterly":
+    if frequency == "quarterly":
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(
                 x["yyyyq"].astype(str).str[:4]
@@ -333,7 +338,7 @@ def download_data_macro_predictors(
                 + "-01"
             )
         ).drop(columns=["yyyyq"])
-    if data_set == "Annual":
+    if frequency == "annual":
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(x["yyyy"].astype(str) + "-01-01")
         ).drop(columns=["yyyy"])
@@ -486,60 +491,6 @@ def download_data_constituents(index: str) -> pd.DataFrame:
     )
 
     return df
-
-
-def list_supported_indexes():
-    """
-    Returns a DataFrame containing the supported indexes, their download URLs, and the number of rows to skip.
-    """
-    data = [
-        (
-            "DAX",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251464/ishares-dax-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=DAXEX_holdings&dataType=fund",
-            2,
-        ),
-        (
-            "EURO STOXX 50",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251783/ishares-euro-stoxx-50-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXW1_holdings&dataType=fund",
-            2,
-        ),
-        (
-            "Dow Jones Industrial Average",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251770/ishares-dow-jones-industrial-average-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXI3_holdings&dataType=fund",
-            2,
-        ),
-        (
-            "Russell 1000",
-            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239707/ishares-russell-1000-etf/1495092304805.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund",
-            9,
-        ),
-        (
-            "Russell 2000",
-            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239710/ishares-russell-2000-etf/1495092304805.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund",
-            9,
-        ),
-        (
-            "Russell 3000",
-            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239714/ishares-russell-3000-etf/1495092304805.ajax?fileType=csv&fileName=IWV_holdings&dataType=fund",
-            9,
-        ),
-        (
-            "S&P 100",
-            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239723/ishares-sp-100-etf/1495092304805.ajax?fileType=csv&fileName=OEF_holdings&dataType=fund",
-            9,
-        ),
-        (
-            "S&P 500",
-            "https://www.ishares.com/de/privatanleger/de/produkte/253743/ishares-sp-500-b-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=SXR8_holdings&dataType=fund",
-            2,
-        ),
-        (
-            "Nasdaq 100",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund",
-            2,
-        ),
-    ]
-    return pd.DataFrame(data, columns=["index", "url", "skip"])
 
 
 def download_data_fred(
@@ -738,16 +689,13 @@ def download_data_osap(
         print("Returning an empty dataset due to download failure.")
         return raw_data
 
-    # Convert date column to datetime format
     if "date" in raw_data.columns:
         raw_data["date"] = pd.to_datetime(raw_data["date"], errors="coerce")
 
-    # Convert column names to snake_case
     raw_data.columns = [
         _transfrom_to_snake_case(col) for col in raw_data.columns
     ]
 
-    # Filter data based on date range
     if start_date and end_date:
         raw_data = raw_data.query("@start_date <= date <= @end_date")
 
@@ -1240,7 +1188,10 @@ def download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
         },
     )
 
-    fisd_issuer_query = "SELECT issuer_id, sic_code, country_domicile FROM fisd.fisd_mergedissuer"
+    fisd_issuer_query = (
+        "SELECT issuer_id, sic_code, country_domicile ",
+        "FROM fisd.fisd_mergedissuer",
+    )
 
     fisd_issuer = pd.read_sql_query(
         sql=fisd_issuer_query,
