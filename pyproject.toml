@@ -5,16 +5,24 @@ build-backend = "hatchling.build"
 [project]
 name = "tidyfinance"
 authors = [{name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"},
-           {name = "Christoph Frey", email = "christoph.frey@gmail.com"}
-           ]
+           {name = "Christoph Frey", email = "christoph.frey@gmail.com"}]
 version = "0.1.0"
-description = "A Python library for financial data manipulation using Polars"
+description = "Tidy Finance Helper Functions"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
-    "httpx>=0.28.1",
-    "polars>=1.0.0",
+    "pandas>=2.1.1",
+    "numpy>=1.26.0",
+    "sqlalchemy>=2.0.21",
+    "pyyaml>=6.0.2",
+    "pandas-datareader>=0.10.0",
+    "statsmodels>=0.14.0",
+    "requests>=2.31.0"
+]
+
+[dependency-groups]
+dev = [
     "pytest>=8.3.4",
     "pytest-httpx>=0.35.0",
     "pytest-cov>=6.0.0"
