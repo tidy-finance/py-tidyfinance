@@ -5,7 +5,6 @@ import numpy as np
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
-
 def add_lag_columns(
     data: pd.DataFrame,
     cols: list[str],
