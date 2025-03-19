@@ -20,6 +20,8 @@ dependencies = [
     "statsmodels>=0.14.0",
     "requests>=2.31.0",
     "pyarrow>=19.0.1",
+    "psycopg2-binary>=2.9.9",
+    "dotenv>=0.9.9",
 ]
 
 [dependency-groups]

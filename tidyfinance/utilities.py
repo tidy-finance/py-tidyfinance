@@ -6,6 +6,7 @@ import webbrowser
 import numpy as np
 import pandas as pd
 import yaml
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
 
@@ -30,7 +31,7 @@ def get_wrds_connection(config_path: str = "config.yaml") -> object:
 
     engine = create_engine(
         (
-            f"postgresql://{wrds_user}:{wrds_password}"
+            f"postgresql+psycopg2://{wrds_user}:{wrds_password}"
             "@wrds-pgdata.wharton.upenn.edu:9737/wrds"
         ),
         connect_args={"sslmode": "require"},
@@ -195,6 +196,8 @@ def load_wrds_credentials(config_path: str = "./config.yaml") -> tuple:
     -------
         tuple: A tuple containing (wrds_user (str), wrds_password (str)).===================================================================================================================================================================================================================================================================================================================================
     """
+    load_dotenv()
+
     wrds_user: str = os.getenv("WRDS_USER")
     wrds_password: str = os.getenv("WRDS_PASSWORD")
 
