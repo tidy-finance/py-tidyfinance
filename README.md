@@ -105,3 +105,27 @@ download_data(
 )
 ```
 
+## Other Helpers
+
+We include functions to check out content from tidy-finance.org:
+
+```python
+from tidyfinance import list_tidy_finance_chapters, open_tidy_finance_website
+
+list_tidy_finance_chapters()
+open_tidy_finance_website("capital-asset-pricing-model")
+```
+
+We also include (experimental) functions that can be used for different applications, but note that they might heavily change in future package versions as we try to make them more general:
+
+```python
+import tidyfinance as tf
+# For portfolio sorts
+?tf.assign_portfolio
+
+# For beta estimation
+?tf.estimate_betas
+
+# For Fama-MacBeth estimation
+?tf.estimate_fama_macbeth
+```
