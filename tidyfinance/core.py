@@ -270,94 +270,94 @@ def compute_breakpoints(
     return breakpoints
 
 
-def compute_long_short_returns(
-    data: pd.DataFrame,
-    direction: str = "top_minus_bottom",
-    date_col: str = "date",
-    portfolio_col: str = "portfolio",
-    ret_excess_col: str = "ret_excess",
-) -> pd.DataFrame:
-    """
-    Compute long-short returns based on portfolio returns.
+# def compute_long_short_returns(
+#     data: pd.DataFrame,
+#     direction: str = "top_minus_bottom",
+#     date_col: str = "date",
+#     portfolio_col: str = "portfolio",
+#     ret_excess_col: str = "ret_excess",
+# ) -> pd.DataFrame:
+#     """
+#     Compute long-short returns based on portfolio returns.
 
-    Parameters
-    ----------
-    data (pd.DataFrame): DataFrame containing portfolio returns with columns
-        for portfolio ID, date, and return measurements.
-    direction (str, optional): Direction of calculation. "top_minus_bottom"
-        (default) or "bottom_minus_top".
-    date_col (str, optional): Column name indicating dates.
-    portfolio_col (str, optional): Column name indicating portfolio
-        identifiers.
-    ret_excess_col (str, optional): Column name prefix for excess return
-        measurements.
+#     Parameters
+#     ----------
+#     data (pd.DataFrame): DataFrame containing portfolio returns with columns
+#         for portfolio ID, date, and return measurements.
+#     direction (str, optional): Direction of calculation. "top_minus_bottom"
+#         (default) or "bottom_minus_top".
+#     date_col (str, optional): Column name indicating dates.
+#     portfolio_col (str, optional): Column name indicating portfolio
+#         identifiers.
+#     ret_excess_col (str, optional): Column name prefix for excess return
+#         measurements.
 
-    Returns
-    -------
-    pd.DataFrame: A DataFrame with computed long-short returns.
-    """
-    if direction not in ["top_minus_bottom", "bottom_minus_top"]:
-        raise ValueError(
-            "direction must be either 'top_minus_bottom' or'bottom_minus_top'"
-        )
-    data = data.copy()
+#     Returns
+#     -------
+#     pd.DataFrame: A DataFrame with computed long-short returns.
+#     """
+#     if direction not in ["top_minus_bottom", "bottom_minus_top"]:
+#         raise ValueError(
+#             "direction must be either 'top_minus_bottom' or'bottom_minus_top'"
+#         )
+#     data = data.copy()
 
-    # Identify top and bottom portfolios
-    grouped = data.groupby(date_col)
-    top_bottom = grouped.filter(lambda x: x[portfolio_col].nunique() >= 2)
-    top_bottom["portfolio"] = np.where(
-        top_bottom[portfolio_col] == top_bottom[portfolio_col].max(),
-        "top",
-        "bottom",
-    )
+#     # Identify top and bottom portfolios
+#     grouped = data.groupby(date_col)
+#     top_bottom = grouped.filter(lambda x: x[portfolio_col].nunique() >= 2)
+#     top_bottom["portfolio"] = np.where(
+#         top_bottom[portfolio_col] == top_bottom[portfolio_col].max(),
+#         "top",
+#         "bottom",
+#     )
 
-    # Pivot data to get top and bottom returns
-    long_short_df = (
-        top_bottom.pivot_table(
-            index=[date_col], columns="portfolio", values=ret_excess_col
-        )
-        .dropna()
-        .reset_index()
-    )
+#     # Pivot data to get top and bottom returns
+#     long_short_df = (
+#         top_bottom.pivot_table(
+#             index=[date_col], columns="portfolio", values=ret_excess_col
+#         )
+#         .dropna()
+#         .reset_index()
+#     )
 
-    # Compute long-short returns
-    long_short_df["long_short_return"] = (
-        long_short_df["top"] - long_short_df["bottom"]
-    ) * (-1 if direction == "bottom_minus_top" else 1)
+#     # Compute long-short returns
+#     long_short_df["long_short_return"] = (
+#         long_short_df["top"] - long_short_df["bottom"]
+#     ) * (-1 if direction == "bottom_minus_top" else 1)
 
-    return long_short_df[[date_col, "long_short_return"]]
+#     return long_short_df[[date_col, "long_short_return"]]
 
 
-def compute_portfolio_returns(
-    sorting_data,
-    sorting_variables,
-    sorting_method,
-    rebalancing_month=None,
-    breakpoint_options_main=None,
-    breakpoint_options_secondary=None,
-    breakpoint_function_main=None,
-    breakpoint_function_secondary=None,
-    min_portfolio_size=0,
-    data_options=None,
-):
-    """Compute portfolio returns based on sorting variables and methods.
+# def compute_portfolio_returns(
+#     sorting_data,
+#     sorting_variables,
+#     sorting_method,
+#     rebalancing_month=None,
+#     breakpoint_options_main=None,
+#     breakpoint_options_secondary=None,
+#     breakpoint_function_main=None,
+#     breakpoint_function_secondary=None,
+#     min_portfolio_size=0,
+#     data_options=None,
+# ):
+#     """Compute portfolio returns based on sorting variables and methods.
 
-    Parameters:
-        sorting_data (pd.DataFrame): Data for portfolio assignment and return computation.
-        sorting_variables (list): List of variables for sorting.
-        sorting_method (str): Sorting method ('univariate' or 'bivariate').
-        rebalancing_month (int, optional): Month for annual rebalancing.
-        breakpoint_options_main (dict, optional): Options for main sorting variable.
-        breakpoint_options_secondary (dict, optional): Options for secondary sorting variable.
-        breakpoint_function_main (callable, optional): Function for main sorting.
-        breakpoint_function_secondary (callable, optional): Function for secondary sorting.
-        min_portfolio_size (int): Minimum portfolio size.
-        data_options (dict, optional): Additional data processing options.
+#     Parameters:
+#         sorting_data (pd.DataFrame): Data for portfolio assignment and return computation.
+#         sorting_variables (list): List of variables for sorting.
+#         sorting_method (str): Sorting method ('univariate' or 'bivariate').
+#         rebalancing_month (int, optional): Month for annual rebalancing.
+#         breakpoint_options_main (dict, optional): Options for main sorting variable.
+#         breakpoint_options_secondary (dict, optional): Options for secondary sorting variable.
+#         breakpoint_function_main (callable, optional): Function for main sorting.
+#         breakpoint_function_secondary (callable, optional): Function for secondary sorting.
+#         min_portfolio_size (int): Minimum portfolio size.
+#         data_options (dict, optional): Additional data processing options.
 
-    Returns:
-        pd.DataFrame: DataFrame with computed portfolio returns.
-    """
-    pass
+#     Returns:
+#         pd.DataFrame: DataFrame with computed portfolio returns.
+#     """
+#     pass
 
 
 def create_summary_statistics(
@@ -428,50 +428,6 @@ def create_summary_statistics(
         )
 
     return summary_df.round(3)
-
-
-def create_data_options(
-    id: str = "permno",
-    date: str = "date",
-    exchange: str = "exchange",
-    mktcap_lag: str = "mktcap_lag",
-    ret_excess: str = "ret_excess",
-    portfolio: str = "portfolio",
-    **kwargs,
-) -> dict:
-    """
-    Create a dictionary of data options used in financial data analysis.
-
-    Parameters
-    ----------
-    id (str): Identifier variable (default: "permno").
-    date (str): Date variable (default: "date").
-    exchange (str): Exchange variable (default: "exchange").
-    mktcap_lag (str): Market capitalization lag variable
-        (default: "mktcap_lag").
-    ret_excess (str): Excess return variable (default: "ret_excess").
-    portfolio (str): Portfolio variable (default: "portfolio").
-    **kwargs: Additional key-value pairs to include in the options.
-
-    Returns
-    -------
-    dict: A dictionary containing the specified data options.
-    """
-    # Validate inputs
-    for key, value in locals().items():
-        if key != "kwargs" and (not isinstance(value, str) or len(value) == 0):
-            raise ValueError(f"{key} must be a non-empty string.")
-
-    options = {
-        "id": id,
-        "date": date,
-        "exchange": exchange,
-        "mktcap_lag": mktcap_lag,
-        "ret_excess": ret_excess,
-        "portfolio": portfolio,
-        **kwargs,
-    }
-    return options
 
 
 def estimate_betas(

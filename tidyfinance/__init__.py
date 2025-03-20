@@ -1,4 +1,5 @@
 from .core import (
+    add_lag_columns,
     assign_portfolio,
     create_summary_statistics,
     estimate_betas,
@@ -44,4 +45,5 @@ __all__ = [
     "estimate_fama_macbeth",
     "set_wrds_credentials",
     "create_summary_statistics",
+    "add_lag_columns",
 ]

@@ -181,12 +181,23 @@ We also include (experimental) functions that can be used for different applicat
 
 ```python
 import tidyfinance as tf
-# For portfolio sorts
+
+# Create summary statistics
+help(tf.create_summary_statistics)
+
+# Assign portfolios
 help(tf.assign_portfolio)
 
-# For beta estimation
+# Estimate betas
 help(tf.estimate_betas)
 
-# For Fama-MacBeth estimation
+# Estimate Fama-MacBeth 
 help(tf.estimate_fama_macbeth)
+
+# Add lag columns
+help(tf.add_lag_columns)
+
+# Winsorize or trim 
+help(tf.winsorize)
+help(tf.trim)
 ```
