@@ -531,7 +531,7 @@ def estimate_fama_macbeth(
     data: pd.DataFrame,
     model: str,
     vcov: str = "newey-west",
-    vcov_options: dict = None,
+    vcov_options: dict = {"maxlags": 6},
     date_col: str = "date",
 ) -> pd.DataFrame:
     """
@@ -586,7 +586,7 @@ def estimate_fama_macbeth(
     def compute_t_statistic(x):
         model = smf.ols("estimate ~ 1", x)
         if vcov == "newey-west":
-            fit = model.fit(cov_type="HAC", cov_kwds={"maxlags": 6})
+            fit = model.fit(cov_type="HAC", cov_kwds=vcov_options)
         else:
             fit = model.fit()
         return x["estimate"].mean() / fit.bse["Intercept"]
@@ -604,18 +604,3 @@ def estimate_fama_macbeth(
     result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor").round(3)
 
     return result_df
-
-
-def list_supported_types(domain=None, as_vector=False):
-    """List all supported dataset types.
-
-    Parameters
-    ----------
-        domain (list, optional): Filter for specific domains.
-        as_vector (bool): Whether to return as a list instead of DataFrame.
-
-    Returns
-    -------
-        Union[pd.DataFrame, list]: Supported dataset types.
-    """
-    pass

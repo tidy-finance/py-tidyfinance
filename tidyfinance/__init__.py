@@ -1,4 +1,9 @@
-from .core import assign_portfolio, estimate_betas, estimate_fama_macbeth
+from .core import (
+    assign_portfolio,
+    create_summary_statistics,
+    estimate_betas,
+    estimate_fama_macbeth,
+)
 from .data_download import (
     download_data,
     download_data_constituents,
@@ -38,4 +43,5 @@ __all__ = [
     "estimate_betas",
     "estimate_fama_macbeth",
     "set_wrds_credentials",
+    "create_summary_statistics",
 ]
