@@ -31,7 +31,7 @@ The main functionality of the `tidyfinance` package centers around data download
 from tidyfinance import download_data
 ```
 
-For instance, to download monthly Fama-French factors, you have to provide the dataset name according to `pdr.famafrench.get_available_datasets()`:
+The function always requires a `domain` argument and depending on the domain typically also a `dataset`. For instance, to download monthly Fama-French factors, you have to provide the dataset name according to `pdr.famafrench.get_available_datasets()`:
 
 ```python
 download_data(
