@@ -3,3 +3,5 @@ tidyfinance/__pycache__/
 .pytest_cache/
 .env
 config.yaml
+.ruff_cache
+.venv
