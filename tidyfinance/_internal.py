@@ -109,12 +109,17 @@ def _validate_dates(
         return start_date, end_date
 
 
+def _format_cusips(cusips):
+    if not cusips:
+        return "()"
+
+    cusip_batch_formatted = ", ".join(f"'{cusip}'" for cusip in cusips)
+    return f"({cusip_batch_formatted})"
+
+
 def _return_datetime(dates):
     """Return date without time and change period to timestamp."""
-    dates = pd.Series(dates)
-    if isinstance(dates.iloc[0], pd.Period):  # Check if 'Date' is a Period
-        dates = dates.dt.to_timestamp(how="start").dt.date
-    dates = pd.to_datetime(dates, errors="coerce")
+    return pd.to_datetime(dates.astype(str))
 
 
 def _transfrom_to_snake_case(column_name):

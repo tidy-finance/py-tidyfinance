@@ -13,6 +13,7 @@ from sqlalchemy import text
 from ._internal import (
     _assign_exchange,
     _assign_industry,
+    _format_cusips,
     _get_random_user_agent,
     _return_datetime,
     _transfrom_to_snake_case,
@@ -76,22 +77,28 @@ def create_wrds_dummy_database(
 
 
 def download_data(
-    domain: str, start_date: str = None, end_date: str = None, **kwargs
+    domain: str,
+    dataset: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    **kwargs,
 ) -> pd.DataFrame:
     """
-    Download and process data based on the specified type.
+    Download and process data based on the specified domain and dataset.
 
     Parameters
     ----------
     domain : str
         The domain of the dataset to download.
+    dataset : str, optional
+        The dataset to download.
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
         The end date for filtering the data, in "YYYY-MM-DD" format.
     **kwargs : dict
         Additional arguments passed to specific download functions depending
-        on the `type`.
+        on the domain and dataset.
 
     Returns
     -------
@@ -102,17 +109,18 @@ def download_data(
     if "factors" in domain:
         processed_data = download_data_factors(
             domain=domain,
+            dataset=dataset,
             start_date=start_date,
             end_date=end_date,
             **kwargs,
         )
     elif domain == "macro_predictors":
         processed_data = download_data_macro_predictors(
-            start_date=start_date, end_date=end_date, **kwargs
+            dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "wrds":
         processed_data = download_data_wrds(
-            domain, start_date, end_date, **kwargs
+            dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
         processed_data = download_data_constituents(**kwargs)
@@ -127,7 +135,7 @@ def download_data(
     elif domain == "osap":
         processed_data = download_data_osap(start_date, end_date, **kwargs)
     else:
-        raise ValueError("Unsupported data type.")
+        raise ValueError("Unsupported dataset.")
     return processed_data
 
 
@@ -139,7 +147,7 @@ def download_data_factors(
     **kwargs,
 ) -> pd.DataFrame:
     """
-    Download and process factor data for the specified type and date range.
+    Download and process factor data for the specified dataset and date range.
 
     Parameters
     ----------
@@ -164,7 +172,7 @@ def download_data_factors(
     elif domain == "factors_q":
         return download_data_factors_q(dataset, start_date, end_date, **kwargs)
     else:
-        raise ValueError("Unsupported factor domain.")
+        raise ValueError("Unsupported domain.")
 
 
 def download_data_factors_ff(
@@ -205,7 +213,7 @@ def download_data_factors_ff(
             print(f"Returning an empty dataset due to download failure: {e}")
             return pd.DataFrame()
     else:
-        raise ValueError("Unsupported factor data type.")
+        raise ValueError("Unsupported dataset.")
 
 
 def download_data_factors_q(
@@ -221,7 +229,7 @@ def download_data_factors_q(
     Parameters
     ----------
     dataset : str
-        The type of dataset to download.
+        The dataset to download.
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
@@ -321,7 +329,7 @@ def download_data_macro_predictors(
             print(f"Returning an empty dataset due to download failure: {e}")
             return pd.DataFrame()
     else:
-        raise ValueError("Unsupported macro predictor type.")
+        raise ValueError("Unsupported dataset.")
 
     if frequency == "monthly":
         raw_data = raw_data.assign(
@@ -703,44 +711,43 @@ def download_data_osap(
 
 
 def download_data_wrds(
-    data_type: str, start_date: str = None, end_date: str = None, **kwargs
+    dataset: str, start_date: str = None, end_date: str = None, **kwargs
 ) -> dict:
     """
-    Download data from WRDS based on the specified type.
+    Download data from WRDS based on the specified dataet.
 
     Parameters
     ----------
-    data_type (str): Type of data to download
-        (e.g., "wrds_crsp", "wrds_compustat").
+    dataset (str): Dataset to download
+        (e.g., "crsp_monthly", "compustat_annual").
     start_date (str, optional): Start date in "YYYY-MM-DD" format.
     end_date (str, optional): End date in "YYYY-MM-DD" format.
-    **kwargs: Additional parameters specific to the dataset type.
+    **kwargs: Additional parameters specific to the dataset.
 
     Returns
     -------
         dict: A dictionary representing the downloaded data.
     """
-    if "wrds_crsp" in data_type:
-        return download_data_wrds_crsp(
-            data_type, start_date, end_date, **kwargs
-        )
-    elif "wrds_compustat" in data_type:
+    if "crsp" in dataset:
+        return download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
+    elif "compustat" in dataset:
         return download_data_wrds_compustat(
-            data_type, start_date, end_date, **kwargs
+            dataset, start_date, end_date, **kwargs
         )
-    elif "wrds_ccm_links" in data_type:
+    elif "ccm_links" in dataset:
         return download_data_wrds_ccm_links(**kwargs)
-    elif "wrds_fisd" in data_type:
+    elif "fisd" in dataset:
         return download_data_wrds_fisd(**kwargs)
-    elif "wrds_trace_enhanced" in data_type:
-        return download_data_wrds_trace_enhanced(start_date, end_date, **kwargs)
+    elif "trace_enhanced" in dataset:
+        return download_data_wrds_trace_enhanced(
+            start_date=start_date, end_date=end_date, **kwargs
+        )
     else:
-        raise ValueError("Unsupported data type.")
-    return {}
+        raise ValueError("Unsupported dataset.")
 
 
 def download_data_wrds_crsp(
-    dataset_type: str = "crsp_monthly",
+    dataset: str,
     start_date: str = None,
     end_date: str = None,
     batch_size: int = 500,
@@ -752,7 +759,7 @@ def download_data_wrds_crsp(
 
     Parameters
     ----------
-        type (str): The type of CRSP data to download. Expected values:
+        dataset (str): The dataset to download. Expected values:
             "crsp_monthly" or "crsp_daily".
         start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
         end_date (str or None): End date in "YYYY-MM-DD" format (optional).
@@ -764,9 +771,14 @@ def download_data_wrds_crsp(
 
     Returns
     -------
-        pandas.DataFrame: A DataFrame containing CRSP stock return data,
+        pd.DataFrame: A DataFrame containing CRSP stock return data,
             adjusted for delistings.
     """
+    if dataset not in ["crsp_monthly", "crsp_daily"]:
+        raise ValueError(
+            "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
+        )
+
     start_date, end_date = _validate_dates(start_date, end_date)
 
     # Validate batch_size
@@ -785,7 +797,7 @@ def download_data_wrds_crsp(
     )
 
     crsp_data = pd.DataFrame()
-    if "crsp_monthly" in dataset_type:
+    if "crsp_monthly" in dataset:
         if version == "v1":
             pass
         if version == "v2":
@@ -834,18 +846,20 @@ def download_data_wrds_crsp(
                 industry=lambda x: x["siccd"].apply(_assign_industry),
             )
             factors_ff3_monthly = download_data_factors_ff(
-                "F-F_Research_Data_Factors"
+                dataset="F-F_Research_Data_Factors",
+                start_date=start_date,
+                end_date=end_date,
             )
 
             crsp_monthly = (
                 crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
-                .assign(ret_excess=lambda x: x["ret"] - x["rf"])
+                .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
                 .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
-                .drop(columns=["rf"])
+                .drop(columns=["risk_free"])
                 .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
             )
             return crsp_monthly
-    elif "crsp_daily" in dataset_type:
+    elif "crsp_daily" in dataset:
         if version == "v1":
             pass
         if version == "v2":
@@ -895,18 +909,20 @@ def download_data_wrds_crsp(
 
                 if not crsp_daily_sub.empty:
                     factors_ff3_daily = download_data_factors_ff(
-                        "F-F_Research_Data_Factors_Daily"
+                        dataset="F-F_Research_Data_Factors_Daily",
+                        start_date=start_date,
+                        end_date=end_date,
                     )
 
                     crsp_daily_sub = (
                         crsp_daily_sub.merge(
-                            factors_ff3_daily[["date", "rf"]],
+                            factors_ff3_daily[["date", "risk_free"]],
                             on="date",
                             how="left",
                         )
                         .assign(
                             ret_excess=lambda x: (
-                                (x["ret"] - x["rf"]).clip(lower=-1)
+                                (x["ret"] - x["risk_free"]).clip(lower=-1)
                             )
                         )
                         .get(["permno", "date", "ret_excess"])
@@ -920,7 +936,7 @@ def download_data_wrds_crsp(
             return crsp_data
     else:
         raise ValueError(
-            "Invalid type specified. Use 'crsp_monthly' or 'crsp_daily'."
+            "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
         )
 
 
@@ -957,7 +973,6 @@ def download_data_wrds_ccm_links(
 
     ccm_links = pd.read_sql(query, conn)
 
-    # Replace missing linkenddt with today's date
     ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp.today())
 
     disconnect_connection(conn)
@@ -966,7 +981,7 @@ def download_data_wrds_ccm_links(
 
 
 def download_data_wrds_compustat(
-    dataset_type: str = "compustat_quarterly",
+    dataset: str,
     start_date: str = None,
     end_date: str = None,
     additional_columns: list = None,
@@ -976,7 +991,7 @@ def download_data_wrds_compustat(
 
     Parameters
     ----------
-        type (str): Type of financial data to download. Expected values:
+        dataset (str): Dataset to download. Expected values:
             "compustat_annual" or "compustat_quarterly".
         start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
         end_date (str or None): End date in "YYYY-MM-DD" format (optional).
@@ -992,9 +1007,12 @@ def download_data_wrds_compustat(
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
-    if dataset_type not in ["compustat_annual", "compustat_quarterly"]:
+    if dataset not in ["compustat_annual", "compustat_quarterly"]:
         raise ValueError(
-            "Invalid type specified. Use 'compustat_annual' or 'compustat_quarterly'."
+            (
+                "Invalid dataset specified. "
+                "Use 'compustat_annual' or 'compustat_quarterly'."
+            )
         )
 
     # Connect to WRDS
@@ -1003,7 +1021,7 @@ def download_data_wrds_compustat(
         ", ".join(additional_columns) if additional_columns else ""
     )
 
-    if "compustat_annual" in dataset_type:
+    if "compustat_annual" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
                 pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga
@@ -1014,7 +1032,7 @@ def download_data_wrds_compustat(
         """)
 
         compustat = pd.read_sql(query, wrds_connection)
-        wrds_connection.dispose()
+        disconnect_connection(wrds_connection)
 
         # Compute Book Equity (be)
         compustat = (
@@ -1077,7 +1095,7 @@ def download_data_wrds_compustat(
 
         processed_data = compustat.drop(columns=["year", "at_lag"])
 
-    elif "compustat_quarterly" in dataset_type:
+    elif "compustat_quarterly" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq
                 {", " + additional_columns if additional_columns else ""}
@@ -1087,7 +1105,7 @@ def download_data_wrds_compustat(
         """)
 
         compustat = pd.read_sql(query, wrds_connection)
-        wrds_connection.dispose()
+        disconnect_connection(wrds_connection)
 
         # Ensure necessary columns are not missing
         compustat = (
@@ -1189,8 +1207,8 @@ def download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
     )
 
     fisd_issuer_query = (
-        "SELECT issuer_id, sic_code, country_domicile ",
-        "FROM fisd.fisd_mergedissuer",
+        "SELECT issuer_id, sic_code, country_domicile "
+        "FROM fisd.fisd_mergedissuer"
     )
 
     fisd_issuer = pd.read_sql_query(
@@ -1234,19 +1252,30 @@ def download_data_wrds_trace_enhanced(
 
     wrds_connection = get_wrds_connection()
 
-    query = f"""
-        SELECT cusip_id, trd_exctn_dt, trd_exctn_tm, rptd_pr, entrd_vol_qt,
-               yld_pt, rpt_side_cd, cntra_mp_id, trc_st, asof_cd
-        FROM trace.trace_enhanced
-        WHERE cusip_id IN ({",".join(f"'{cusip}'" for cusip in cusips)})
-    """
+    cusip_string = _format_cusips(cusips)
+
+    query = (
+        "SELECT cusip_id, bond_sym_id, trd_exctn_dt, "
+        "trd_exctn_tm, days_to_sttl_ct, lckd_in_ind, "
+        "wis_fl, sale_cndtn_cd, msg_seq_nb, "
+        "trc_st, trd_rpt_dt, trd_rpt_tm, "
+        "entrd_vol_qt, rptd_pr, yld_pt, "
+        "asof_cd, orig_msg_seq_nb, rpt_side_cd, "
+        "cntra_mp_id, stlmnt_dt, spcl_trd_fl "
+        "FROM trace.trace_enhanced "
+        f"WHERE cusip_id IN {cusip_string} "
+    )
 
     if start_date and end_date:
-        query += f" AND trd_exctn_dt BETWEEN '{start_date}' AND '{end_date}'"
+        query += f"AND trd_exctn_dt BETWEEN '{start_date}' AND '{end_date}'"
 
-    trace_data = pd.read_sql(query, wrds_connection)
+    trace_enhanced_raw = pd.read_sql(
+        query,
+        wrds_connection,
+        parse_dates={"trd_exctn_dt", "trd_rpt_dt", "stlmnt_dt"},
+    )
     disconnect_connection(wrds_connection)
 
-    trace_data = process_trace_data(trace_data)
+    trace_enhanced = process_trace_data(trace_enhanced_raw)
 
-    return trace_data
+    return trace_enhanced

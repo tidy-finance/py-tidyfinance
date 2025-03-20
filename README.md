@@ -114,6 +114,8 @@ from tidyfinance import set_wrds_credentials
 set_wrds_credentials()
 ```
 
+To download monthly CRSP data: 
+
 ```python
 download_data(
   domain="wrds",
@@ -122,6 +124,8 @@ download_data(
   end_date="2020-12-31"
 )
 ```
+
+To download annual (or quaterly) Compustat data:
 
 ```python
 download_data(
@@ -132,6 +136,8 @@ download_data(
 )
 ```
 
+To download the CRSP-Compustat linking table: 
+
 ```python
 download_data(
   domain="wrds",
@@ -139,12 +145,16 @@ download_data(
 )
 ```
 
+To download bond characteristics from Mergent FISD:
+
 ```python
 download_data(
   domain="wrds",
   dataset="fisd"
 )
 ```
+
+To download Enhanced TRACE data for selected bonds: 
 
 ```python
 download_data(

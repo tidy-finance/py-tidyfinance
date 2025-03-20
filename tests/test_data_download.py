@@ -24,7 +24,7 @@ from tidyfinance.data_download import (
 
 
 def test_download_data_factors_invalid_data_set():
-    with pytest.raises(ValueError, match="Unsupported factor domain."):
+    with pytest.raises(ValueError, match="Unsupported domain."):
         download_data_factors(
             domain="invalid_data_set",
             dataset="invalid",
@@ -34,7 +34,7 @@ def test_download_data_factors_invalid_data_set():
 
 
 def test_download_data_factors_ff_data_set():
-    with pytest.raises(ValueError, match="Unsupported factor data type."):
+    with pytest.raises(ValueError, match="Unsupported dataset."):
         download_data_factors(
             domain="factors_ff",
             dataset="factors_test",
@@ -67,9 +67,9 @@ def test_download_data_factors_q_handles_start_date_after_end_date():
         )
 
 
-def test_download_data_macro_predictors_invalid_type():
-    with pytest.raises(ValueError, match="Unsupported macro predictor type."):
-        download_data_macro_predictors("invalid_type")
+def test_download_data_macro_predictors_invalid_dataset():
+    with pytest.raises(ValueError, match="Unsupported dataset."):
+        download_data_macro_predictors("invalid_dataset")
 
 
 def test_download_data_macro_predictors_invalid_url():
@@ -155,13 +155,13 @@ def test_set_wrds_credentials(tmp_path):
     assert "config.yaml\n" in gitignore_content
 
 
-def test_invalid_type_parameter():
-    """Test that an invalid type parameter raises a ValueError."""
+def test_invalid_dataset_parameter():
+    """Test that an invalid dataset parameter raises a ValueError."""
     with pytest.raises(
         ValueError,
-        match="Invalid type specified. Use 'compustat_annual' or 'compustat_quarterly'.",
+        match="Invalid dataset specified. Use 'compustat_annual' or 'compustat_quarterly'.",
     ):
-        download_data_wrds_compustat(dataset_type="invalid_type")
+        download_data_wrds_compustat(dataset="invalid")
 
 
 def test_download_data_constituents_invalid_index():
