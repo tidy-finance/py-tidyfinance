@@ -58,7 +58,7 @@ To download the Welch and Goyal (2008) macroeconomic predictors for monthly, qua
 ```python
 tf.download_data(
   domain="macro_predictors",
-  frequency="monthly",
+  dataset="monthly",
   start_date="2000-01-01", 
   end_date="2020-12-31"
 )
