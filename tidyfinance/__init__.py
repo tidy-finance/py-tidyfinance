@@ -17,6 +17,7 @@ from .data_download import (
     download_data_wrds,
 )
 from .utilities import (
+    get_wrds_connection,
     list_supported_indexes,
     list_tidy_finance_chapters,
     open_tidy_finance_website,
@@ -46,4 +47,5 @@ __all__ = [
     "set_wrds_credentials",
     "create_summary_statistics",
     "add_lag_columns",
+    "get_wrds_connection",
 ]

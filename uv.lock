@@ -921,6 +921,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "dotenv" },
+    { name = "lxml" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "pandas-datareader" },
@@ -942,6 +943,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "lxml", specifier = ">=5.3.1" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "pandas-datareader", specifier = ">=0.10.0" },

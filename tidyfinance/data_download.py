@@ -300,8 +300,8 @@ def download_data_macro_predictors(
 
     Parameters
     ----------
-    frequency : str
-        The frequency of dataset to download ("monthly", "quarterly", "annual")
+    dataset : str
+        The dataset to download ("monthly", "quarterly", "annual")
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
     end_date : str, optional
