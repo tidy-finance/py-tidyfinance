@@ -7,7 +7,7 @@
 [![License:
 MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Helper functions for empirical research in financial economics, addressing a variety of topics covered in [Scheuch, Frey, Voigt, and Weiss (2024)](https://doi.org/10.1201/9781032684307). The package is designed to provide shortcuts for issues extensively discussed in the book, facilitating easier application of its concepts. For more information and resources related to the book, visit [tidy-finance.org/python](https://tidy-finance.org/python).
+Helper functions for empirical research in financial economics, addressing a variety of topics covered in [Scheuch, Voigt, Weiss, and Frey (2024)](https://doi.org/10.1201/9781032684307). The package is designed to provide shortcuts for issues extensively discussed in the book, facilitating easier application of its concepts. For more information and resources related to the book, visit [tidy-finance.org/python](https://tidy-finance.org/python).
 
 ## Installation
 
