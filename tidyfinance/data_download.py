@@ -290,7 +290,7 @@ def download_data_factors_q(
 
 
 def download_data_macro_predictors(
-    frequency: str = None,
+    dataset: str = None,
     start_date: str = None,
     end_date: str = None,
     sheet_id: str = "1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG",
@@ -317,12 +317,12 @@ def download_data_macro_predictors(
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
-    if frequency in ["monthly", "quarterly", "annual"]:
+    if dataset in ["monthly", "quarterly", "annual"]:
         try:
             macro_sheet_url = (
                 "https://docs.google.com/spreadsheets/d/"
                 f"{sheet_id}/gviz/tq?tqx=out:csv&sheet="
-                f"{frequency.capitalize()}"
+                f"{dataset.capitalize()}"
             )
             raw_data = pd.read_csv(macro_sheet_url)
         except Exception as e:
@@ -331,11 +331,11 @@ def download_data_macro_predictors(
     else:
         raise ValueError("Unsupported dataset.")
 
-    if frequency == "monthly":
+    if dataset == "monthly":
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(x["yyyymm"], format="%Y%m")
         ).drop(columns=["yyyymm"])
-    if frequency == "quarterly":
+    if dataset == "quarterly":
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(
                 x["yyyyq"].astype(str).str[:4]
@@ -346,7 +346,7 @@ def download_data_macro_predictors(
                 + "-01"
             )
         ).drop(columns=["yyyyq"])
-    if frequency == "annual":
+    if dataset == "annual":
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(x["yyyy"].astype(str) + "-01-01")
         ).drop(columns=["yyyy"])
