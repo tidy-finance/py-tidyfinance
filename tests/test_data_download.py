@@ -15,6 +15,8 @@ from tidyfinance.data_download import (
     create_wrds_dummy_database,
     download_data_constituents,
     download_data_factors,
+    download_data_factors_ff,
+    download_data_factors_q,
     download_data_fred,
     download_data_macro_predictors,
     download_data_osap,
@@ -175,6 +177,46 @@ def test_download_data_constituents_valid_index():
     df = download_data_constituents("DAX")
     assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
     assert not df.empty, "Returned DataFrame should not be empty"
+
+
+def test_download_data_factors_ff_valid():
+    df = download_data_factors_ff("F-F_Research_Data_5_Factors_2x3_daily")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_factors_q_valid():
+    df = download_data_factors_q("q5_factors_monthly")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_macro_predictors_valid():
+    df = download_data_macro_predictors("monthly")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_osap_valid():
+    df = download_data_osap()
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_fred_valid():
+    df = download_data_fred(
+        "GDP", start_date="2020-01-01", end_date="2020-12-31"
+    )
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_stock_prices_valid():
+    df = download_data_stock_prices(
+        "AAPL", start_date="2020-01-01", end_date="2020-12-31"
+    )
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
 
 
 if __name__ == "__main__":
