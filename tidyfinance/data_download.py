@@ -557,7 +557,7 @@ def download_data_fred(
 
                 fred_data.append(raw_data)
                 break  # exit the loop on successful load
-            except requests.RequestException as e:
+            except Exception as e:
                 print(f"Failed to retrieve data for series {s}: {e}")
                 fred_data.append(pd.DataFrame(
                     columns=["date", "value", "series"])
