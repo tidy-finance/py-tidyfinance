@@ -7,7 +7,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import pandas_datareader as pdr
-import requests
+from curl_cffi import requests
 from sqlalchemy import text
 
 from ._internal import (
@@ -531,32 +531,45 @@ def download_data_fred(
     fred_data = []
 
     for s in series:
-        url = f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv"
+        urls = [
+            f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
+            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}"
+        ]
+
         headers = {"User-Agent": _get_random_user_agent()}
 
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
+        for url in urls:
 
-            raw_data = (
-                pd.read_csv(pd.io.common.StringIO(response.text))
-                .rename(columns=lambda x: x.lower())
-                .assign(
-                    date=lambda x: pd.to_datetime(x["date"]),
-                    value=lambda x: pd.to_numeric(x["value"], errors="coerce"),
-                    series=s,
+            try:
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+
+                raw_data = (
+                    pd.read_csv(pd.io.common.StringIO(response.text))
+                    .rename(columns=lambda x: x.lower())
+                    .assign(
+                        date=lambda x: pd.to_datetime(x["date"]),
+                        value=lambda x: pd.to_numeric(x["value"],
+                                                      errors="coerce"),
+                        series=s,
+                    )
                 )
-            )
 
-            fred_data.append(raw_data)
-        except requests.RequestException as e:
-            print(f"Failed to retrieve data for series {s}: {e}")
-            fred_data.append(pd.DataFrame(columns=["date", "value", "series"]))
+                fred_data.append(raw_data)
+                break  # exit the loop on successful load
+            except requests.RequestException as e:
+                print(f"Failed to retrieve data for series {s}: {e}")
+                fred_data.append(pd.DataFrame(
+                    columns=["date", "value", "series"])
+                    )
 
     fred_data = pd.concat(fred_data, ignore_index=True)
 
     if start_date and end_date:
-        fred_data = fred_data.query("@start_date <= date <= @end_date")
+        fred_data = (fred_data
+                     .query("@start_date <= date <= @end_date")
+                     .reset_index(drop=True)
+                     )
 
     return fred_data
 
@@ -612,7 +625,11 @@ def download_data_stock_prices(
         )
 
         headers = {"User-Agent": _get_random_user_agent()}
-        response = requests.get(url, headers=headers)
+        session = requests.Session(impersonate="chrome")
+        try:
+            response = session.get(url, headers=headers)
+        except Exception:
+            response = session.get(url)
 
         if response.status_code == 200:
             raw_data = response.json().get("chart", {}).get("result", [])
