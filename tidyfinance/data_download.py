@@ -72,7 +72,7 @@ def create_wrds_dummy_database(
                 print(chunk)
                 file.write(chunk)
         print(f"Downloaded WRDS dummy database to {path}.")
-    except requests.RequestException as e:
+    except Exception as e:
         print(f"Error downloading the WRDS dummy database: {e}")
 
 
@@ -296,7 +296,7 @@ def download_data_macro_predictors(
     sheet_id: str = "1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG",
 ) -> pd.DataFrame:
     """
-    Download and process macroeconomic predictor data from
+    Download and process macroeconomic predictor data.
 
     Parameters
     ----------
@@ -414,14 +414,14 @@ def download_data_macro_predictors(
 
 def download_data_constituents(index: str) -> pd.DataFrame:
     """
-    Downloads constituent data for a given stock index.
+    Download constituent data for a given stock index.
 
-    Parameters:
+    Parameters
     ----------
         index (str): The name of the stock index to download data for.
 
-    Returns:
-    ----------
+    Returns
+    -------
         pd.DataFrame: A DataFrame containing the processed constituent data.
     """
     symbol_blacklist = {"", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
@@ -429,7 +429,8 @@ def download_data_constituents(index: str) -> pd.DataFrame:
 
     if index not in supported_indexes["index"].values:
         raise ValueError(
-            f"The index '{index}' is not supported. Supported indexes: {', '.join(supported_indexes['index'])}"
+            "The index '{index}' is not supported. "
+            f"Supported indexes: {', '.join(supported_indexes['index'])}"
         )
 
     url = supported_indexes.loc[
@@ -440,10 +441,17 @@ def download_data_constituents(index: str) -> pd.DataFrame:
     ].values[0]
     headers = {"User-Agent": _get_random_user_agent()}
 
-    response = requests.get(url, headers=headers)
+    headers = {"User-Agent": _get_random_user_agent()}
+    try:
+        response = requests.get(url, impersonate="chrome120",
+                                headers=headers)
+    except Exception:
+        response = requests.get(url, impersonate="chrome120")
+
     if response.status_code != 200:
         raise ValueError(
-            f"Failed to download data for index {index}. Please check the index name or try again later."
+            f"Failed to download data for index {index}. "
+            "Please check the index name or try again later."
         )
 
     df = pd.read_csv(io.StringIO(response.text), skiprows=skip_rows)
@@ -625,11 +633,11 @@ def download_data_stock_prices(
         )
 
         headers = {"User-Agent": _get_random_user_agent()}
-        session = requests.Session(impersonate="chrome")
         try:
-            response = session.get(url, headers=headers)
+            response = requests.get(url, impersonate="chrome120",
+                                    headers=headers)
         except Exception:
-            response = session.get(url)
+            response = requests.get(url, impersonate="chrome120")
 
         if response.status_code == 200:
             raw_data = response.json().get("chart", {}).get("result", [])
@@ -890,7 +898,7 @@ def download_data_wrds_crsp(
 
             for j in range(1, batches + 1):
                 permno_batch = permnos[
-                    ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
+                    ((j - 1) * batch_size): (min(j*batch_size, len(permnos)))
                 ]
                 permno_batch_formatted = ", ".join(
                     f"'{permno}'" for permno in permno_batch
@@ -990,7 +998,8 @@ def download_data_wrds_ccm_links(
 
     ccm_links = pd.read_sql(query, conn)
 
-    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp.today())
+    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp
+                                                           .today())
 
     disconnect_connection(conn)
 
@@ -1058,7 +1067,7 @@ def download_data_wrds_compustat(
                     x["seq"]
                     .combine_first(x["ceq"] + x["pstk"])
                     .combine_first(x["at"] - x["lt"])
-                    + x["txditc"].combine_first(x["txdb"] + x["itcb"]).fillna(0)
+                    + x["txditc"].combine_first(x["txdb"]+x["itcb"]).fillna(0)
                     - x["pstkrv"]
                     .combine_first(x["pstkl"])
                     .combine_first(x["pstk"])

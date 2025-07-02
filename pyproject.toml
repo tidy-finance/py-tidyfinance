@@ -23,6 +23,7 @@ dependencies = [
     "pyarrow>=19.0.1",
     "psycopg2-binary>=2.9.9",
     "dotenv>=0.9.9",
+    "curl_cffi>=0.10.0",
     "lxml>=5.3.1",
 ]
 
