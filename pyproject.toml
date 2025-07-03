@@ -7,7 +7,7 @@ name = "tidyfinance"
 authors = [{name = "Christoph Frey", email = "christoph.frey@gmail.com"},
 	   {name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"}
            ]
-version = "0.1.1.9000"
+version = "0.1.2."
 description = "Tidy Finance Helper Functions"
 readme = "README.md"
 license = "MIT"
