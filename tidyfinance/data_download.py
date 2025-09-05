@@ -376,7 +376,10 @@ def download_data_factors_q(
 
     if matched_dataset:
         raw_data = (
-            pd.read_csv(f"{url}{matched_dataset}.csv")
+            pd.read_csv(f"{url}{matched_dataset}.csv",
+                        engine="python",
+                        on_bad_lines="skip"
+                        )
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
