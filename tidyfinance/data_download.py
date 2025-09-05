@@ -658,7 +658,7 @@ def download_data_fred(
 
     for s in series:
         urls = [
-            f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
+            # f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
             f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}"
         ]
 
@@ -674,11 +674,13 @@ def download_data_fred(
                     pd.read_csv(pd.io.common.StringIO(response.text))
                     .rename(columns=lambda x: x.lower())
                     .assign(
-                        date=lambda x: pd.to_datetime(x["date"]),
-                        value=lambda x: pd.to_numeric(x["value"],
+                        date=lambda x: pd.to_datetime(x[[c for c in x.columns
+                                  if "date" in c][0]]),
+                        value=lambda x: pd.to_numeric(x[s.lower()],
                                                       errors="coerce"),
                         series=s,
-                        )
+                    )
+                    .get(["date", "series", "value"])
                 )
 
                 fred_data.append(raw_data)

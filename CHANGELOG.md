@@ -16,3 +16,4 @@
 ## v0.2.2 (2025-09-05)
 
 - removed `pandas_datareader` package requirements, replaced with `requests` from `curl_cffi` package
+- bug fix fred download
