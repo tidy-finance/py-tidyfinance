@@ -12,3 +12,7 @@
 
 - Added new FRED url for data download
 - added `curl_cffi` package to handle HTTP 429 Too Many Requests client error on Yahoo finance
+
+## v0.2.2 (2025-09-05)
+
+- removed `pandas_datareader` package requirements, replaced with `requests` from `curl_cffi` package

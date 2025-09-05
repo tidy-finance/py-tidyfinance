@@ -6,16 +6,16 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import pandas_datareader as pdr
 from curl_cffi import requests
 from sqlalchemy import text
+import zipfile
+import re
 
 from ._internal import (
     _assign_exchange,
     _assign_industry,
     _format_cusips,
     _get_random_user_agent,
-    _return_datetime,
     _transfrom_to_snake_case,
     _validate_dates,
 )
@@ -74,6 +74,42 @@ def create_wrds_dummy_database(
         print(f"Downloaded WRDS dummy database to {path}.")
     except Exception as e:
         print(f"Error downloading the WRDS dummy database: {e}")
+
+
+def get_available_famafrench_datasets():
+    """
+    Get the list of datasets available from the Fama/French data library.
+
+    Returns
+    -------
+    datasets: list
+        A list of valid inputs for download_data_factors_ff
+    """
+    ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
+    ff_url_prefix = "ftp/"
+    ff_url_suffix = "_CSV.zip"
+    try:
+        from lxml.html import document_fromstring
+    except Exception:
+        raise ImportError(
+            "Please install lxml if you want to use the "
+            "get_datasets_famafrench function"
+        )
+
+    response = requests.get(f"{ff_url}data_library.html")
+    root = document_fromstring(response.content)
+
+    datasets = [
+        e.attrib["href"] for e in root.findall(".//a") if "href" in e.attrib
+    ]
+    datasets = [dataset_i for dataset_i in datasets
+                if dataset_i.startswith(ff_url_prefix)
+                and dataset_i.endswith(ff_url_suffix)
+                ]
+    datasets_list = list(map(lambda x:
+                             x[len(ff_url_prefix): -len(ff_url_suffix)],
+                             datasets))
+    return datasets_list
 
 
 def download_data(
@@ -175,34 +211,116 @@ def download_data_factors(
         raise ValueError("Unsupported domain.")
 
 
+def famafrench_downloader(dataset, start_date=None, end_date=None):
+    """Download function for famafrench ala pandas_datareader."""
+    # urls
+    ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
+    ff_url_prefix = "ftp/"
+    ff_url_suffix = "_CSV.zip"
+    datatset_url = "".join([ff_url, ff_url_prefix, dataset, ff_url_suffix])
+    resp = requests.get(datatset_url, impersonate="chrome")
+    resp.raise_for_status()
+
+    # decode
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        name = zf.namelist()[0]
+        data_raw = zf.read(name).decode("latin1")
+
+    # Breakpoint dataset cases
+    params = {"index_col": 0}
+    if dataset.endswith("_Breakpoints"):
+        if "-" in dataset:
+            cols = ["<=0", ">0"]
+        else:
+            cols = ["Count"]
+        r = list(range(0, 105, 5))
+        params["names"] = ["Date"] + cols + list(zip(r, r[1:]))
+        params["skiprows"] = 1 if dataset != "Prior_2-12_Breakpoints" else 3
+
+    doc_chunks, tables = [], []
+    for chunk in data_raw.split(2 * "\r\n"):
+        if len(chunk) < 800:
+            doc_chunks.append(chunk.replace("\r\n", " ").strip())
+        else:
+            tables.append(chunk)
+
+    for i, src in enumerate(tables):
+        match = re.search(r"^\s*,", src, re.M)  # the table starts there
+        start = 0 if not match else match.start()
+
+        # raw to dataframe
+        try:
+            df = pd.read_csv(io.StringIO("Date" + src[start:]), **params)
+        except pd.errors.ParserError as e:
+            print(e)
+            continue
+
+        # get index as datetime
+        try:
+            idx_name = df.index.name
+
+            s = df.index.astype(str)
+            if (s.str.len() == 8).all():
+                fmt, add, freq = "%Y%m%d", "", "D"
+                s_dt = [f"{i}{add}" for i in s]
+                dt = pd.to_datetime(s_dt, format=fmt, errors="coerce")
+            elif (s.str.len() == 6).all():
+                fmt, add, freq = "%Y%m%d", "01", "M"
+                s_dt = [f"{i}01" for i in s]
+                dt = (pd.to_datetime(s_dt, format="%Y%m%d", errors="coerce")
+                      + pd.offsets.MonthEnd(0)
+                      )
+            elif (s.str.len() == 4).all():
+                fmt, add, freq = "%Y%m%d", "0101", "A-DEC"
+                s_dt = [f"{i}0101" for i in s]
+                dt = pd.to_datetime(s_dt, format="%Y%m%d", errors="coerce")
+                dt = dt.to_period(freq).to_timestamp(how="end")
+            else:
+                raise ValueError("Unrecognized integer date format in index.")
+            df = df[~dt.isna()].copy()
+            df.index = dt[~dt.isna()]
+            df.index.name = idx_name.strip().lower()
+        except Exception:
+            pass
+
+        # start and end dates
+        if start_date:
+            df = df[df.index >= pd.to_datetime(start_date)]
+        if end_date:
+            df = df[df.index <= pd.to_datetime(end_date)]
+
+    return df
+
+
 def download_data_factors_ff(
     dataset: str, start_date: str = None, end_date: str = None
 ) -> pd.DataFrame:
     """Download and process Fama-French factor data."""
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = pdr.famafrench.get_available_datasets()
+    all_datasets = get_available_famafrench_datasets()
     if dataset in all_datasets:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 raw_data = (
-                    pdr.famafrench.FamaFrenchReader(
-                        dataset, start=start_date, end=end_date
+                    famafrench_downloader(
+                        dataset, start_date=start_date, end_date=end_date
                     )
-                    .read()[0]
                     .div(100)
                     .reset_index()
                     .rename(
-                        columns=lambda x: x.lower()
-                        .replace("-rf", "_excess")
-                        .replace("rf", "risk_free")
+                        columns=lambda x: (
+                            x.lower()
+                            .replace("-rf", "_excess")
+                            .replace("rf", "risk_free")
+                            if isinstance(x, str) else x
+                            )
                     )
-                    .assign(date=lambda x: _return_datetime(x["date"]))
-                    .apply(
-                        lambda x: x.replace([-99.99, -999], pd.NA)
-                        if x.name != "date"
-                        else x
-                    )
+                    # .assign(date=lambda x: _return_datetime(x["date"]))
+                    .apply(lambda x: x.replace([-99.99, -999], pd.NA)
+                           if x.name != "date"
+                           else x
+                           )
                 )
                 raw_data = raw_data[
                     ["date"]
@@ -540,7 +658,7 @@ def download_data_fred(
 
     for s in series:
         urls = [
-            f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
+            # f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
             f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}"
         ]
 
@@ -556,11 +674,13 @@ def download_data_fred(
                     pd.read_csv(pd.io.common.StringIO(response.text))
                     .rename(columns=lambda x: x.lower())
                     .assign(
-                        date=lambda x: pd.to_datetime(x["date"]),
-                        value=lambda x: pd.to_numeric(x["value"],
+                        date=lambda x: pd.to_datetime(x[[c for c in x.columns
+                                                         if "date" in c][0]]),
+                        value=lambda x: pd.to_numeric(x[s.lower()],
                                                       errors="coerce"),
                         series=s,
                     )
+                    .get(["date", "series", "value"])
                 )
 
                 fred_data.append(raw_data)
