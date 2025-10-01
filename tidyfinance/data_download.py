@@ -775,7 +775,7 @@ def download_data_stock_prices(
                 "adjclose"
             ]
 
-            processed_data_symbol = (
+            df_symbol = (
                 pd.DataFrame()
                 .assign(
                     date=pd.to_datetime(
@@ -792,18 +792,28 @@ def download_data_stock_prices(
                 .dropna()
             )
 
-            all_data.append(processed_data_symbol)
+            # Ensure symbol and date are the first columns
+            cols = list(df_symbol.columns)
+            remaining = [c for c in cols if c not in ["symbol", "date"]]
+            ordered_cols = ["symbol", "date"] + remaining
+            df_symbol = df_symbol[ordered_cols]
+
+            all_data.append(df_symbol)
 
         else:
             print(
                 f"Failed to retrieve data for {symbol} (Status code: "
                 f"{response.status_code})"
             )
-
-    all_data = (
-        pd.concat(all_data, ignore_index=True) if all_data else pd.DataFrame()
-    )
-    return all_data
+    if all_data:
+        df_all = pd.concat(all_data, ignore_index=True)
+        cols = list(df_all.columns)
+        remaining = [c for c in cols if c not in ["symbol", "date"]]
+        ordered_cols = ["symbol", "date"] + remaining
+        df_all = df_all[ordered_cols]
+    else:
+        df_all = pd.DataFrame()
+    return df_all
 
 
 def download_data_osap(

@@ -21,7 +21,8 @@ from tidyfinance.data_download import (
     download_data_macro_predictors,
     download_data_osap,
     download_data_stock_prices,
-    download_data_wrds_compustat
+    download_data_wrds_compustat,
+    download_data
 )  # noqa: E402
 
 
@@ -43,6 +44,21 @@ def test_download_data_factors_ff_data_set():
             start_date="2020-01-01",
             end_date="2022-12-01",
         )
+
+
+def test_download_data_column_ordering():
+    df = download_data(
+        domain="stock_prices",
+        symbols="AAPL",
+        start_date="2000-01-01",
+        end_date="2023-12-31"
+    )
+    expected_columns = ['symbol', 'date', 'volume', 'open', 'low', 'high',
+                        'close', 'adjusted_close']
+    assert list(df.columns) == expected_columns, ("Expected columns "
+                                                  f"{expected_columns}, but "
+                                                  f"got {list(df.columns)}"
+                                                  )
 
 
 def test_download_data_factors_q_handles_broken_url():
