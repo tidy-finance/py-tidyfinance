@@ -64,6 +64,20 @@ def _assign_industry(siccd):
         return "Missing"
 
 
+def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
+        """Parse YYYY-MM-DD or YYYYMM into a Timestamp."""
+        if d is None:
+            return None
+        d = str(d)
+        if len(d) == 6 and d.isdigit():  # YYYYMM
+            ts = pd.to_datetime(d, format="%Y%m")
+            if is_end:
+                # Move to last day of the month
+                ts = ts + pd.offsets.MonthEnd(0)
+            return ts.normalize()
+        return pd.to_datetime(d).normalize().date()
+
+
 def _validate_dates(
     start_date: str = None,
     end_date: str = None,
@@ -86,9 +100,9 @@ def _validate_dates(
     tuple
         A tuple containing the validated start and end dates.
     """
-    if start_date is None or end_date is None:
+    if start_date is None and end_date is None:
         if use_default_range:
-            end_date = pd.Timestamp.today()
+            end_date = pd.Timestamp.today().normalize()
             start_date = end_date - pd.DateOffset(years=2)
             print(
                 "No start_date or end_date provided. Using the range "
@@ -97,16 +111,25 @@ def _validate_dates(
             )
             return start_date.date(), end_date.date()
         else:
-            print(
-                "No start_date or end_date provided. Returning the full dataset."
+            print("No start_date or end_date provided. "
+                  "Returning the full dataset."
             )
             return None, None
-    else:
-        start_date = pd.to_datetime(start_date).date()
-        end_date = pd.to_datetime(end_date).date()
-        if start_date > end_date:
-            raise ValueError("start_date cannot be after end_date.")
-        return start_date, end_date
+
+    start_date = _parse_date(start_date, is_end=False) if start_date else None
+    end_date = _parse_date(end_date, is_end=True) if end_date else None
+
+    # If only one date is provided, fill the other sensibly
+    if start_date is None:
+        # If only end_date is given, leave start open
+        return None, end_date
+    if end_date is None:
+        # If only start_date is given, leave end open
+        return start_date, None
+
+    if start_date > end_date:
+        raise ValueError("start_date cannot be after end_date.")
+    return start_date, end_date
 
 
 def _format_cusips(cusips):

@@ -22,7 +22,8 @@ from tidyfinance.data_download import (
     download_data_osap,
     download_data_stock_prices,
     download_data_wrds_compustat,
-)
+    download_data
+)  # noqa: E402
 
 
 def test_download_data_factors_invalid_data_set():
@@ -45,6 +46,21 @@ def test_download_data_factors_ff_data_set():
         )
 
 
+def test_download_data_column_ordering():
+    df = download_data(
+        domain="stock_prices",
+        symbols="AAPL",
+        start_date="2000-01-01",
+        end_date="2023-12-31"
+    )
+    expected_columns = ['symbol', 'date', 'volume', 'open', 'low', 'high',
+                        'close', 'adjusted_close']
+    assert list(df.columns) == expected_columns, ("Expected columns "
+                                                  f"{expected_columns}, but "
+                                                  f"got {list(df.columns)}"
+                                                  )
+
+
 def test_download_data_factors_q_handles_broken_url():
     with pytest.raises(
         ValueError,
@@ -60,7 +76,8 @@ def test_download_data_factors_q_handles_broken_url():
 
 
 def test_download_data_factors_q_handles_start_date_after_end_date():
-    with pytest.raises(ValueError, match="start_date cannot be after end_date"):
+    with pytest.raises(ValueError,
+                       match="start_date cannot be after end_date"):
         download_data_factors(
             domain="factors_q",
             dataset="factors_q5_annual",
@@ -161,7 +178,8 @@ def test_invalid_dataset_parameter():
     """Test that an invalid dataset parameter raises a ValueError."""
     with pytest.raises(
         ValueError,
-        match="Invalid dataset specified. Use 'compustat_annual' or 'compustat_quarterly'.",
+        match=("Invalid dataset specified. Use 'compustat_annual' "
+               "or 'compustat_quarterly'."),
     ):
         download_data_wrds_compustat(dataset="invalid")
 
@@ -181,6 +199,14 @@ def test_download_data_constituents_valid_index():
 
 def test_download_data_factors_ff_valid():
     df = download_data_factors_ff("F-F_Research_Data_5_Factors_2x3_daily")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_breakpoints_valid():
+    df = download_data_factors_ff(dataset="ME_Breakpoints",
+                                  start_date='2010-02-01',
+                                  end_date='2012-02-01')
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 

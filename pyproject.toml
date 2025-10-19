@@ -7,7 +7,7 @@ name = "tidyfinance"
 authors = [{name = "Christoph Frey", email = "christoph.frey@gmail.com"},
 	   {name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"}
            ]
-version = "0.1.2"
+version = "0.2.2"
 description = "Tidy Finance Helper Functions"
 readme = "README.md"
 license = "MIT"
@@ -17,7 +17,6 @@ dependencies = [
     "numpy>=1.26.0",
     "sqlalchemy>=2.0.21",
     "pyyaml>=6.0.2",
-    "pandas-datareader>=0.10.0",
     "statsmodels>=0.14.0",
     "requests>=2.31.0",
     "pyarrow>=19.0.1",
