@@ -211,6 +211,14 @@ def test_download_data_breakpoints_valid():
     assert not df.empty
 
 
+def test_download_data_breakpoints_valid():
+    df = download_data_factors_ff(dataset="ME_Breakpoints",
+                                  start_date='2010-02-01',
+                                  end_date='2012-02-01')
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
 def test_download_data_factors_q_valid():
     df = _download_data_factors_q("q5_factors_monthly")
     assert isinstance(df, pd.DataFrame)
