@@ -76,7 +76,7 @@ def create_wrds_dummy_database(
         print(f"Error downloading the WRDS dummy database: {e}")
 
 
-def get_available_famafrench_datasets():
+def _get_available_famafrench_datasets():
     """
     Get the list of datasets available from the Fama/French data library.
 
@@ -211,7 +211,7 @@ def _download_data_factors(
         raise ValueError("Unsupported domain.")
 
 
-def famafrench_downloader(dataset, start_date=None, end_date=None):
+def _famafrench_downloader(dataset, start_date=None, end_date=None):
     """Download function for famafrench ala pandas_datareader."""
     # urls
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
@@ -297,13 +297,13 @@ def _download_data_factors_ff(
 ) -> pd.DataFrame:
     """Download and process Fama-French factor data."""
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = get_available_famafrench_datasets()
+    all_datasets = _get_available_famafrench_datasets()
     if dataset in all_datasets:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 raw_data = (
-                    famafrench_downloader(
+                    _famafrench_downloader(
                         dataset, start_date=start_date, end_date=end_date
                     )
                     .div(100)
