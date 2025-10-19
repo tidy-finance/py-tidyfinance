@@ -13,22 +13,22 @@ sys.path.insert(
 
 from tidyfinance.data_download import (
     create_wrds_dummy_database,
-    download_data_constituents,
-    download_data_factors,
-    download_data_factors_ff,
-    download_data_factors_q,
-    download_data_fred,
-    download_data_macro_predictors,
-    download_data_osap,
-    download_data_stock_prices,
-    download_data_wrds_compustat,
+    _download_data_constituents,
+    _download_data_factors,
+    _download_data_factors_ff,
+    _download_data_factors_q,
+    _download_data_fred,
+    _download_data_macro_predictors,
+    _download_data_osap,
+    _download_data_stock_prices,
+    _download_data_wrds_compustat,
     download_data
 )  # noqa: E402
 
 
 def test_download_data_factors_invalid_data_set():
     with pytest.raises(ValueError, match="Unsupported domain."):
-        download_data_factors(
+        _download_data_factors(
             domain="invalid_data_set",
             dataset="invalid",
             start_date="2020-01-01",
@@ -38,7 +38,7 @@ def test_download_data_factors_invalid_data_set():
 
 def test_download_data_factors_ff_data_set():
     with pytest.raises(ValueError, match="Unsupported dataset."):
-        download_data_factors(
+        _download_data_factors(
             domain="factors_ff",
             dataset="factors_test",
             start_date="2020-01-01",
@@ -66,7 +66,7 @@ def test_download_data_factors_q_handles_broken_url():
         ValueError,
         match=("No matching dataset found."),
     ):
-        download_data_factors(
+        _download_data_factors(
             domain="factors_q",
             dataset="test",
             start_date="2020-01-01",
@@ -78,7 +78,7 @@ def test_download_data_factors_q_handles_broken_url():
 def test_download_data_factors_q_handles_start_date_after_end_date():
     with pytest.raises(ValueError,
                        match="start_date cannot be after end_date"):
-        download_data_factors(
+        _download_data_factors(
             domain="factors_q",
             dataset="factors_q5_annual",
             start_date="2021-12-31",
@@ -88,27 +88,27 @@ def test_download_data_factors_q_handles_start_date_after_end_date():
 
 def test_download_data_macro_predictors_invalid_dataset():
     with pytest.raises(ValueError, match="Unsupported dataset."):
-        download_data_macro_predictors("invalid_dataset")
+        _download_data_macro_predictors("invalid_dataset")
 
 
 def test_download_data_macro_predictors_invalid_url():
-    df = download_data_macro_predictors("monthly", sheet_id="invalid_sheet_id")
+    df = _download_data_macro_predictors("monthly", sheet_id="invalid_sheet_id")
     assert df.empty, "Expected an empty DataFrame due to download failure."
 
 
 def test_download_data_fred_empty():
-    df = download_data_fred("INVALID_SERIES")
+    df = _download_data_fred("INVALID_SERIES")
     assert df.empty
 
 
 def test_download_data_fred_valid_structure():
-    df = download_data_fred("GDP", "2020-01-01", "2020-12-31")
+    df = _download_data_fred("GDP", "2020-01-01", "2020-12-31")
     assert set(df.columns) == {"date", "value", "series"}
 
 
 def test_download_data_stock_prices_returns_dataframe():
     """Test that the function returns a DataFrame with correct columns."""
-    df = download_data_stock_prices(["AAPL"], "2022-01-01", "2022-02-02")
+    df = _download_data_stock_prices(["AAPL"], "2022-01-01", "2022-02-02")
     expected_columns = {
         "symbol",
         "date",
@@ -126,7 +126,7 @@ def test_download_data_stock_prices_returns_dataframe():
 
 def test_download_data_osap_returns_dataframe():
     """Test that the function returns a DataFrame with correct columns."""
-    df = download_data_osap()
+    df = _download_data_osap()
     assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
     assert not df.empty, "Returned DataFrame should not be empty"
 
@@ -181,56 +181,56 @@ def test_invalid_dataset_parameter():
         match=("Invalid dataset specified. Use 'compustat_annual' "
                "or 'compustat_quarterly'."),
     ):
-        download_data_wrds_compustat(dataset="invalid")
+        _download_data_wrds_compustat(dataset="invalid")
 
 
 def test_download_data_constituents_invalid_index():
     """Test that an invalid index raises a ValueError."""
     with pytest.raises(ValueError):
-        download_data_constituents("INVALID_INDEX")
+        _download_data_constituents("INVALID_INDEX")
 
 
 def test_download_data_constituents_valid_index():
     """Test that valid index works."""
-    df = download_data_constituents("DAX")
+    df = _download_data_constituents("DAX")
     assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
     assert not df.empty, "Returned DataFrame should not be empty"
 
 
 def test_download_data_factors_ff_valid():
-    df = download_data_factors_ff("F-F_Research_Data_5_Factors_2x3_daily")
+    df = _download_data_factors_ff("F-F_Research_Data_5_Factors_2x3_daily")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
 
 def test_download_data_breakpoints_valid():
-    df = download_data_factors_ff(dataset="ME_Breakpoints",
-                                  start_date='2010-02-01',
-                                  end_date='2012-02-01')
+    df = _download_data_factors_ff(dataset="ME_Breakpoints",
+                                   start_date='2010-02-01',
+                                   end_date='2012-02-01')
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
 
 def test_download_data_factors_q_valid():
-    df = download_data_factors_q("q5_factors_monthly")
+    df = _download_data_factors_q("q5_factors_monthly")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
 
 def test_download_data_macro_predictors_valid():
-    df = download_data_macro_predictors("monthly")
+    df = _download_data_macro_predictors("monthly")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
 
 def test_download_data_osap_valid():
-    df = download_data_osap()
+    df = _download_data_osap()
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
 
 def test_download_data_fred_valid():
-    df = download_data_fred(
+    df = _download_data_fred(
         "GDP", start_date="2020-01-01", end_date="2020-12-31"
     )
     assert isinstance(df, pd.DataFrame)
@@ -238,7 +238,7 @@ def test_download_data_fred_valid():
 
 
 def test_download_data_stock_prices_valid():
-    df = download_data_stock_prices(
+    df = _download_data_stock_prices(
         "AAPL", start_date="2020-01-01", end_date="2020-12-31"
     )
     assert isinstance(df, pd.DataFrame)
