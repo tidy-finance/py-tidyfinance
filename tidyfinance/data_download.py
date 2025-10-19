@@ -76,14 +76,14 @@ def create_wrds_dummy_database(
         print(f"Error downloading the WRDS dummy database: {e}")
 
 
-def get_available_famafrench_datasets():
+def _get_available_famafrench_datasets():
     """
     Get the list of datasets available from the Fama/French data library.
 
     Returns
     -------
     datasets: list
-        A list of valid inputs for download_data_factors_ff
+        A list of valid inputs for _download_data_factors_ff
     """
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
     ff_url_prefix = "ftp/"
@@ -143,7 +143,7 @@ def download_data(
         metrics, filtered by the specified date range.
     """
     if "factors" in domain:
-        processed_data = download_data_factors(
+        processed_data = _download_data_factors(
             domain=domain,
             dataset=dataset,
             start_date=start_date,
@@ -151,31 +151,31 @@ def download_data(
             **kwargs,
         )
     elif domain == "macro_predictors":
-        processed_data = download_data_macro_predictors(
+        processed_data = _download_data_macro_predictors(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "wrds":
-        processed_data = download_data_wrds(
+        processed_data = _download_data_wrds(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        processed_data = download_data_constituents(**kwargs)
+        processed_data = _download_data_constituents(**kwargs)
     elif domain == "fred":
-        processed_data = download_data_fred(
+        processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "stock_prices":
-        processed_data = download_data_stock_prices(
+        processed_data = _download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "osap":
-        processed_data = download_data_osap(start_date, end_date, **kwargs)
+        processed_data = _download_data_osap(start_date, end_date, **kwargs)
     else:
         raise ValueError("Unsupported dataset.")
     return processed_data
 
 
-def download_data_factors(
+def _download_data_factors(
     domain: str,
     dataset: str,
     start_date: str = None,
@@ -204,14 +204,14 @@ def download_data_factors(
         filtered by the specified date range.
     """
     if domain == "factors_ff":
-        return download_data_factors_ff(dataset, start_date, end_date)
+        return _download_data_factors_ff(dataset, start_date, end_date)
     elif domain == "factors_q":
-        return download_data_factors_q(dataset, start_date, end_date, **kwargs)
+        return _download_data_factors_q(dataset, start_date, end_date, **kwargs)
     else:
         raise ValueError("Unsupported domain.")
 
 
-def famafrench_downloader(dataset, start_date=None, end_date=None):
+def _famafrench_downloader(dataset, start_date=None, end_date=None):
     """Download function for famafrench ala pandas_datareader."""
     # urls
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
@@ -292,18 +292,18 @@ def famafrench_downloader(dataset, start_date=None, end_date=None):
     return df
 
 
-def download_data_factors_ff(
+def _download_data_factors_ff(
     dataset: str, start_date: str = None, end_date: str = None
 ) -> pd.DataFrame:
     """Download and process Fama-French factor data."""
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = get_available_famafrench_datasets()
+    all_datasets = _get_available_famafrench_datasets()
     if dataset in all_datasets:
         try:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", FutureWarning)
                 raw_data = (
-                    famafrench_downloader(
+                    _famafrench_downloader(
                         dataset, start_date=start_date, end_date=end_date
                     )
                     .div(100)
@@ -334,7 +334,7 @@ def download_data_factors_ff(
         raise ValueError("Unsupported dataset.")
 
 
-def download_data_factors_q(
+def _download_data_factors_q(
     dataset: str,
     start_date: str = None,
     end_date: str = None,
@@ -386,9 +386,10 @@ def download_data_factors_q(
 
         if "monthly" in matched_dataset:
             raw_data = raw_data.assign(
-                date=lambda x: pd.to_datetime(
-                    x["year"].astype(str) + "-" + x["month"].astype(str) + "-01"
-                )
+                date=pd.to_datetime(dict(year=raw_data.year,
+                                         month=raw_data.month,
+                                         day=1)
+                                    )
             ).drop(columns=["year", "month"])
         if "annual" in matched_dataset:
             raw_data = raw_data.assign(
@@ -410,7 +411,7 @@ def download_data_factors_q(
         raise ValueError("No matching dataset found.")
 
 
-def download_data_macro_predictors(
+def _download_data_macro_predictors(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -533,7 +534,7 @@ def download_data_macro_predictors(
     return raw_data
 
 
-def download_data_constituents(index: str) -> pd.DataFrame:
+def _download_data_constituents(index: str) -> pd.DataFrame:
     """
     Download constituent data for a given stock index.
 
@@ -630,7 +631,7 @@ def download_data_constituents(index: str) -> pd.DataFrame:
     return df
 
 
-def download_data_fred(
+def _download_data_fred(
     series: str | list,
     start_date: str = None,
     end_date: str = None,
@@ -705,7 +706,7 @@ def download_data_fred(
     return fred_data
 
 
-def download_data_stock_prices(
+def _download_data_stock_prices(
     symbols: str | list,
     start_date: str = None,
     end_date: str = None,
@@ -816,7 +817,7 @@ def download_data_stock_prices(
     return df_all
 
 
-def download_data_osap(
+def _download_data_osap(
     start_date: str = None,
     end_date: str = None,
     sheet_id: str = "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY",
@@ -868,7 +869,7 @@ def download_data_osap(
     return raw_data
 
 
-def download_data_wrds(
+def _download_data_wrds(
     dataset: str, start_date: str = None, end_date: str = None, **kwargs
 ) -> dict:
     """
@@ -887,24 +888,24 @@ def download_data_wrds(
         dict: A dictionary representing the downloaded data.
     """
     if "crsp" in dataset:
-        return download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
+        return _download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
     elif "compustat" in dataset:
-        return download_data_wrds_compustat(
+        return _download_data_wrds_compustat(
             dataset, start_date, end_date, **kwargs
         )
     elif "ccm_links" in dataset:
-        return download_data_wrds_ccm_links(**kwargs)
+        return _download_data_wrds_ccm_links(**kwargs)
     elif "fisd" in dataset:
-        return download_data_wrds_fisd(**kwargs)
+        return _download_data_wrds_fisd(**kwargs)
     elif "trace_enhanced" in dataset:
-        return download_data_wrds_trace_enhanced(
+        return _download_data_wrds_trace_enhanced(
             start_date=start_date, end_date=end_date, **kwargs
         )
     else:
         raise ValueError("Unsupported dataset.")
 
 
-def download_data_wrds_crsp(
+def _download_data_wrds_crsp(
     dataset: str,
     start_date: str = None,
     end_date: str = None,
@@ -1003,7 +1004,7 @@ def download_data_wrds_crsp(
                 exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
                 industry=lambda x: x["siccd"].apply(_assign_industry),
             )
-            factors_ff3_monthly = download_data_factors_ff(
+            factors_ff3_monthly = _download_data_factors_ff(
                 dataset="F-F_Research_Data_Factors",
                 start_date=start_date,
                 end_date=end_date,
@@ -1066,7 +1067,7 @@ def download_data_wrds_crsp(
                 ).dropna()
 
                 if not crsp_daily_sub.empty:
-                    factors_ff3_daily = download_data_factors_ff(
+                    factors_ff3_daily = _download_data_factors_ff(
                         dataset="F-F_Research_Data_Factors_Daily",
                         start_date=start_date,
                         end_date=end_date,
@@ -1098,7 +1099,7 @@ def download_data_wrds_crsp(
         )
 
 
-def download_data_wrds_ccm_links(
+def _download_data_wrds_ccm_links(
     linktype: list[str] = ["LU", "LC"], linkprim: list[str] = ["P", "C"]
 ) -> pd.DataFrame:
     """
@@ -1139,7 +1140,7 @@ def download_data_wrds_ccm_links(
     return ccm_links
 
 
-def download_data_wrds_compustat(
+def _download_data_wrds_compustat(
     dataset: str,
     start_date: str = None,
     end_date: str = None,
@@ -1297,7 +1298,7 @@ def download_data_wrds_compustat(
     return processed_data
 
 
-def download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
+def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
     """
     Download a filtered subset of the FISD from WRDS.
 
@@ -1387,7 +1388,7 @@ def download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
     return fisd
 
 
-def download_data_wrds_trace_enhanced(
+def _download_data_wrds_trace_enhanced(
     cusips: list, start_date: str = None, end_date: str = None
 ) -> pd.DataFrame:
     """
