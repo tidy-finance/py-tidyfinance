@@ -18,3 +18,9 @@
 - removed `pandas_datareader` package requirements, replaced with `requests` from `curl_cffi` package
 - bug fix fred download
 - added "_" to internal data download function names
+
+## v0.2.3 (2025-11-17)
+
+- removed internal `__download_data_factors` function
+- added `get_available_famafrench_datasets` as a public function
+
