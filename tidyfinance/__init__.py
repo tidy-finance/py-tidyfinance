@@ -7,6 +7,7 @@ from .core import (
 )
 from .data_download import (
     download_data,
+    get_available_famafrench_datasets,
     _download_data_constituents,
     _download_data_factors_ff,
     _download_data_factors_q,
