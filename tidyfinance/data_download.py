@@ -76,7 +76,7 @@ def create_wrds_dummy_database(
         print(f"Error downloading the WRDS dummy database: {e}")
 
 
-def _get_available_famafrench_datasets():
+def get_available_famafrench_datasets():
     """
     Get the list of datasets available from the Fama/French data library.
 
@@ -142,13 +142,13 @@ def download_data(
         A DataFrame with processed data, including dates and relevant financial
         metrics, filtered by the specified date range.
     """
-    if "factors" in domain:
-        processed_data = _download_data_factors(
-            domain=domain,
-            dataset=dataset,
-            start_date=start_date,
-            end_date=end_date,
-            **kwargs,
+    if domain in ["famafrench", "factors_ff"]:
+        processed_data = _download_data_factors_ff(
+            dataset=dataset, start_date=start_date, end_date=end_date
+        )
+    elif domain in ["globalq", 'factors_q']:
+        processed_data = _download_data_factors_q(
+            dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "macro_predictors":
         processed_data = _download_data_macro_predictors(
@@ -159,7 +159,9 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        processed_data = _download_data_constituents(**kwargs)
+        processed_data = _download_data_constituents(
+            **kwargs
+        )
     elif domain == "fred":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
@@ -169,46 +171,12 @@ def download_data(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "osap":
-        processed_data = _download_data_osap(start_date, end_date, **kwargs)
-    else:
-        raise ValueError("Unsupported dataset.")
-    return processed_data
-
-
-def _download_data_factors(
-    domain: str,
-    dataset: str,
-    start_date: str = None,
-    end_date: str = None,
-    **kwargs,
-) -> pd.DataFrame:
-    """
-    Download and process factor data for the specified dataset and date range.
-
-    Parameters
-    ----------
-    domain : str
-        The domain of dataset to download.
-    dataset : str
-        The dataset to download
-    start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
-    end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
-
-    Returns
-    -------
-    pd.DataFrame
-        A DataFrame with processed factor data, including dates,
-        risk-free rates, market excess returns, and other factors,
-        filtered by the specified date range.
-    """
-    if domain == "factors_ff":
-        return _download_data_factors_ff(dataset, start_date, end_date)
-    elif domain == "factors_q":
-        return _download_data_factors_q(dataset, start_date, end_date, **kwargs)
+        processed_data = _download_data_osap(
+            start_date=start_date, end_date=end_date, **kwargs
+        )
     else:
         raise ValueError("Unsupported domain.")
+    return processed_data
 
 
 def _famafrench_downloader(dataset, start_date=None, end_date=None):
@@ -288,8 +256,7 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
             df = df[df.index >= pd.to_datetime(start_date)]
         if end_date:
             df = df[df.index <= pd.to_datetime(end_date)]
-
-    return df
+        return df
 
 
 def _download_data_factors_ff(
@@ -297,7 +264,7 @@ def _download_data_factors_ff(
 ) -> pd.DataFrame:
     """Download and process Fama-French factor data."""
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = _get_available_famafrench_datasets()
+    all_datasets = get_available_famafrench_datasets()
     if dataset in all_datasets:
         try:
             with warnings.catch_warnings():

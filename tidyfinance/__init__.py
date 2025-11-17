@@ -8,7 +8,6 @@ from .core import (
 from .data_download import (
     download_data,
     _download_data_constituents,
-    _download_data_factors,
     _download_data_factors_ff,
     _download_data_factors_q,
     _download_data_macro_predictors,
@@ -28,7 +27,7 @@ from .utilities import (
 
 __all__ = [
     "download_data",
-    "_download_data_factors",
+    "get_available_famafrench_datasets",
     "_download_data_factors_ff",
     "_download_data_factors_q",
     "_download_data_macro_predictors",

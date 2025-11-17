@@ -14,7 +14,6 @@ sys.path.insert(
 from tidyfinance.data_download import (
     create_wrds_dummy_database,
     _download_data_constituents,
-    _download_data_factors,
     _download_data_factors_ff,
     _download_data_factors_q,
     _download_data_fred,
@@ -28,7 +27,7 @@ from tidyfinance.data_download import (
 
 def test_download_data_factors_invalid_data_set():
     with pytest.raises(ValueError, match="Unsupported domain."):
-        _download_data_factors(
+        download_data(
             domain="invalid_data_set",
             dataset="invalid",
             start_date="2020-01-01",
@@ -38,7 +37,7 @@ def test_download_data_factors_invalid_data_set():
 
 def test_download_data_factors_ff_data_set():
     with pytest.raises(ValueError, match="Unsupported dataset."):
-        _download_data_factors(
+        download_data(
             domain="factors_ff",
             dataset="factors_test",
             start_date="2020-01-01",
@@ -66,7 +65,7 @@ def test_download_data_factors_q_handles_broken_url():
         ValueError,
         match=("No matching dataset found."),
     ):
-        _download_data_factors(
+        download_data(
             domain="factors_q",
             dataset="test",
             start_date="2020-01-01",
@@ -78,7 +77,7 @@ def test_download_data_factors_q_handles_broken_url():
 def test_download_data_factors_q_handles_start_date_after_end_date():
     with pytest.raises(ValueError,
                        match="start_date cannot be after end_date"):
-        _download_data_factors(
+        download_data(
             domain="factors_q",
             dataset="factors_q5_annual",
             start_date="2021-12-31",
