@@ -6,8 +6,6 @@ from .core import (
     estimate_fama_macbeth,
 )
 from .data_download import (
-    download_data,
-    get_available_famafrench_datasets,
     _download_data_constituents,
     _download_data_factors_ff,
     _download_data_factors_q,
@@ -15,6 +13,8 @@ from .data_download import (
     _download_data_osap,
     _download_data_stock_prices,
     _download_data_wrds,
+    download_data,
+    get_available_famafrench_datasets,
 )
 from .utilities import (
     get_wrds_connection,

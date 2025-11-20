@@ -27,3 +27,6 @@
 
 - added `get_available_famafrench_datasets` as a public function
 
+## v0.2.5 (2025-11-20)
+
+- fix date for monthly data in `_download_data_factors_ff`
