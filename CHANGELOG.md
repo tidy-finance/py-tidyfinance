@@ -27,3 +27,6 @@
 
 - added `get_available_famafrench_datasets` as a public function
 
+## v0.2.5 (2026-04-02)
+
+- Added support for Hugging Face datasets via `domain="tidyfinance"`, including `high_frequency_sp500` and `factor_library`

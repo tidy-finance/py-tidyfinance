@@ -165,6 +165,23 @@ tf.download_data(
 )
 ```
 
+To download high-frequency S&P 500 data or factor library data from Hugging Face:
+
+```python
+tf.download_data(
+  domain="tidyfinance",
+  dataset="high_frequency_sp500",
+  start_date="2007-07-26",
+  end_date="2007-07-27"
+)
+
+tf.download_data(
+  domain="tidyfinance",
+  dataset="factor_library",
+  sorting_variable="me"
+)
+```
+
 ## Other Helpers
 
 We include functions to check out content from tidy-finance.org:

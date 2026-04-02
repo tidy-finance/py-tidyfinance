@@ -1,5 +1,6 @@
 """Data download and retrieval module for tidyfinance."""
 
+# %% libraries
 import io
 import os
 import warnings
@@ -10,6 +11,8 @@ from curl_cffi import requests
 from sqlalchemy import text
 import zipfile
 import re
+from huggingface_hub import HfApi, hf_hub_download
+from datetime import date
 
 from ._internal import (
     _assign_exchange,
@@ -25,6 +28,33 @@ from .utilities import (
     list_supported_indexes,
     process_trace_data,
 )
+
+# %% constant
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+_SUPPORTED_DATASETS_HF = ("high_frequency_sp500", "factor_library")
+
+_FACTOR_LIBRARY_DEFAULTS = {
+    "exclude_size": 0.2,
+    "exclude_financials": False,
+    "exclude_utilities": False,
+    "exclude_negative_earnings": False,
+    "sorting_variable_lag": "6m",
+    "rebalancing": "monthly",
+    "breakpoints_main": 10,
+    "sorting_method": "univariate",
+    "breakpoints_secondary": None,
+    "breakpoints_exchanges": "NYSE",
+    "weighting_scheme": "VW",
+}
+
+_FACTOR_LIBRARY_SUPPORTED_FILTERS = (
+    "sorting_variable",
+    *_FACTOR_LIBRARY_DEFAULTS.keys(),
+)
+
+# %% functions
 
 
 def create_wrds_dummy_database(
@@ -173,6 +203,10 @@ def download_data(
     elif domain == "osap":
         processed_data = _download_data_osap(
             start_date=start_date, end_date=end_date, **kwargs
+        )
+    elif domain == "tidyfinance":
+        processed_data = download_data_huggingface(
+            dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     else:
         raise ValueError("Unsupported domain.")
@@ -1406,3 +1440,371 @@ def _download_data_wrds_trace_enhanced(
     trace_enhanced = process_trace_data(trace_enhanced_raw)
 
     return trace_enhanced
+
+# %% hugging face functions for tidy finance data
+
+
+def _get_available_huggingface_files(
+    organization: str, dataset: str
+) -> pd.DataFrame:
+    """List parquet files available in a Hugging Face dataset repository.
+
+    Uses ''HfApi.list_repo_tree'' to enumerate all files recursively,
+    handling pagination automatically. Returns only files with a ''.parquet''
+    suffix.
+
+    Parameters
+    ----------
+        organization: Hugging Face organization or user name.
+        dataset: Dataset repository name under the organization.
+
+    Returns
+    -------
+        pd.DataFrame: DataFrame with columns ''path'' (str) and ''size'' (int).
+    """
+    repo_id = f"{organization}/{dataset}"
+    api = HfApi()
+
+    rows = [
+        {"path": entry.path, "size": entry.size}
+        for entry in api.list_repo_tree(
+            repo_id=repo_id,
+            repo_type="dataset",
+            recursive=True,
+        )
+        if hasattr(entry, "size") and entry.path.endswith(".parquet")
+    ]
+
+    return pd.DataFrame(rows, columns=["path", "size"])
+
+
+def _filter_factor_library_grid(
+    fill_all: bool = False, **filters
+) -> list:
+    """
+    Filter the factor-library grid and return matching portfolio IDs.
+
+    Downloads the 'tidy-finance/factor-library-grid' dataset from Hugging
+    Face and filters it by the provided column-value pairs. Columns not
+    explicitly specified are held at sensible defaults when 'fill_all=False'.
+
+    Parameters
+    ----------
+    fill_all : bool, optional
+        If 'False' (default), columns absent from 'filters' are set to
+        their defaults before filtering. If 'True', only the explicitly
+        provided filters are applied and all other columns are left
+        unrestricted.
+    **filters : dict
+        Named arguments of the form 'column=value' used to filter the
+        grid. Each value may be a scalar or a list/tuple to match multiple
+        levels. Supported columns and their defaults are:
+
+        - 'sorting_variable': no default, required.
+        - 'exclude_size': 0.2
+        - 'exclude_financials': False
+        - 'exclude_utilities': False
+        - 'exclude_negative_earnings': False
+        - 'sorting_variable_lag': "6m"
+        - 'rebalancing': "monthly"
+        - 'breakpoints_main': 10
+        - 'sorting_method': "univariate"
+        - 'breakpoints_secondary': None
+        - 'breakpoints_exchanges': "NYSE"
+        - 'weighting_scheme': "VW"
+
+    Returns
+    -------
+    list
+        Integer portfolio IDs matching the specified criteria. Returns an
+        empty list when no rows satisfy the filters.
+
+    Raises
+    ------
+    ValueError
+        If an unrecognised filter name is provided.
+    """
+    unsupported = set(filters) - set(_FACTOR_LIBRARY_SUPPORTED_FILTERS)
+    if unsupported:
+        raise ValueError(
+            f"Unsupported filter name(s): {sorted(unsupported)}. "
+            f"Supported filters: {list(_FACTOR_LIBRARY_SUPPORTED_FILTERS)}."
+        )
+
+    if not fill_all:
+        filters = {**_FACTOR_LIBRARY_DEFAULTS, **filters}
+
+    available = _get_available_huggingface_files(
+        "tidy-finance", "factor-library-grid"
+    )
+    grid_path = available["path"].iloc[0]
+    local_path = hf_hub_download(
+        repo_id="tidy-finance/factor-library-grid",
+        filename=grid_path,
+        repo_type="dataset",
+    )
+    grid = (pd.read_parquet(local_path)
+            .assign(sorting_variable=lambda x:
+                    x["sorting_variable"].str.replace(r"^sv_", "", regex=True)
+                    )
+            )
+    for col, value in filters.items():
+        values = value if isinstance(value, (list, tuple)) else [value]
+        if values == [None]:
+            grid = grid.loc[grid[col].isna()]
+        else:
+            grid = grid.loc[grid[col].isin(values)]
+    return grid["id"].tolist()
+
+
+def _download_factor_library_ids(
+    ids: list
+) -> pd.DataFrame:
+    """
+    Download factor-library returns for a list of portfolio IDs.
+
+    Identifies the unique ''(sorting_variable, sorting_variable_lag)''
+    combinations for the requested IDs, downloads one parquet file per
+    combination, inner-joins to retain only the requested IDs, and appends
+    grid metadata.
+
+    Parameters
+    ----------
+    ids : list
+        Portfolio IDs to download, as returned by
+        ''_filter_factor_library_grid''.
+
+    Returns
+    -------
+    pd.DataFrame
+        Portfolio returns with grid metadata columns appended.
+
+    Raises
+    ------
+    ValueError
+        If ''ids'' is empty, or if any ID cannot be matched to a parquet
+        file in the factor library.
+    """
+    if not ids:
+        raise ValueError(
+            "No portfolio IDs provided. "
+            "Check that your filter criteria match at least one portfolio."
+        )
+
+    organization = "tidy-finance"
+    dataset_name = "factor-library"
+
+    path_pattern = re.compile(
+        r"sorting_variable=([^/]+)/sorting_variable_lag=([^/]+)/"
+    )
+    available_files = _get_available_huggingface_files(
+        organization, dataset_name
+        )
+
+    def _extract_keys(path: str) -> tuple:
+        m = path_pattern.search(path)
+        return (m.group(1), m.group(2)) if m else (None, None)
+
+    available_files[["sorting_variable", "sorting_variable_lag"]] = (
+        pd.DataFrame(
+            available_files["path"].apply(_extract_keys).tolist(),
+            index=available_files.index,
+            )
+        )
+
+    grid_files = _get_available_huggingface_files(
+        "tidy-finance", "factor-library-grid"
+        )
+    grid_path = grid_files["path"].iloc[0]
+    local_path = hf_hub_download(
+        repo_id="tidy-finance/factor-library-grid",
+        filename=grid_path,
+        repo_type="dataset",
+    )
+    grid = (pd.read_parquet(local_path)
+            .assign(sorting_variable=lambda x:
+                    x["sorting_variable"].str.replace(r"^sv_", "", regex=True)
+                    )
+            )
+
+    id_grid = grid.loc[grid["id"].isin(ids)].merge(
+        available_files[["sorting_variable", "sorting_variable_lag", "path"]],
+        on=["sorting_variable", "sorting_variable_lag"],
+        how="left",
+    )
+
+    missing = id_grid.loc[id_grid["path"].isna()]
+    if not missing.empty:
+        missing_keys = [f"id={row.id} ({row.sorting_variable} / "
+                        f"{row.sorting_variable_lag})"
+                        for row in missing.itertuples()
+                        ]
+        raise ValueError(
+            f"No parquet file found for {len(missing_keys)} portfolio ID(s): "
+            f"{missing_keys}. Check that the sorting_variable and "
+            "sorting_variable_lag values exist in the factor library."
+        )
+
+    unique_paths = id_grid["path"].dropna().unique()
+    returns = pd.concat(
+        [
+            pd.read_parquet(
+                hf_hub_download(
+                    repo_id=f"{organization}/{dataset_name}",
+                    filename=path,
+                    repo_type="dataset",
+                )
+            )
+            for path in unique_paths
+        ],
+        ignore_index=True,
+    )
+
+    meta_cols = [c for c in id_grid.columns if c not in ("path", "size")]
+    return returns.merge(
+        id_grid[meta_cols].drop_duplicates("id"),
+        on="id",
+        how="inner",
+    )
+
+
+def _download_data_hugging_face_factor_library(
+    fill_all: bool = False, **filters
+) -> pd.DataFrame:
+    """
+    Download factor library data from Hugging Face.
+
+    Thin wrapper that combines ''_filter_factor_library_grid'' and
+    ''_download_factor_library_ids'': resolves matching portfolio IDs from
+    the grid and then downloads the corresponding return data.
+
+    Parameters
+    ----------
+    fill_all : bool, optional
+        Forwarded to ''_filter_factor_library_grid''. When ''True'',
+        columns not specified in ''filters'' are left unrestricted rather
+        than set to their defaults.
+    **filters : dict
+        Named filter arguments forwarded to
+        ''_filter_factor_library_grid''. See that function for the full
+        list of supported columns and their defaults.
+
+    Returns
+    -------
+    pd.DataFrame
+        Portfolio returns with grid metadata columns appended, one row per
+        portfolio-period observation for the matched IDs.
+    """
+    ids = _filter_factor_library_grid(fill_all=fill_all, **filters)
+    return _download_factor_library_ids(ids)
+
+
+def _download_data_huggingface(
+    dataset: str = None,
+    start_date: str | date = "2007-06-27",
+    end_date: str | date = "2007-07-27",
+    **kwargs,
+) -> pd.DataFrame:
+    """
+    Download data from a supported Hugging Face dataset.
+
+    For dataset="high_frequency_sp500", parquet files are filtered by
+    date range and concatenated. For dataset="factor_library", portfolio
+    characteristics are selected via keyword arguments and the matching
+    return data is downloaded. Files are cached locally by
+    'hf_hub_download' so repeated calls do not re-download from the Hub.
+
+    Parameters
+    ----------
+    dataset : str
+        The dataset to download. Supported values are
+        'high_frequency_sp500' and 'factor_library'.
+    start_date : str or date, optional
+        Start date (inclusive) in 'YYYY-MM-DD' format. Only used for
+        'high_frequency_sp500'. Defaults to '2007-06-27'.
+    end_date : str or date, optional
+        End date (inclusive) in 'YYYY-MM-DD' format. Only used for
+        'high_frequency_sp500'. Defaults to '2007-07-27'.
+    **kwargs : dict
+        For 'dataset="factor_library"': named arguments used to filter
+        the portfolio grid (e.g. 'sorting_variable="me"'). Pass
+        'fill_all=True' to leave unspecified columns unrestricted
+        (default: 'False'). Passing an unrecognised column name raises a
+        'ValueError'. Ignored when 'dataset != "factor_library"'.
+
+    Returns
+    -------
+    pd.DataFrame
+        For 'high_frequency_sp500', contains 5-second aggregated
+        order-book snapshots filtered to the requested date range. For
+        'factor_library', contains portfolio return data joined with
+        full grid metadata for the matched portfolio IDs.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset' is 'None', unsupported, or if invalid filter
+        names are passed for the factor library.
+    """
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
+    if dataset.startswith("hf_"):
+        warnings.warn(
+            "Passing a dataset name with the 'hf_' prefix is deprecated as of "
+            "version 0.5.0. Use 'dataset' without the prefix instead "
+            "(e.g. high_frequency_sp500 instead of hf_high_frequency_sp500).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = dataset[len("hf_"):]
+
+    if dataset not in _SUPPORTED_DATASETS_HF:
+        raise ValueError(
+            f"Unsupported Hugging Face dataset: '{dataset}'. "
+            f"Supported datasets: {_SUPPORTED_DATASETS_HF}."
+        )
+
+    if dataset == "high_frequency_sp500":
+        organization = "voigtstefan"
+        dataset_name = "sp500"
+
+        date_pattern = re.compile(r"date=(\d{4}-\d{2}-\d{2})")
+        available_files = _get_available_huggingface_files(
+            organization, dataset_name
+            )
+        available_files["date"] = pd.to_datetime(
+            available_files["path"].str.extract(date_pattern, expand=False),
+            format="%Y-%m-%d",
+        ).dt.date
+
+        requested_dates = set(
+            pd.date_range(start=str(start_date),
+                          end=str(end_date), freq="D"
+                          ).date
+        )
+        files_to_download = available_files.loc[
+            available_files["date"].isin(requested_dates)
+        ]
+
+        if files_to_download.empty:
+            return pd.DataFrame()
+
+        return pd.concat(
+            [
+                pd.read_parquet(
+                    hf_hub_download(
+                        repo_id=f"{organization}/{dataset_name}",
+                        filename=path,
+                        repo_type="dataset",
+                    )
+                )
+                for path in files_to_download["path"]
+            ],
+            ignore_index=True,
+        )
+
+    if dataset == "factor_library":
+        return _download_data_hugging_face_factor_library(**kwargs)
+
+    raise ValueError(f"Unsupported dataset: '{dataset}'.")

@@ -21,7 +21,10 @@ from tidyfinance.data_download import (
     _download_data_osap,
     _download_data_stock_prices,
     _download_data_wrds_compustat,
-    download_data
+    _download_data_huggingface,
+    _download_factor_library_ids,
+    _filter_factor_library_grid,
+    download_data,
 )  # noqa: E402
 
 
@@ -210,20 +213,6 @@ def test_download_data_breakpoints_valid():
     assert not df.empty
 
 
-def test_download_data_breakpoints_valid():
-    df = _download_data_factors_ff(dataset="ME_Breakpoints",
-                                   start_date='2010-02-01',
-                                   end_date='2012-02-01')
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-
-
-def test_download_data_factors_q_valid():
-    df = _download_data_factors_q("q5_factors_monthly")
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-
-
 def test_download_data_macro_predictors_valid():
     df = _download_data_macro_predictors("monthly")
     assert isinstance(df, pd.DataFrame)
@@ -247,6 +236,66 @@ def test_download_data_fred_valid():
 def test_download_data_stock_prices_valid():
     df = _download_data_stock_prices(
         "AAPL", start_date="2020-01-01", end_date="2020-12-31"
+    )
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_huggingface_missing_dataset():
+    with pytest.raises(ValueError, match="'dataset' is required"):
+        _download_data_huggingface(dataset=None)
+
+
+def test_download_data_huggingface_unsupported_dataset():
+    with pytest.raises(ValueError, match="Unsupported Hugging Face dataset"):
+        _download_data_huggingface(dataset="not_a_dataset")
+
+
+def test_filter_factor_library_grid_unsupported_filter():
+    with pytest.raises(ValueError, match="Unsupported filter name"):
+        _filter_factor_library_grid(not_a_column="x")
+
+
+def test_download_factor_library_ids_empty_ids():
+    with pytest.raises(ValueError, match="No portfolio IDs provided"):
+        _download_factor_library_ids([])
+
+
+def test_download_data_huggingface_factor_library_valid():
+    df = _download_data_huggingface(
+        dataset="factor_library", sorting_variable="me"
+    )
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+    assert "id" in df.columns
+
+
+def test_download_data_huggingface_high_frequency_sp500_valid():
+    df = _download_data_huggingface(
+        dataset="high_frequency_sp500",
+        start_date="2007-07-26",
+        end_date="2007-07-27",
+    )
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_huggingface_high_frequency_sp500_empty_date_range():
+    df = _download_data_huggingface(
+        dataset="high_frequency_sp500",
+        start_date="2000-01-01",
+        end_date="2000-01-02",
+    )
+    assert isinstance(df, pd.DataFrame)
+    assert df.empty
+
+
+def test_download_data_tidyfinance_domain():
+    df = download_data(
+        domain="tidyfinance",
+        dataset="high_frequency_sp500",
+        start_date="2007-07-26",
+        end_date="2007-07-27",
     )
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
