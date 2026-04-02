@@ -15,7 +15,7 @@ from tidyfinance.data_download import (
     create_wrds_dummy_database,
     _download_data_constituents,
     _download_data_factors_ff,
-    _download_data_factors_q,
+    # _download_data_factors_q,
     _download_data_fred,
     _download_data_macro_predictors,
     _download_data_osap,
@@ -94,7 +94,8 @@ def test_download_data_macro_predictors_invalid_dataset():
 
 
 def test_download_data_macro_predictors_invalid_url():
-    df = _download_data_macro_predictors("monthly", sheet_id="invalid_sheet_id")
+    df = _download_data_macro_predictors("monthly",
+                                         sheet_id="invalid_sheet_id")
     assert df.empty, "Expected an empty DataFrame due to download failure."
 
 

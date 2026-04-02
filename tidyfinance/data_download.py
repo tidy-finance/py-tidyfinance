@@ -672,7 +672,9 @@ def _download_data_fred(
 
         for url in urls:
             try:
-                response = requests.get(url, headers=headers)
+                response = requests.get(url,
+                                        impersonate="chrome120",
+                                        headers=headers)
                 response.raise_for_status()
 
                 raw_data = (
