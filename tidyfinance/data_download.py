@@ -3,7 +3,9 @@
 # %% libraries
 import io
 import os
+import re
 import warnings
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -132,13 +134,15 @@ def get_available_famafrench_datasets():
     datasets = [
         e.attrib["href"] for e in root.findall(".//a") if "href" in e.attrib
     ]
-    datasets = [dataset_i for dataset_i in datasets
-                if dataset_i.startswith(ff_url_prefix)
-                and dataset_i.endswith(ff_url_suffix)
-                ]
-    datasets_list = list(map(lambda x:
-                             x[len(ff_url_prefix): -len(ff_url_suffix)],
-                             datasets))
+    datasets = [
+        dataset_i
+        for dataset_i in datasets
+        if dataset_i.startswith(ff_url_prefix)
+        and dataset_i.endswith(ff_url_suffix)
+    ]
+    datasets_list = list(
+        map(lambda x: x[len(ff_url_prefix) : -len(ff_url_suffix)], datasets)
+    )
     return datasets_list
 
 
@@ -176,7 +180,7 @@ def download_data(
         processed_data = _download_data_factors_ff(
             dataset=dataset, start_date=start_date, end_date=end_date
         )
-    elif domain in ["globalq", 'factors_q']:
+    elif domain in ["globalq", "factors_q"]:
         processed_data = _download_data_factors_q(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
@@ -189,9 +193,7 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        processed_data = _download_data_constituents(
-            **kwargs
-        )
+        processed_data = _download_data_constituents(**kwargs)
     elif domain == "fred":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
@@ -269,9 +271,7 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
             elif (s.str.len() == 6).all():
                 fmt, add, freq = "%Y%m%d", "01", "M"
                 s_dt = [f"{i}01" for i in s]
-                dt = (pd.to_datetime(s_dt, format="%Y%m%d", errors="coerce")
-                      + pd.offsets.MonthEnd(0)
-                      )
+                dt = pd.to_datetime(s_dt, format="%Y%m%d", errors="coerce")
             elif (s.str.len() == 4).all():
                 fmt, add, freq = "%Y%m%d", "0101", "A-DEC"
                 s_dt = [f"{i}0101" for i in s]
@@ -314,14 +314,16 @@ def _download_data_factors_ff(
                             x.lower()
                             .replace("-rf", "_excess")
                             .replace("rf", "risk_free")
-                            if isinstance(x, str) else x
-                            )
+                            if isinstance(x, str)
+                            else x
+                        )
                     )
                     # .assign(date=lambda x: _return_datetime(x["date"]))
-                    .apply(lambda x: x.replace([-99.99, -999], pd.NA)
-                           if x.name != "date"
-                           else x
-                           )
+                    .apply(
+                        lambda x: x.replace([-99.99, -999], pd.NA)
+                        if x.name != "date"
+                        else x
+                    )
                 )
                 raw_data = raw_data[
                     ["date"]
@@ -377,20 +379,20 @@ def _download_data_factors_q(
 
     if matched_dataset:
         raw_data = (
-            pd.read_csv(f"{url}{matched_dataset}.csv",
-                        engine="python",
-                        on_bad_lines="skip"
-                        )
+            pd.read_csv(
+                f"{url}{matched_dataset}.csv",
+                engine="python",
+                on_bad_lines="skip",
+            )
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
 
         if "monthly" in matched_dataset:
             raw_data = raw_data.assign(
-                date=pd.to_datetime(dict(year=raw_data.year,
-                                         month=raw_data.month,
-                                         day=1)
-                                    )
+                date=pd.to_datetime(
+                    dict(year=raw_data.year, month=raw_data.month, day=1)
+                )
             ).drop(columns=["year", "month"])
         if "annual" in matched_dataset:
             raw_data = raw_data.assign(
@@ -566,8 +568,7 @@ def _download_data_constituents(index: str) -> pd.DataFrame:
 
     headers = {"User-Agent": _get_random_user_agent()}
     try:
-        response = requests.get(url, impersonate="chrome120",
-                                headers=headers)
+        response = requests.get(url, impersonate="chrome120", headers=headers)
     except Exception:
         response = requests.get(url, impersonate="chrome120")
 
@@ -670,7 +671,6 @@ def _download_data_fred(
         headers = {"User-Agent": _get_random_user_agent()}
 
         for url in urls:
-
             try:
                 response = requests.get(url, headers=headers)
                 response.raise_for_status()
@@ -679,10 +679,12 @@ def _download_data_fred(
                     pd.read_csv(pd.io.common.StringIO(response.text))
                     .rename(columns=lambda x: x.lower())
                     .assign(
-                        date=lambda x: pd.to_datetime(x[[c for c in x.columns
-                                  if "date" in c][0]]),
-                        value=lambda x: pd.to_numeric(x[s.lower()],
-                                                      errors="coerce"),
+                        date=lambda x: pd.to_datetime(
+                            x[[c for c in x.columns if "date" in c][0]]
+                        ),
+                        value=lambda x: pd.to_numeric(
+                            x[s.lower()], errors="coerce"
+                        ),
                         series=s,
                     )
                     .get(["date", "series", "value"])
@@ -692,17 +694,16 @@ def _download_data_fred(
                 break  # exit the loop on successful load
             except Exception as e:
                 print(f"Failed to retrieve data for series {s}: {e}")
-                fred_data.append(pd.DataFrame(
-                    columns=["date", "value", "series"])
-                    )
+                fred_data.append(
+                    pd.DataFrame(columns=["date", "value", "series"])
+                )
 
     fred_data = pd.concat(fred_data, ignore_index=True)
 
     if start_date and end_date:
-        fred_data = (fred_data
-                     .query("@start_date <= date <= @end_date")
-                     .reset_index(drop=True)
-                     )
+        fred_data = fred_data.query(
+            "@start_date <= date <= @end_date"
+        ).reset_index(drop=True)
 
     return fred_data
 
@@ -759,8 +760,9 @@ def _download_data_stock_prices(
 
         headers = {"User-Agent": _get_random_user_agent()}
         try:
-            response = requests.get(url, impersonate="chrome120",
-                                    headers=headers)
+            response = requests.get(
+                url, impersonate="chrome120", headers=headers
+            )
         except Exception:
             response = requests.get(url, impersonate="chrome120")
 
@@ -1033,7 +1035,7 @@ def _download_data_wrds_crsp(
 
             for j in range(1, batches + 1):
                 permno_batch = permnos[
-                    ((j - 1) * batch_size): (min(j*batch_size, len(permnos)))
+                    ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
                 ]
                 permno_batch_formatted = ", ".join(
                     f"'{permno}'" for permno in permno_batch
@@ -1133,8 +1135,7 @@ def _download_data_wrds_ccm_links(
 
     ccm_links = pd.read_sql(query, conn)
 
-    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp
-                                                           .today())
+    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp.today())
 
     disconnect_connection(conn)
 
@@ -1202,7 +1203,7 @@ def _download_data_wrds_compustat(
                     x["seq"]
                     .combine_first(x["ceq"] + x["pstk"])
                     .combine_first(x["at"] - x["lt"])
-                    + x["txditc"].combine_first(x["txdb"]+x["itcb"]).fillna(0)
+                    + x["txditc"].combine_first(x["txdb"] + x["itcb"]).fillna(0)
                     - x["pstkrv"]
                     .combine_first(x["pstkl"])
                     .combine_first(x["pstk"])
