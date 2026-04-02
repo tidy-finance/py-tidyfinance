@@ -205,7 +205,7 @@ def download_data(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "tidyfinance":
-        processed_data = download_data_huggingface(
+        processed_data = _download_data_huggingface(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     else:
