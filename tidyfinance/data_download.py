@@ -1756,8 +1756,8 @@ def _download_data_huggingface(
 
     if dataset.startswith("hf_"):
         warnings.warn(
-            "Passing a dataset name with the 'hf_' prefix is deprecated as of "
-            "version 0.5.0. Use 'dataset' without the prefix instead "
+            "Passing a dataset name with the 'hf_' prefix is deprecated. "
+            "Use 'dataset' without the prefix instead "
             "(e.g. high_frequency_sp500 instead of hf_high_frequency_sp500).",
             DeprecationWarning,
             stacklevel=2,
