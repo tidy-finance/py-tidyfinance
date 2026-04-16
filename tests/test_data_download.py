@@ -15,7 +15,6 @@ from tidyfinance.data_download import (
     create_wrds_dummy_database,
     _download_data_constituents,
     _download_data_factors_ff,
-    # _download_data_factors_q,
     _download_data_fred,
     _download_data_macro_predictors,
     _download_data_osap,
