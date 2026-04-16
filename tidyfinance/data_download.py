@@ -42,12 +42,14 @@ def create_wrds_dummy_database(
 
     Parameters
     ----------
-        path (str): The file path where the SQLite database should be saved.
-        url (str, optional): The URL where the SQLite database is stored.
+    path : str
+        The file path where the SQLite database should be saved.
+    url : str, optional
+        The URL where the SQLite database is stored.
 
     Returns
     -------
-        None: Side effect - downloads a file to the specified path.
+    None
     """
     if not path:
         raise ValueError(
@@ -82,8 +84,8 @@ def get_available_famafrench_datasets():
 
     Returns
     -------
-    datasets: list
-        A list of valid inputs for _download_data_factors_ff
+    list
+        A list of valid dataset names for use with download_data_factors_ff.
     """
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
     ff_url_prefix = "ftp/"
@@ -127,22 +129,26 @@ def download_data(
     Parameters
     ----------
     domain : str
-        The domain of the dataset to download.
+        The domain of the dataset to download (e.g., "famafrench",
+        "globalq", "macro_predictors", "wrds", "constituents", "fred",
+        "stock_prices", "osap").
     dataset : str, optional
-        The dataset to download.
+        The specific dataset within the domain to download.
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
-    **kwargs : dict
-        Additional arguments passed to specific download functions depending
-        on the domain and dataset.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
+    **kwargs
+        Additional arguments passed to the domain-specific download
+        function.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed data, including dates and relevant financial
-        metrics, filtered by the specified date range.
+        A data frame with processed data, including dates and relevant
+        financial metrics, filtered by the specified date range.
     """
     if domain in ["famafrench", "factors_ff"]:
         processed_data = _download_data_factors_ff(
@@ -260,7 +266,33 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
 def _download_data_factors_ff(
     dataset: str, start_date: str = None, end_date: str = None
 ) -> pd.DataFrame:
-    """Download and process Fama-French factor data."""
+    """
+    Download and process Fama-French factor data.
+
+    Downloads and processes Fama-French factor data based on the
+    specified dataset name and date range. It processes the raw data
+    into a structured format, including date conversion, scaling factor
+    values, and filtering by the specified date range.
+
+    Parameters
+    ----------
+    dataset : str
+        The name of the Fama-French dataset to download
+        (e.g., "Fama/French 3 Factors").
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame with processed factor data, including the date,
+        risk-free rate, market excess return, and other factors,
+        filtered by the specified date range.
+    """
     start_date, end_date = _validate_dates(start_date, end_date)
     all_datasets = get_available_famafrench_datasets()
     if dataset in all_datasets:
@@ -397,19 +429,22 @@ def _download_data_macro_predictors(
     Parameters
     ----------
     dataset : str
-        The dataset to download ("monthly", "quarterly", "annual")
+        The dataset to download. Accepts "monthly", "quarterly", or
+        "annual".
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
     sheet_id : str, optional
         The Google Sheets ID from which to download the dataset.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed data, including financial metrics, filtered
-        by the specified date range.
+        A data frame with processed data, including financial metrics,
+        filtered by the specified date range.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -514,11 +549,14 @@ def _download_data_constituents(index: str) -> pd.DataFrame:
 
     Parameters
     ----------
-        index (str): The name of the stock index to download data for.
+    index : str
+        The name of the stock index to download data for. Must match
+        a supported index from list_supported_indexes().
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing the processed constituent data.
+    pd.DataFrame
+        A data frame containing the processed constituent data.
     """
     symbol_blacklist = {"", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
     supported_indexes = list_supported_indexes()
@@ -615,16 +653,19 @@ def _download_data_fred(
     Parameters
     ----------
     series : str or list
-        A list of FRED series IDs to download.
+        A string or list of FRED series IDs to download (e.g.,
+        "DGS10").
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed data, including the date, value,
+        A data frame with processed data, including the date, value,
         and series ID, filtered by the specified date range.
     """
     if isinstance(series, str):
@@ -689,19 +730,21 @@ def _download_data_stock_prices(
 
     Parameters
     ----------
-    symbols : list
-        A list of stock symbols to download data for.
+    symbols : str or list
+        A string or list of stock ticker symbols to download data for.
         At least one symbol must be provided.
     start_date : str, optional
-        Start date in "YYYY-MM-DD" format. Defaults to "2000-01-01".
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        End date in "YYYY-MM-DD" format. Defaults to today's date.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame containing columns: symbol, date, volume, open, low,
-        high, close, adjusted_close.
+        A data frame containing columns: symbol, date, volume, open,
+        low, high, close, adjusted_close.
     """
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -802,18 +845,19 @@ def _download_data_osap(
     Parameters
     ----------
     start_date : str, optional
-        Start date in "YYYY-MM-DD" format. If None, full dataset is returned.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        End date in "YYYY-MM-DD" format. If None, full dataset is returned.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
     sheet_id : str, optional
-        Google Sheet ID from which to download the dataset.
-        Default is "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY".
+        The Google Sheets ID from which to download the dataset.
 
     Returns
     -------
     pd.DataFrame
-        Processed dataset with snake_case column names,
-        filtered by date range if provided.
+        A data frame with snake_case column names, filtered by the
+        specified date range.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -847,19 +891,27 @@ def _download_data_wrds(
     dataset: str, start_date: str = None, end_date: str = None, **kwargs
 ) -> dict:
     """
-    Download data from WRDS based on the specified dataet.
+    Download data from WRDS based on the specified dataset.
 
     Parameters
     ----------
-    dataset (str): Dataset to download
-        (e.g., "crsp_monthly", "compustat_annual").
-    start_date (str, optional): Start date in "YYYY-MM-DD" format.
-    end_date (str, optional): End date in "YYYY-MM-DD" format.
-    **kwargs: Additional parameters specific to the dataset.
+    dataset : str
+        The dataset to download. Accepts "crsp_monthly", "crsp_daily",
+        "compustat_annual", "compustat_quarterly", "ccm_links", "fisd",
+        or "trace_enhanced".
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, a subset of the dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, a subset of the dataset is returned.
+    **kwargs
+        Additional parameters passed to the dataset-specific function.
 
     Returns
     -------
-        dict: A dictionary representing the downloaded data.
+    pd.DataFrame
+        A data frame containing the requested information.
     """
     if "crsp" in dataset:
         return _download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
@@ -1174,19 +1226,18 @@ def _download_data_wrds_ccm_links(
 
     Parameters
     ----------
-        linktype (list): A list of strings indicating the types of links to
-        download. Default is ["LU", "LC"].
-        linkprim (list): A list of strings indicating the primacy of the links.
-        Default is ["P", "C"].
+    linktype : list of str, optional
+        A list of strings indicating the types of links to download.
+        Defaults to ["LU", "LC"].
+    linkprim : list of str, optional
+        A list of strings indicating the primacy of the links.
+        Defaults to ["P", "C"].
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing columns:
-            - `permno` (int): CRSP permanent number.
-            - `gvkey` (str): Global company key.
-            - `linkdt`: Start date of the link.
-            - `linkenddt`: End date of the link
-            (missing values replaced with today's date).
+    pd.DataFrame
+        A data frame containing columns permno, gvkey, linkdt, and
+        linkenddt (missing end dates replaced with today's date).
     """
     conn = get_wrds_connection()
 
@@ -1386,12 +1437,14 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
 
     Parameters
     ----------
-        additional_columns (list, optional): Additional columns from the FISD
-        table to include.
+    additional_columns : list, optional
+        Additional columns from the FISD table to include as a list
+        of strings.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing filtered FISD data with bond
+    pd.DataFrame
+        A data frame containing filtered FISD data with bond
         characteristics and issuer information.
     """
     wrds_connection = get_wrds_connection()
@@ -1478,16 +1531,20 @@ def _download_data_wrds_trace_enhanced(
 
     Parameters
     ----------
-        cusips (list): A list of 9-digit CUSIPs to download.
-        start_date (str, optional): Start date in "YYYY-MM-DD" format.
-        Defaults to None.
-        end_date (str, optional): End date in "YYYY-MM-DD" format.
-        Defaults to None.
+    cusips : list
+        A list of 9-character CUSIPs to download.
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing cleaned TRACE trade messages for
-        the specified CUSIPs.
+    pd.DataFrame
+        A data frame containing cleaned TRACE trade messages for the
+        specified CUSIPs.
     """
     if not all(isinstance(cusip, str) and len(cusip) == 9 for cusip in cusips):
         raise ValueError("All CUSIPs must be 9-character strings.")
