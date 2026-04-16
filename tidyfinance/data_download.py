@@ -348,18 +348,18 @@ def _download_data_factors_q(
         The name of the dataset to download (e.g.,
         "q5_factors_daily_2024", "q5_factors_monthly_2024").
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
-        If not provided, the full dataset is returned.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
-        If not provided, the full dataset is returned.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
     url : str, optional
         The base URL from which to download the dataset files.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed factor data, including the date,
+        A data frame with processed factor data, including the date,
         risk-free rate, market excess return, and other factors,
         filtered by the specified date range.
     """
