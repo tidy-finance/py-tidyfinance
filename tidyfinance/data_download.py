@@ -1118,25 +1118,34 @@ def _download_data_wrds_compustat(
     start_date: str = None,
     end_date: str = None,
     additional_columns: list = None,
+    only_us: bool = False,
 ) -> pd.DataFrame:
     """
     Download financial data from WRDS Compustat.
 
     Parameters
     ----------
-        dataset (str): Dataset to download. Expected values:
-            "compustat_annual" or "compustat_quarterly".
-        start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
-        end_date (str or None): End date in "YYYY-MM-DD" format (optional).
-        additional_columns (list or None): A list of additional column names
-        to retrieve (optional).
+    dataset : str
+        The dataset to download ("compustat_annual" or
+        "compustat_quarterly").
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, a subset of the dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, a subset of the dataset is returned.
+    additional_columns : list, optional
+        Additional columns from the Compustat table as a list of strings.
+    only_us : bool, optional
+        A boolean indicating whether only US firms should be returned
+        (i.e., excluding Canadian firms). Defaults to False.
 
     Returns
     -------
-        pandas.DataFrame: A DataFrame containing financial data for the
-            specified period, including computed variables such as book equity
-            (be), operating profitability (op), and investment (inv)
-            for annual data.
+    pd.DataFrame
+        A data frame with financial data for the specified period,
+        including variables for book equity (be), operating profitability
+        (op), investment (inv), and others.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -1157,7 +1166,8 @@ def _download_data_wrds_compustat(
     if "compustat_annual" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
-                pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga
+                pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga,
+                curcd
                 {", " + additional_columns if additional_columns else ""}
             FROM comp.funda
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
@@ -1226,11 +1236,14 @@ def _download_data_wrds_compustat(
             .assign(inv=lambda x: np.where(x["at_lag"] <= 0, np.nan, x["inv"]))
         )
 
-        processed_data = compustat.drop(columns=["year", "at_lag"])
+        if only_us:
+            compustat = compustat[compustat["curcd"] == "USD"]
+
+        processed_data = compustat.drop(columns=["year", "at_lag", "curcd"])
 
     elif "compustat_quarterly" in dataset:
         query = text(f"""
-            SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq
+            SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq, curcdq
                 {", " + additional_columns if additional_columns else ""}
             FROM comp.fundq
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
@@ -1258,6 +1271,9 @@ def _download_data_wrds_compustat(
             .reset_index()
             .query("rdq.isna() or date < rdq")
         )
+
+        if only_us:
+            compustat = compustat[compustat["curcdq"] == "USD"]
 
         processed_data = compustat.get(
             ["gvkey", "date", "datadate", "atq", "ceqq"]
