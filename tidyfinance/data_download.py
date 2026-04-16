@@ -161,7 +161,7 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        processed_data = _download_data_constituents(**kwargs)
+        processed_data = _download_data_constituents(index=dataset, **kwargs)
     elif domain == "fred":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
@@ -305,7 +305,6 @@ def _download_data_factors_q(
     dataset: str,
     start_date: str = None,
     end_date: str = None,
-    ref_year: int = 2024,
     url: str = "https://global-q.org/uploads/1/2/2/6/122679606/",
 ) -> pd.DataFrame:
     """
@@ -314,13 +313,14 @@ def _download_data_factors_q(
     Parameters
     ----------
     dataset : str
-        The dataset to download.
+        The name of the dataset to download (e.g.,
+        "q5_factors_daily_2024", "q5_factors_monthly_2024").
     start_date : str, optional
         The start date for filtering the data, in "YYYY-MM-DD" format.
+        If not provided, the full dataset is returned.
     end_date : str, optional
         The end date for filtering the data, in "YYYY-MM-DD" format.
-    ref_year : int, optional
-        The reference year for dataset selection (default is 2024).
+        If not provided, the full dataset is returned.
     url : str, optional
         The base URL from which to download the dataset files.
 
@@ -328,18 +328,25 @@ def _download_data_factors_q(
     -------
     pd.DataFrame
         A DataFrame with processed factor data, including the date,
-        risk-free rate, market excess return, and other factors.
+        risk-free rate, market excess return, and other factors,
+        filtered by the specified date range.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = [
-        f"q5_factors_daily_{ref_year}",
-        f"q5_factors_weekly_{ref_year}",
-        f"q5_factors_weekly_w2w_{ref_year}",
-        f"q5_factors_monthly_{ref_year}",
-        f"q5_factors_quarterly_{ref_year}",
-        f"q5_factors_annual_{ref_year}",
+
+    valid_prefixes = [
+        "q5_factors_daily_",
+        "q5_factors_weekly_w2w_",
+        "q5_factors_weekly_",
+        "q5_factors_monthly_",
+        "q5_factors_quarterly_",
+        "q5_factors_annual_",
     ]
-    matched_dataset = next((d for d in all_datasets if dataset in d), None)
+    if not any(dataset.startswith(p) for p in valid_prefixes):
+        raise ValueError(
+            f"Unsupported dataset: '{dataset}'. Dataset name must include the "
+            "year, e.g. 'q5_factors_daily_2024'."
+        )
+    matched_dataset = dataset
 
     if matched_dataset:
         raw_data = (
