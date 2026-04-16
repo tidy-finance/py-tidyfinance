@@ -1532,6 +1532,10 @@ def _filter_factor_library_grid(
             f"Supported filters: {list(_FACTOR_LIBRARY_SUPPORTED_FILTERS)}."
         )
 
+    if "sorting_variable" not in filters:
+        raise ValueError(
+            "'sorting_variable' is required in filters."
+        )
     if not fill_all:
         filters = {**_FACTOR_LIBRARY_DEFAULTS, **filters}
 
