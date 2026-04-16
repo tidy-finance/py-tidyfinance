@@ -1306,10 +1306,18 @@ def _download_data_wrds_compustat(
             )
         )
 
-    # Connect to WRDS
     wrds_connection = get_wrds_connection()
-    additional_columns = (
-        ", ".join(additional_columns) if additional_columns else ""
+    extra_annual = [
+        c for c in (additional_columns or []) if c != "curcd"
+    ]
+    extra_quarterly = [
+        c for c in (additional_columns or []) if c != "curcdq"
+    ]
+    additional_columns_annual = (
+        ", ".join(extra_annual) if extra_annual else ""
+    )
+    additional_columns_quarterly = (
+        ", ".join(extra_quarterly) if extra_quarterly else ""
     )
 
     if "compustat_annual" in dataset:
@@ -1317,7 +1325,7 @@ def _download_data_wrds_compustat(
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
                 pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga,
                 curcd
-                {", " + additional_columns if additional_columns else ""}
+                {", " + additional_columns_annual if additional_columns_annual else ""}
             FROM comp.funda
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
             AND datadate BETWEEN '{start_date}' AND '{end_date}'
@@ -1393,7 +1401,7 @@ def _download_data_wrds_compustat(
     elif "compustat_quarterly" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq, curcdq
-                {", " + additional_columns if additional_columns else ""}
+                {", " + additional_columns_quarterly if additional_columns_quarterly else ""}
             FROM comp.fundq
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
             AND datadate BETWEEN '{start_date}' AND '{end_date}'
@@ -1426,11 +1434,7 @@ def _download_data_wrds_compustat(
 
         processed_data = compustat.get(
             ["gvkey", "date", "datadate", "atq", "ceqq"]
-            + (
-                [col for col in additional_columns.split(", ")]
-                if additional_columns
-                else []
-            )
+            + extra_quarterly
         )
 
     return processed_data
