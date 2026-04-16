@@ -884,7 +884,7 @@ def _download_data_osap(
 
 def _download_data_wrds(
     dataset: str, start_date: str = None, end_date: str = None, **kwargs
-) -> dict:
+) -> pd.DataFrame:
     """
     Download data from WRDS based on the specified dataset.
 
