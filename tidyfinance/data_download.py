@@ -642,76 +642,79 @@ def _download_data_fred(
     start_date: str = None,
     end_date: str = None,
 ) -> pd.DataFrame:
-    """
-    Download and process data from FRED.
-
-    Parameters
-    ----------
-    series : str or list
-        A string or list of FRED series IDs to download (e.g.,
-        "DGS10").
-    start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
-    end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
-
-    Returns
-    -------
-    pd.DataFrame
-        A data frame with processed data, including the date, value,
-        and series ID, filtered by the specified date range.
-    """
     if isinstance(series, str):
         series = [series]
-
     start_date, end_date = _validate_dates(start_date, end_date)
     fred_data = []
-
     for s in series:
         urls = [
-            # f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
-            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}"
+            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}",
+            f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
         ]
-
-        headers = {"User-Agent": _get_random_user_agent()}
-
+        headers = {
+            "User-Agent": _get_random_user_agent(),
+            "Accept": "text/csv,text/plain,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        success = False
         for url in urls:
-            try:
-                response = requests.get(url, headers=headers)
-                response.raise_for_status()
-
-                raw_data = (
-                    pd.read_csv(pd.io.common.StringIO(response.text))
-                    .rename(columns=lambda x: x.lower())
-                    .assign(
-                        date=lambda x: pd.to_datetime(
-                            x[[c for c in x.columns if "date" in c][0]]
-                        ),
-                        value=lambda x: pd.to_numeric(
-                            x[s.lower()], errors="coerce"
-                        ),
-                        series=s,
+            for attempt in range(3):
+                try:
+                    response = requests.get(
+                        url,
+                        headers=headers,
+                        impersonate="chrome110",
+                        timeout=30,
                     )
-                    .get(["date", "series", "value"])
-                )
+                    response.raise_for_status()
+                except Exception as e:
+                    print(
+                        f"HTTP error for {s} at {url} "
+                        f"(attempt {attempt + 1}): {e}"
+                    )
+                    if attempt < 2:
+                        import time
+                        time.sleep(1 * (attempt + 1))
+                    continue
 
-                fred_data.append(raw_data)
-                break  # exit the loop on successful load
-            except Exception as e:
-                print(f"Failed to retrieve data for series {s}: {e}")
-                fred_data.append(
-                    pd.DataFrame(columns=["date", "value", "series"])
-                )
+                try:
+                    raw_data = (
+                        pd.read_csv(pd.io.common.StringIO(response.text))
+                        .rename(columns=lambda c: c.strip().lower())
+                        .assign(
+                            date=lambda x: pd.to_datetime(
+                                x[x.columns[x.columns.str.contains("date")][0]]
+                            ),
+                            value=lambda x: pd.to_numeric(
+                                x[x.columns[
+                                    ~x.columns.str.contains("date")][0]],
+                                errors="coerce",
+                            ),
+                            series=s,
+                        )
+                        .get(["date", "series", "value"])
+                    )
+                    fred_data.append(raw_data)
+                    success = True
+                    break
+                except Exception as e:
+                    print(f"Parse error for {s}: {e}")
+                    break
+
+            if success:
+                break
+
+        if not success:
+            print(f"Failed to retrieve data for series {s}")
+            fred_data.append(
+                pd.DataFrame(columns=["date", "series", "value"])
+            )
 
     fred_data = pd.concat(fred_data, ignore_index=True)
-
     if start_date and end_date:
         fred_data = fred_data.query(
             "@start_date <= date <= @end_date"
         ).reset_index(drop=True)
-
     return fred_data
 
 

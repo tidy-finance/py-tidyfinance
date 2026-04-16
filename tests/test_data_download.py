@@ -63,7 +63,7 @@ def test_download_data_column_ordering():
 def test_download_data_factors_q_handles_broken_url():
     with pytest.raises(
         ValueError,
-        match=("No matching dataset found."),
+        match="Unsupported dataset",
     ):
         download_data(
             domain="factors_q",
@@ -219,7 +219,7 @@ def test_download_data_breakpoints_valid():
 
 
 def test_download_data_factors_q_valid():
-    df = _download_data_factors_q("q5_factors_monthly")
+    df = _download_data_factors_q("q5_factors_monthly_2024")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
