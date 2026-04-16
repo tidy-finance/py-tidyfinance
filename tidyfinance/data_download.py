@@ -378,43 +378,38 @@ def _download_data_factors_q(
             f"Unsupported dataset: '{dataset}'. Dataset name must include the "
             "year, e.g. 'q5_factors_daily_2024'."
         )
-    matched_dataset = dataset
-
-    if matched_dataset:
-        raw_data = (
-            pd.read_csv(
-                f"{url}{matched_dataset}.csv",
-                engine="python",
-                on_bad_lines="skip",
-            )
-            .rename(columns=lambda x: x.lower().replace("r_", ""))
-            .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
+    raw_data = (
+        pd.read_csv(
+            f"{url}{dataset}.csv",
+            engine="python",
+            on_bad_lines="skip",
         )
+        .rename(columns=lambda x: x.lower().replace("r_", ""))
+        .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
+    )
 
-        if "monthly" in matched_dataset:
-            raw_data = raw_data.assign(
-                date=pd.to_datetime(
-                    dict(year=raw_data.year, month=raw_data.month, day=1)
-                )
-            ).drop(columns=["year", "month"])
-        if "annual" in matched_dataset:
-            raw_data = raw_data.assign(
-                date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
-            ).drop(columns=["year"])
-
+    if "monthly" in dataset:
         raw_data = raw_data.assign(
-            date=lambda x: pd.to_datetime(x["date"])
-        ).apply(lambda x: x.div(100) if x.name != "date" else x)
+            date=pd.to_datetime(
+                dict(year=raw_data.year, month=raw_data.month, day=1)
+            )
+        ).drop(columns=["year", "month"])
+    if "annual" in dataset:
+        raw_data = raw_data.assign(
+            date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
+        ).drop(columns=["year"])
 
-        if start_date and end_date:
-            raw_data = raw_data.query("@start_date <= date <= @end_date")
+    raw_data = raw_data.assign(
+        date=lambda x: pd.to_datetime(x["date"])
+    ).apply(lambda x: x.div(100) if x.name != "date" else x)
 
-        raw_data = raw_data[
-            ["date"] + [col for col in raw_data.columns if col != "date"]
-        ].reset_index(drop=True)
-        return raw_data
-    else:
-        raise ValueError("No matching dataset found.")
+    if start_date and end_date:
+        raw_data = raw_data.query("@start_date <= date <= @end_date")
+
+    raw_data = raw_data[
+        ["date"] + [col for col in raw_data.columns if col != "date"]
+    ].reset_index(drop=True)
+    return raw_data
 
 
 def _download_data_macro_predictors(
