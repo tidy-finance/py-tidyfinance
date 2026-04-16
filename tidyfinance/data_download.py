@@ -1203,14 +1203,14 @@ def _download_data_wrds_crsp(
 
     if add_ccm_links:
         ccm_links = _download_data_wrds_ccm_links()
-        valid_links = (
-            processed_data[["permno", "date"]]
-            .merge(ccm_links, on="permno", how="inner")
-            .query(
-                "gvkey.notna() and linkdt <= date <= linkenddt",
-                local_dict={},
-            )[["permno", "gvkey", "date"]]
+        merged = processed_data[["permno", "date"]].merge(
+            ccm_links, on="permno", how="inner"
         )
+        valid_links = merged[
+            merged["gvkey"].notna()
+            & (merged["linkdt"] <= merged["date"])
+            & (merged["date"] <= merged["linkenddt"])
+        ][["permno", "gvkey", "date"]]
         processed_data = processed_data.merge(
             valid_links, on=["permno", "date"], how="left"
         )
