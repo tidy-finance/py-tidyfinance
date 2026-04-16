@@ -1035,7 +1035,7 @@ def _download_data_wrds_crsp(
 
             for j in range(1, batches + 1):
                 permno_batch = permnos[
-                    ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
+                    ((j - 1) * batch_size): (min(j * batch_size, len(permnos)))
                 ]
                 permno_batch_formatted = ", ".join(
                     f"'{permno}'" for permno in permno_batch
@@ -1622,9 +1622,9 @@ def _download_factor_library_ids(
         )
     if grid_files.empty:
         raise ValueError(
-            "No grid files were found in the 'tidy-finance/factor-library-grid' "
-            "dataset. The repository may contain no parquet files, or the file "
-            "listing may have failed."
+            "No files were found in the 'tidy-finance/factor-library-grid' "
+            "dataset. The repository may not contain any parquet files, "
+            "or the file listing may have failed."
         )
     grid_path = grid_files["path"].iloc[0]
     local_path = hf_hub_download(
@@ -1679,7 +1679,7 @@ def _download_factor_library_ids(
     )
 
 
-def _download_data_hugging_face_factor_library(
+def _download_data_huggingface_factor_library(
     fill_all: bool = False, **filters
 ) -> pd.DataFrame:
     """
@@ -1816,6 +1816,6 @@ def _download_data_huggingface(
         )
 
     if dataset == "factor_library":
-        return _download_data_hugging_face_factor_library(**kwargs)
+        return _download_data_huggingface_factor_library(**kwargs)
 
     raise ValueError(f"Unsupported dataset: '{dataset}'.")
