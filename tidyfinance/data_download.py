@@ -1143,58 +1143,63 @@ def _download_data_wrds_crsp(
                         .drop(columns=["risk_free"])
                     )
 
-                    if adjust_volume:
-                        gr_date_1 = pd.Timestamp("2001-02-01")
-                        gr_date_2 = pd.Timestamp("2002-01-01")
-                        gr_date_3 = pd.Timestamp("2004-01-01")
-
-                        crsp_daily_sub = (
-                            crsp_daily_sub
-                            .sort_values(["permno", "date"])
-                            .assign(
-                                cfacpr=lambda df: df.groupby("permno")[
-                                    "dlyfacprc"
-                                ].cumprod(),
-                                vol=lambda df: df["dlyvol"].replace(-99, np.nan),
-                                prc=lambda df: df["dlyprc"].replace(0, np.nan),
-                            )
-                            .assign(
-                                prc_adj=lambda df: (
-                                    df["prc"].abs() / df["cfacpr"]
-                                ).where(lambda x: ~np.isinf(x), np.nan)
-                            )
-                            .assign(
-                                vol_adj=lambda df: np.select(
-                                    [
-                                        (df["primaryexch"] == "Q")
-                                        & (df["date"] < gr_date_1),
-                                        (df["primaryexch"] == "Q")
-                                        & (df["date"] >= gr_date_1)
-                                        & (df["date"] < gr_date_2),
-                                        (df["primaryexch"] == "Q")
-                                        & (df["date"] >= gr_date_2)
-                                        & (df["date"] < gr_date_3),
-                                        (df["primaryexch"] == "Q")
-                                        & (df["date"] >= gr_date_3),
-                                    ],
-                                    [
-                                        df["vol"] / 2.0,
-                                        df["vol"] / 1.8,
-                                        df["vol"] / 1.6,
-                                        df["vol"] / 1.0,
-                                    ],
-                                    default=df["vol"],
-                                )
-                            )
-                            .drop(columns=["dlyvol", "dlyprc", "dlyfacprc"])
-                        )
-
                 print(
                     f"Batch {j} out of {batches} done "
                     f"({(j / batches) * 100:.2f}%)\n"
                 )
 
                 crsp_data = pd.concat([crsp_data, crsp_daily_sub])
+
+            if adjust_volume and not crsp_data.empty:
+                gr_date_1 = pd.Timestamp("2001-02-01")
+                gr_date_2 = pd.Timestamp("2002-01-01")
+                gr_date_3 = pd.Timestamp("2004-01-01")
+
+                crsp_data = (
+                    crsp_data
+                    .sort_values(["permno", "date"])
+                    .assign(
+                        cfacpr=lambda df: df.groupby("permno")[
+                            "dlyfacprc"
+                        ].cumprod(),
+                        vol=lambda df: df["dlyvol"].where(
+                            df["dlyvol"] != -99, np.nan
+                        ),
+                        prc=lambda df: df["dlyprc"].where(
+                            df["dlyprc"] != 0, np.nan
+                        ),
+                    )
+                    .assign(
+                        prc_adj=lambda df: (
+                            df["prc"].abs() / df["cfacpr"]
+                        ).where(lambda x: ~np.isinf(x), np.nan)
+                    )
+                    .assign(
+                        vol_adj=lambda df: np.select(
+                            [
+                                (df["primaryexch"] == "Q")
+                                & (df["date"] < gr_date_1),
+                                (df["primaryexch"] == "Q")
+                                & (df["date"] >= gr_date_1)
+                                & (df["date"] < gr_date_2),
+                                (df["primaryexch"] == "Q")
+                                & (df["date"] >= gr_date_2)
+                                & (df["date"] < gr_date_3),
+                                (df["primaryexch"] == "Q")
+                                & (df["date"] >= gr_date_3),
+                            ],
+                            [
+                                df["vol"] / 2.0,
+                                df["vol"] / 1.8,
+                                df["vol"] / 1.6,
+                                df["vol"] / 1.0,
+                            ],
+                            default=df["vol"],
+                        )
+                    )
+                    .drop(columns=["dlyvol", "dlyprc", "dlyfacprc"])
+                )
+
             processed_data = crsp_data
     else:
         raise ValueError(
