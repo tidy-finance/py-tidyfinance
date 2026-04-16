@@ -1068,6 +1068,7 @@ def _download_data_wrds_crsp(
                 .drop(columns=["risk_free", "mkt_excess", "hml", "smb"])
                 .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
             )
+            disconnect_connection(wrds_connection)
             processed_data = crsp_monthly
     elif "crsp_daily" in dataset:
         if version == "v1":
@@ -1195,6 +1196,7 @@ def _download_data_wrds_crsp(
                     .drop(columns=["dlyvol", "dlyprc", "dlyfacprc"])
                 )
 
+            disconnect_connection(wrds_connection)
             processed_data = crsp_data
     else:
         raise ValueError(
