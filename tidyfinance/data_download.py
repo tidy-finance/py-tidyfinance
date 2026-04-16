@@ -1542,6 +1542,11 @@ def _filter_factor_library_grid(
     available = _get_available_huggingface_files(
         "tidy-finance", "factor-library-grid"
     )
+    if available.empty or "path" not in available.columns:
+        raise ValueError(
+            "No parquet files were found in the Hugging Face dataset repo "
+            "'tidy-finance/factor-library-grid'."
+        )
     grid_path = available["path"].iloc[0]
     local_path = hf_hub_download(
         repo_id="tidy-finance/factor-library-grid",
