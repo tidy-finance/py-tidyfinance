@@ -1620,6 +1620,12 @@ def _download_factor_library_ids(
     grid_files = _get_available_huggingface_files(
         "tidy-finance", "factor-library-grid"
         )
+    if grid_files.empty:
+        raise ValueError(
+            "No grid files were found in the 'tidy-finance/factor-library-grid' "
+            "dataset. The repository may contain no parquet files, or the file "
+            "listing may have failed."
+        )
     grid_path = grid_files["path"].iloc[0]
     local_path = hf_hub_download(
         repo_id="tidy-finance/factor-library-grid",
