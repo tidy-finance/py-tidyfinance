@@ -11,8 +11,6 @@ import numpy as np
 import pandas as pd
 from curl_cffi import requests
 from sqlalchemy import text
-import zipfile
-import re
 from huggingface_hub import HfApi, hf_hub_download
 from datetime import date
 
