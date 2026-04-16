@@ -31,6 +31,6 @@
 
 - fix date for monthly data in `_download_data_factors_ff`
 
-## v0.2.5 (2026-04-02)
+## v0.2.6 (2026-04-02)
 
 - Added support for Hugging Face datasets via `domain="tidyfinance"`, including `high_frequency_sp500` and `factor_library`
