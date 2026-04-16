@@ -31,7 +31,7 @@ from .utilities import (
 
 # %% constant
 
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 _SUPPORTED_DATASETS_HF = ("high_frequency_sp500", "factor_library")
 
