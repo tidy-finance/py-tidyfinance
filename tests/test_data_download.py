@@ -288,20 +288,20 @@ def test_download_data_wrds_crsp_monthly_no_prc_column():
     from tidyfinance.data_download import _download_data_wrds_crsp
 
     crsp_df = pd.DataFrame({
-        "permno": [10001],
-        "date": pd.to_datetime(["2020-01-31"]),
-        "ret": [0.01],
-        "shrout": [1000],
-        "prc": [50.0],
-        "primaryexch": ["N"],
-        "siccd": [3990],
+        "permno": [10001, 10001],
+        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
+        "ret": [0.02, 0.01],
+        "shrout": [1000, 1000],
+        "prc": [49.0, 50.0],
+        "primaryexch": ["N", "N"],
+        "siccd": [3990, 3990],
     })
     factors_df = pd.DataFrame({
-        "date": pd.to_datetime(["2020-01-31"]),
-        "mkt_excess": [0.005],
-        "smb": [0.001],
-        "hml": [0.002],
-        "risk_free": [0.0002],
+        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
+        "mkt_excess": [0.003, 0.005],
+        "smb": [0.001, 0.001],
+        "hml": [0.002, 0.002],
+        "risk_free": [0.0002, 0.0002],
     })
 
     with patch("tidyfinance.data_download.get_wrds_connection", return_value=MagicMock()):
@@ -313,6 +313,7 @@ def test_download_data_wrds_crsp_monthly_no_prc_column():
                     end_date="2020-01-31",
                 )
 
+    assert len(result) > 0
     assert "prc" not in result.columns
 
 
