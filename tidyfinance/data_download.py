@@ -1062,7 +1062,7 @@ def _download_data_wrds_crsp(
                 )
                 .assign(shrout=lambda x: x["shrout"] * 1000)
                 .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
-                .assign(mktcap=lambda x: x["mktcap"].where(x["mktcap"] != 0, np.nan))
+                .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
             )
 
             mktcap_lag = crsp_monthly.assign(
@@ -1179,17 +1179,13 @@ def _download_data_wrds_crsp(
                         cfacpr=lambda df: df.groupby("permno")[
                             "dlyfacprc"
                         ].cumprod(),
-                        vol=lambda df: df["dlyvol"].where(
-                            df["dlyvol"] != -99, np.nan
-                        ),
-                        prc=lambda df: df["dlyprc"].where(
-                            df["dlyprc"] != 0, np.nan
-                        ),
+                        vol=lambda df: df["dlyvol"].replace(-99, np.nan),
+                        prc=lambda df: df["dlyprc"].replace(0, np.nan),
                     )
                     .assign(
                         prc_adj=lambda df: (
                             df["prc"].abs() / df["cfacpr"]
-                        ).where(lambda x: ~np.isinf(x), np.nan)
+                        ).replace([np.inf, -np.inf], np.nan)
                     )
                     .assign(
                         vol_adj=lambda df: np.select(
