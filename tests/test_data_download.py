@@ -252,6 +252,23 @@ def test_download_data_stock_prices_valid():
     assert not df.empty
 
 
+
+
+def test_download_data_wrds_crsp_v1_monthly_not_implemented():
+    from unittest.mock import patch
+    from tidyfinance.data_download import _download_data_wrds_crsp
+    with patch("tidyfinance.data_download.get_wrds_connection"):
+        with pytest.raises(NotImplementedError):
+            _download_data_wrds_crsp(dataset="crsp_monthly", version="v1")
+
+
+def test_download_data_wrds_crsp_v1_daily_not_implemented():
+    from unittest.mock import patch
+    from tidyfinance.data_download import _download_data_wrds_crsp
+    with patch("tidyfinance.data_download.get_wrds_connection"):
+        with pytest.raises(NotImplementedError):
+            _download_data_wrds_crsp(dataset="crsp_daily", version="v1")
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])

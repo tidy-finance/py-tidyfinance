@@ -390,7 +390,7 @@ def _download_data_factors_q(
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
     except Exception as e:
-        raise ValueError(f"Could not download dataset '{dataset}': {e}") from e
+        raise ValueError(f"Could not download or parse dataset '{dataset}': {e}") from e
 
     if "monthly" in dataset:
         raw_data = raw_data.assign(
