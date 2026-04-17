@@ -3,6 +3,7 @@
 import io
 import os
 import re
+import time
 import warnings
 import zipfile
 
@@ -673,7 +674,6 @@ def _download_data_fred(
                         f"(attempt {attempt + 1}): {e}"
                     )
                     if attempt < 2:
-                        import time
                         time.sleep(1 * (attempt + 1))
                     continue
 
