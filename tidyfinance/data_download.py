@@ -1214,7 +1214,7 @@ def _download_data_wrds_crsp(
                                 default=df["vol"],
                             )
                         )
-                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc", "cfacpr", "vol", "prc_adj"])
+                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc", "cfacpr", "vol", "prc", "prc_adj"])
                     )
 
                 processed_data = crsp_data
