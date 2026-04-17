@@ -1240,7 +1240,15 @@ def _download_data_wrds_crsp(
             merged["gvkey"].notna()
             & (merged["linkdt"] <= merged["date"])
             & (merged["date"] <= merged["linkenddt"])
-        ][["permno", "gvkey", "date"]].drop_duplicates(subset=["permno", "date"], keep="first")
+        ][["permno", "gvkey", "linkprim", "date"]].sort_values("linkprim", ascending=False)
+        n_before = len(valid_links)
+        valid_links = valid_links.drop_duplicates(subset=["permno", "date"], keep="first")
+        if len(valid_links) < n_before:
+            warnings.warn(
+                f"{n_before - len(valid_links)} ambiguous CCM link(s) dropped; 'P' links preferred over 'C' links.",
+                stacklevel=2,
+            )
+        valid_links = valid_links[["permno", "gvkey", "date"]]
         processed_data = processed_data.merge(
             valid_links, on=["permno", "date"], how="left"
         )
@@ -1272,7 +1280,7 @@ def _download_data_wrds_ccm_links(
     conn = get_wrds_connection()
 
     query = f"""
-        SELECT lpermno AS permno, gvkey, linkdt, linkenddt
+        SELECT lpermno AS permno, gvkey, linkprim, linkdt, linkenddt
         FROM crsp.ccmxpf_lnkhist
         WHERE linktype IN ({",".join(f"'{lt}'" for lt in linktype)})
         AND linkprim IN ({",".join(f"'{lp}'" for lp in linkprim)})
