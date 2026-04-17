@@ -270,21 +270,51 @@ def test_download_data_wrds_crsp_v1_daily_not_implemented():
             _download_data_wrds_crsp(dataset="crsp_daily", version="v1")
 
 
-
 def test_download_data_wrds_crsp_adjust_volume_wrong_dataset():
-    from unittest.mock import patch
     from tidyfinance.data_download import _download_data_wrds_crsp
-    with patch("tidyfinance.data_download.get_wrds_connection"):
-        with pytest.raises(ValueError, match="adjust_volume is only supported"):
-            _download_data_wrds_crsp(dataset="crsp_monthly", adjust_volume=True)
+    with pytest.raises(ValueError, match="adjust_volume is only supported"):
+        _download_data_wrds_crsp(dataset="crsp_monthly", adjust_volume=True)
 
 
 def test_download_data_wrds_crsp_adjust_volume_missing_columns():
-    from unittest.mock import patch
     from tidyfinance.data_download import _download_data_wrds_crsp
-    with patch("tidyfinance.data_download.get_wrds_connection"):
-        with pytest.raises(ValueError, match="dlyprc, dlyvol"):
-            _download_data_wrds_crsp(dataset="crsp_daily", adjust_volume=True)
+    with pytest.raises(ValueError, match="dlyprc, dlyvol"):
+        _download_data_wrds_crsp(dataset="crsp_daily", adjust_volume=True)
+
+
+def test_download_data_wrds_crsp_monthly_no_prc_column():
+    import pandas as pd
+    from unittest.mock import patch, MagicMock
+    from tidyfinance.data_download import _download_data_wrds_crsp
+
+    crsp_df = pd.DataFrame({
+        "permno": [10001],
+        "date": pd.to_datetime(["2020-01-31"]),
+        "ret": [0.01],
+        "shrout": [1000],
+        "prc": [50.0],
+        "primaryexch": ["N"],
+        "siccd": [3990],
+    })
+    factors_df = pd.DataFrame({
+        "date": pd.to_datetime(["2020-01-31"]),
+        "mkt_excess": [0.005],
+        "smb": [0.001],
+        "hml": [0.002],
+        "risk_free": [0.0002],
+    })
+
+    with patch("tidyfinance.data_download.get_wrds_connection", return_value=MagicMock()):
+        with patch("pandas.read_sql_query", return_value=crsp_df):
+            with patch("tidyfinance.data_download._download_data_factors_ff", return_value=factors_df):
+                result = _download_data_wrds_crsp(
+                    dataset="crsp_monthly",
+                    start_date="2020-01-01",
+                    end_date="2020-01-31",
+                )
+
+    assert "prc" not in result.columns
+
 
 if __name__ == "__main__":
     # Run all tests
