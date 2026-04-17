@@ -168,7 +168,13 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        kwargs.pop("index", None)
+        if "index" in kwargs:
+            warnings.warn(
+                "'index' passed via kwargs is ignored; use the 'dataset' argument instead",
+                UserWarning,
+                stacklevel=2,
+            )
+            kwargs.pop("index")
         processed_data = _download_data_constituents(index=dataset, **kwargs)
     elif domain == "fred":
         processed_data = _download_data_fred(
@@ -382,7 +388,7 @@ def _download_data_factors_q(
                 f"Dataset name '{dataset}' without a year suffix is deprecated. "
                 f"Use '{dataset}_2024' instead.",
                 DeprecationWarning,
-                stacklevel=2,
+                stacklevel=3,
             )
             dataset = f"{dataset}_2024"
         else:

@@ -224,6 +224,21 @@ def test_download_data_factors_q_valid():
     assert not df.empty
 
 
+def test_download_data_factors_q_deprecated_name():
+    with pytest.warns(DeprecationWarning, match="without a year suffix is deprecated"):
+        df = _download_data_factors_q("q5_factors_monthly")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_constituents_index_kwarg_warns():
+    from unittest.mock import patch
+    dummy = pd.DataFrame({"symbol": ["AAPL"], "name": ["Apple"]})
+    with patch("tidyfinance.data_download._download_data_constituents", return_value=dummy):
+        with pytest.warns(UserWarning, match="index.*passed via kwargs is ignored"):
+            download_data(domain="constituents", dataset="sp500", index="wrong_thing")
+
+
 def test_download_data_macro_predictors_valid():
     df = _download_data_macro_predictors("monthly")
     assert isinstance(df, pd.DataFrame)
