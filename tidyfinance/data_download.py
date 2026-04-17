@@ -1062,7 +1062,7 @@ def _download_data_wrds_crsp(
                 )
                 .assign(shrout=lambda x: x["shrout"] * 1000)
                 .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
-                .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                .assign(mktcap=lambda x: x["mktcap"].where(x["mktcap"] != 0, np.nan))
             )
 
             mktcap_lag = crsp_monthly.assign(
