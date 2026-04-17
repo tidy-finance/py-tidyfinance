@@ -643,6 +643,24 @@ def _download_data_fred(
     start_date: str = None,
     end_date: str = None,
 ) -> pd.DataFrame:
+    """Download data from FRED (Federal Reserve Economic Data).
+
+    Parameters
+    ----------
+    series : str or list of str
+        The FRED series ID(s) to download (e.g., ``"GDP"``, ``["GDP",
+        "UNRATE"]``).
+    start_date : str, optional
+        The start date for filtering data in ``YYYY-MM-DD`` format.
+    end_date : str, optional
+        The end date for filtering data in ``YYYY-MM-DD`` format.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame with columns ``date``, ``series``, and ``value``
+        containing the requested FRED series data.
+    """
     if isinstance(series, str):
         series = [series]
     start_date, end_date = _validate_dates(start_date, end_date)
