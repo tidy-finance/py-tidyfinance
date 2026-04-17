@@ -252,8 +252,6 @@ def test_download_data_stock_prices_valid():
     assert not df.empty
 
 
-
-
 def test_download_data_wrds_crsp_v1_monthly_not_implemented():
     from unittest.mock import patch
     from tidyfinance.data_download import _download_data_wrds_crsp

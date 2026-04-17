@@ -168,6 +168,7 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
+        kwargs.pop("index", None)
         processed_data = _download_data_constituents(index=dataset, **kwargs)
     elif domain == "fred":
         processed_data = _download_data_fred(
@@ -375,10 +376,20 @@ def _download_data_factors_q(
         "q5_factors_annual_",
     ]
     if not any(dataset.startswith(p) for p in valid_prefixes):
-        raise ValueError(
-            f"Unsupported dataset: '{dataset}'. Dataset name must include the "
-            "year, e.g. 'q5_factors_daily_2024'."
-        )
+        base_prefixes = [p.rstrip("_") for p in valid_prefixes]
+        if any(dataset == p for p in base_prefixes):
+            warnings.warn(
+                f"Dataset name '{dataset}' without a year suffix is deprecated. "
+                f"Use '{dataset}_2024' instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            dataset = f"{dataset}_2024"
+        else:
+            raise ValueError(
+                f"Unsupported dataset: '{dataset}'. Dataset name must include the "
+                "year, e.g. 'q5_factors_daily_2024'."
+            )
     try:
         raw_data = (
             pd.read_csv(
@@ -1274,7 +1285,7 @@ def _download_data_wrds_ccm_links(
     Returns
     -------
     pd.DataFrame
-        A data frame containing columns permno, gvkey, linkdt, and
+        A data frame containing columns permno, gvkey, linkprim, linkdt, and
         linkenddt (missing end dates replaced with today's date).
     """
     conn = get_wrds_connection()
