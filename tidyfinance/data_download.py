@@ -1021,6 +1021,9 @@ def _download_data_wrds_crsp(
 
     additional_columns_list = additional_columns or []
 
+    if adjust_volume and dataset != "crsp_daily":
+        raise ValueError("adjust_volume is only supported for 'crsp_daily'.")
+
     if adjust_volume and dataset == "crsp_daily":
         required = {"dlyprc", "dlyvol", "dlyfacprc", "primaryexch"}
         if not required.issubset(set(additional_columns_list)):
@@ -1237,7 +1240,7 @@ def _download_data_wrds_crsp(
             merged["gvkey"].notna()
             & (merged["linkdt"] <= merged["date"])
             & (merged["date"] <= merged["linkenddt"])
-        ][["permno", "gvkey", "date"]]
+        ][["permno", "gvkey", "date"]].drop_duplicates(subset=["permno", "date"], keep="first")
         processed_data = processed_data.merge(
             valid_links, on=["permno", "date"], how="left"
         )
