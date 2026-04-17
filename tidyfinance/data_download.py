@@ -988,15 +988,19 @@ def _download_data_wrds_crsp(
     adjust_volume : bool, optional
         A boolean indicating whether daily CRSP trading volume data
         should be adjusted according to Gao & Ritter (2010).
-        Defaults to False.
+        Defaults to False. Note: cumulative price adjustment factors are
+        computed from the data in memory; results may be incorrect if
+        start_date excludes early observations for some permnos.
 
     Returns
     -------
     pd.DataFrame
         A data frame containing CRSP stock returns, adjusted for
         delistings, along with calculated market capitalization and
-        excess returns over the risk-free rate. The structure of the
-        returned data frame depends on the selected dataset.
+        excess returns over the risk-free rate. The daily dataset
+        includes all requested additional_columns plus ret_excess.
+        The structure of the returned data frame depends on the
+        selected dataset.
     """
     if dataset not in ["crsp_monthly", "crsp_daily"]:
         raise ValueError(
@@ -1028,106 +1032,22 @@ def _download_data_wrds_crsp(
     )
 
     crsp_data = pd.DataFrame()
-    if "crsp_monthly" in dataset:
-        if version == "v1":
-            pass
-        if version == "v2":
-            crsp_query = f"""
-                SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
-                    AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
-                    AS prc, ssih.primaryexch, ssih.siccd
-                    {", " + additional_columns_sql if additional_columns_sql else ""}
-                FROM crsp.msf_v2 AS msf
-                INNER JOIN crsp.stksecurityinfohist AS ssih
-                ON msf.permno = ssih.permno AND
-                    ssih.secinfostartdt <= msf.mthcaldt AND
-                    msf.mthcaldt <= ssih.secinfoenddt
-                WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
-                AND ssih.sharetype = 'NS'
-                AND ssih.securitytype = 'EQTY'
-                AND ssih.securitysubtype = 'COM'
-                AND ssih.usincflg = 'Y'
-                AND ssih.issuertype in ('ACOR', 'CORP')
-                AND ssih.primaryexch in ('N', 'A', 'Q')
-                AND ssih.conditionaltype in ('RW', 'NW')
-                AND ssih.tradingstatusflg = 'A'
-                """
-
-            crsp_monthly = (
-                pd.read_sql_query(
-                    sql=crsp_query,
-                    con=wrds_connection,
-                    dtype={"permno": int, "siccd": int},
-                    parse_dates={"date"},
-                )
-                .assign(shrout=lambda x: x["shrout"] * 1000)
-                .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
-                .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
-            )
-
-            mktcap_lag = crsp_monthly.assign(
-                date=lambda x: x["date"] + pd.DateOffset(months=1),
-                mktcap_lag=lambda x: x["mktcap"],
-            ).get(["permno", "date", "mktcap_lag"])
-
-            crsp_monthly = crsp_monthly.merge(
-                mktcap_lag, how="left", on=["permno", "date"]
-            ).assign(
-                exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
-                industry=lambda x: x["siccd"].apply(_assign_industry),
-            )
-            factors_ff3_monthly = _download_data_factors_ff(
-                dataset="F-F_Research_Data_Factors",
-                start_date=start_date,
-                end_date=end_date,
-            )
-
-            crsp_monthly = (
-                crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
-                .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
-                .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
-                .drop(columns=["risk_free", "mkt_excess", "hml", "smb"])
-                .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
-            )
-            disconnect_connection(wrds_connection)
-            processed_data = crsp_monthly
-    elif "crsp_daily" in dataset:
-        if version == "v1":
-            pass
-        if version == "v2":
-            permnos = pd.read_sql(
-                sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
-                con=wrds_connection,
-                dtype={"permno": int},
-            )
-            permnos = list(permnos["permno"].astype(str))
-            batches = np.ceil(len(permnos) / batch_size).astype(int)
-
-            factors_ff3_daily = _download_data_factors_ff(
-                dataset="F-F_Research_Data_Factors_Daily",
-                start_date=start_date,
-                end_date=end_date,
-            )
-
-            for j in range(1, batches + 1):
-                permno_batch = permnos[
-                    ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
-                ]
-                permno_batch_formatted = ", ".join(
-                    f"'{permno}'" for permno in permno_batch
-                )
-                permno_string = f"({permno_batch_formatted})"
-
-                crsp_daily_sub_query = f"""
-                    SELECT dsf.permno, dlycaldt AS date, dlyret AS ret
+    try:
+        if "crsp_monthly" in dataset:
+            if version == "v1":
+                pass
+            if version == "v2":
+                crsp_query = f"""
+                    SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
+                        AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
+                        AS prc, ssih.primaryexch, ssih.siccd
                         {", " + additional_columns_sql if additional_columns_sql else ""}
-                    FROM crsp.dsf_v2 AS dsf
+                    FROM crsp.msf_v2 AS msf
                     INNER JOIN crsp.stksecurityinfohist AS ssih
-                    ON dsf.permno = ssih.permno AND
-                        ssih.secinfostartdt <= dsf.dlycaldt AND
-                        dsf.dlycaldt <= ssih.secinfoenddt
-                    WHERE dsf.permno IN {permno_string}
-                    AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+                    ON msf.permno = ssih.permno AND
+                        ssih.secinfostartdt <= msf.mthcaldt AND
+                        msf.mthcaldt <= ssih.secinfoenddt
+                    WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
                     AND ssih.sharetype = 'NS'
                     AND ssih.securitytype = 'EQTY'
                     AND ssih.securitysubtype = 'COM'
@@ -1138,87 +1058,172 @@ def _download_data_wrds_crsp(
                     AND ssih.tradingstatusflg = 'A'
                     """
 
-                crsp_daily_sub = pd.read_sql_query(
-                    sql=crsp_daily_sub_query,
+                crsp_monthly = (
+                    pd.read_sql_query(
+                        sql=crsp_query,
+                        con=wrds_connection,
+                        dtype={"permno": int, "siccd": int},
+                        parse_dates={"date"},
+                    )
+                    .assign(shrout=lambda x: x["shrout"] * 1000)
+                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
+                    .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                )
+
+                mktcap_lag = crsp_monthly.assign(
+                    date=lambda x: x["date"] + pd.DateOffset(months=1),
+                    mktcap_lag=lambda x: x["mktcap"],
+                ).get(["permno", "date", "mktcap_lag"])
+
+                crsp_monthly = crsp_monthly.merge(
+                    mktcap_lag, how="left", on=["permno", "date"]
+                ).assign(
+                    exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
+                    industry=lambda x: x["siccd"].apply(_assign_industry),
+                )
+                factors_ff3_monthly = _download_data_factors_ff(
+                    dataset="F-F_Research_Data_Factors",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+
+                crsp_monthly = (
+                    crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
+                    .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
+                    .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
+                    .drop(columns=["risk_free"])
+                    .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
+                )
+                processed_data = crsp_monthly
+        elif "crsp_daily" in dataset:
+            if version == "v1":
+                pass
+            if version == "v2":
+                permnos = pd.read_sql(
+                    sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
                     con=wrds_connection,
                     dtype={"permno": int},
-                    parse_dates={"date"},
-                ).dropna(subset=["permno", "date", "ret"])
+                )
+                permnos = list(permnos["permno"].astype(str))
+                batches = np.ceil(len(permnos) / batch_size).astype(int)
 
-                if not crsp_daily_sub.empty:
-                    crsp_daily_sub = (
-                        crsp_daily_sub.merge(
-                            factors_ff3_daily[["date", "risk_free"]],
-                            on="date",
-                            how="left",
+                factors_ff3_daily = _download_data_factors_ff(
+                    dataset="F-F_Research_Data_Factors_Daily",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+
+                for j in range(1, batches + 1):
+                    permno_batch = permnos[
+                        ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
+                    ]
+                    permno_batch_formatted = ", ".join(
+                        f"'{permno}'" for permno in permno_batch
+                    )
+                    permno_string = f"({permno_batch_formatted})"
+
+                    crsp_daily_sub_query = f"""
+                        SELECT dsf.permno, dlycaldt AS date, dlyret AS ret
+                            {", " + additional_columns_sql if additional_columns_sql else ""}
+                        FROM crsp.dsf_v2 AS dsf
+                        INNER JOIN crsp.stksecurityinfohist AS ssih
+                        ON dsf.permno = ssih.permno AND
+                            ssih.secinfostartdt <= dsf.dlycaldt AND
+                            dsf.dlycaldt <= ssih.secinfoenddt
+                        WHERE dsf.permno IN {permno_string}
+                        AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+                        AND ssih.sharetype = 'NS'
+                        AND ssih.securitytype = 'EQTY'
+                        AND ssih.securitysubtype = 'COM'
+                        AND ssih.usincflg = 'Y'
+                        AND ssih.issuertype in ('ACOR', 'CORP')
+                        AND ssih.primaryexch in ('N', 'A', 'Q')
+                        AND ssih.conditionaltype in ('RW', 'NW')
+                        AND ssih.tradingstatusflg = 'A'
+                        """
+
+                    crsp_daily_sub = pd.read_sql_query(
+                        sql=crsp_daily_sub_query,
+                        con=wrds_connection,
+                        dtype={"permno": int},
+                        parse_dates={"date"},
+                    ).dropna(subset=["permno", "date", "ret"])
+
+                    if not crsp_daily_sub.empty:
+                        crsp_daily_sub = (
+                            crsp_daily_sub.merge(
+                                factors_ff3_daily[["date", "risk_free"]],
+                                on="date",
+                                how="left",
+                            )
+                            .assign(
+                                ret_excess=lambda x: (
+                                    (x["ret"] - x["risk_free"]).clip(lower=-1)
+                                )
+                            )
+                            .drop(columns=["risk_free"])
+                        )
+
+                    print(
+                        f"Batch {j} out of {batches} done "
+                        f"({(j / batches) * 100:.2f}%)\n"
+                    )
+
+                    crsp_data = pd.concat([crsp_data, crsp_daily_sub])
+
+                if adjust_volume and not crsp_data.empty:
+                    gr_date_1 = pd.Timestamp("2001-02-01")
+                    gr_date_2 = pd.Timestamp("2002-01-01")
+                    gr_date_3 = pd.Timestamp("2004-01-01")
+
+                    crsp_data = (
+                        crsp_data
+                        .sort_values(["permno", "date"])
+                        .assign(
+                            cfacpr=lambda df: df.groupby("permno")[
+                                "dlyfacprc"
+                            ].cumprod(),
+                            vol=lambda df: df["dlyvol"].replace(-99, np.nan),
+                            prc=lambda df: df["dlyprc"].replace(0, np.nan),
                         )
                         .assign(
-                            ret_excess=lambda x: (
-                                (x["ret"] - x["risk_free"]).clip(lower=-1)
+                            prc_adj=lambda df: (
+                                df["prc"].abs() / df["cfacpr"]
+                            ).replace([np.inf, -np.inf], np.nan)
+                        )
+                        .assign(
+                            vol_adj=lambda df: np.select(
+                                [
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] < gr_date_1),
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] >= gr_date_1)
+                                    & (df["date"] < gr_date_2),
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] >= gr_date_2)
+                                    & (df["date"] < gr_date_3),
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] >= gr_date_3),
+                                ],
+                                [
+                                    df["vol"] / 2.0,
+                                    df["vol"] / 1.8,
+                                    df["vol"] / 1.6,
+                                    df["vol"] / 1.0,
+                                ],
+                                default=df["vol"],
                             )
                         )
-                        .drop(columns=["risk_free"])
+                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc", "cfacpr", "vol", "prc_adj"])
                     )
 
-                print(
-                    f"Batch {j} out of {batches} done "
-                    f"({(j / batches) * 100:.2f}%)\n"
-                )
-
-                crsp_data = pd.concat([crsp_data, crsp_daily_sub])
-
-            if adjust_volume and not crsp_data.empty:
-                gr_date_1 = pd.Timestamp("2001-02-01")
-                gr_date_2 = pd.Timestamp("2002-01-01")
-                gr_date_3 = pd.Timestamp("2004-01-01")
-
-                crsp_data = (
-                    crsp_data
-                    .sort_values(["permno", "date"])
-                    .assign(
-                        cfacpr=lambda df: df.groupby("permno")[
-                            "dlyfacprc"
-                        ].cumprod(),
-                        vol=lambda df: df["dlyvol"].replace(-99, np.nan),
-                        prc=lambda df: df["dlyprc"].replace(0, np.nan),
-                    )
-                    .assign(
-                        prc_adj=lambda df: (
-                            df["prc"].abs() / df["cfacpr"]
-                        ).replace([np.inf, -np.inf], np.nan)
-                    )
-                    .assign(
-                        vol_adj=lambda df: np.select(
-                            [
-                                (df["primaryexch"] == "Q")
-                                & (df["date"] < gr_date_1),
-                                (df["primaryexch"] == "Q")
-                                & (df["date"] >= gr_date_1)
-                                & (df["date"] < gr_date_2),
-                                (df["primaryexch"] == "Q")
-                                & (df["date"] >= gr_date_2)
-                                & (df["date"] < gr_date_3),
-                                (df["primaryexch"] == "Q")
-                                & (df["date"] >= gr_date_3),
-                            ],
-                            [
-                                df["vol"] / 2.0,
-                                df["vol"] / 1.8,
-                                df["vol"] / 1.6,
-                                df["vol"] / 1.0,
-                            ],
-                            default=df["vol"],
-                        )
-                    )
-                    .drop(columns=["dlyvol", "dlyprc", "dlyfacprc"])
-                )
-
-            disconnect_connection(wrds_connection)
-            processed_data = crsp_data
-    else:
-        raise ValueError(
-            "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
-        )
+                processed_data = crsp_data
+        else:
+            raise ValueError(
+                "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
+            )
+    finally:
+        disconnect_connection(wrds_connection)
 
     if add_ccm_links:
         ccm_links = _download_data_wrds_ccm_links()
