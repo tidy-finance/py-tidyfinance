@@ -1024,7 +1024,7 @@ def _download_data_wrds_crsp(
     if adjust_volume and dataset != "crsp_daily":
         raise ValueError("adjust_volume is only supported for 'crsp_daily'.")
 
-    if adjust_volume and dataset == "crsp_daily":
+    if adjust_volume:
         required = {"dlyprc", "dlyvol", "dlyfacprc", "primaryexch"}
         if not required.issubset(set(additional_columns_list)):
             raise ValueError(
@@ -1097,7 +1097,7 @@ def _download_data_wrds_crsp(
                     crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
                     .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
                     .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
-                    .drop(columns=["risk_free"])
+                    .drop(columns=["risk_free", "prc"])
                     .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
                 )
                 processed_data = crsp_monthly
