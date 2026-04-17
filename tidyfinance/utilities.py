@@ -2,6 +2,7 @@
 
 import os
 import webbrowser
+import re
 
 import numpy as np
 import pandas as pd
@@ -194,7 +195,7 @@ def load_wrds_credentials(config_path: str = "./config.yaml") -> tuple:
 
     Returns
     -------
-        tuple: A tuple containing (wrds_user (str), wrds_password (str)).===================================================================================================================================================================================================================================================================================================================================
+        tuple: A tuple containing (wrds_user (str), wrds_password (str)).
     """
     load_dotenv()
 
@@ -241,6 +242,35 @@ def open_tidy_finance_website(chapter: str = None) -> None:
         final_url = base_url
 
     webbrowser.open(final_url)
+
+
+def _process_additional_columns(additional_columns):
+    """Validate and format additional column names for SQL queries.
+
+    Parameters
+    ----------
+    additional_columns : list of str or None
+        Column names to append to a SQL SELECT clause. Each name must
+        be a valid lowercase SQL identifier (letters, digits, underscores).
+
+    Returns
+    -------
+    str
+        A string like ", col1, col2" ready to splice into a SELECT,
+        or an empty string if no additional columns were provided.
+
+    Raises
+    ------
+    ValueError
+        If any column name contains characters other than lowercase
+        letters, digits, or underscores.
+    """
+    if not additional_columns:
+        return ""
+    if not all(re.match(r'^[a-z_][a-z0-9_]*$', col)
+               for col in additional_columns):
+        raise ValueError("Column names must be valid SQL identifiers.")
+    return ", " + ", ".join(additional_columns)
 
 
 def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:

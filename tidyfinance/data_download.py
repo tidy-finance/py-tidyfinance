@@ -27,6 +27,7 @@ from .utilities import (
     get_wrds_connection,
     list_supported_indexes,
     process_trace_data,
+    _process_additional_columns
 )
 
 # %% constant
@@ -954,9 +955,7 @@ def _download_data_wrds_crsp(
 
     # Connect to WRDS
     wrds_connection = get_wrds_connection()
-    additional_columns = (
-        ", ".join(additional_columns) if additional_columns else ""
-    )
+    additional_columns_str = _process_additional_columns(additional_columns)
 
     crsp_data = pd.DataFrame()
     if "crsp_monthly" in dataset:
@@ -967,7 +966,7 @@ def _download_data_wrds_crsp(
                 SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
                     AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
                     AS altprc, ssih.primaryexch, ssih.siccd
-                    {", " + additional_columns if additional_columns else ""}
+                    {additional_columns_str}
                 FROM crsp.msf_v2 AS msf
                 INNER JOIN crsp.stksecurityinfohist AS ssih
                 ON msf.permno = ssih.permno AND
@@ -1044,7 +1043,7 @@ def _download_data_wrds_crsp(
 
                 crsp_daily_sub_query = f"""
                     SELECT dsf.permno, dlycaldt AS date, dlyret AS ret
-                        {", " + additional_columns if additional_columns else ""}
+                        {additional_columns_str}
                     FROM crsp.dsf_v2 AS dsf
                     INNER JOIN crsp.stksecurityinfohist AS ssih
                     ON dsf.permno = ssih.permno AND
@@ -1179,15 +1178,13 @@ def _download_data_wrds_compustat(
 
     # Connect to WRDS
     wrds_connection = get_wrds_connection()
-    additional_columns = (
-        ", ".join(additional_columns) if additional_columns else ""
-    )
+    additional_columns_str = _process_additional_columns(additional_columns)
 
     if "compustat_annual" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
                 pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga
-                {", " + additional_columns if additional_columns else ""}
+                {additional_columns_str}
             FROM comp.funda
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
             AND datadate BETWEEN '{start_date}' AND '{end_date}'
@@ -1260,7 +1257,7 @@ def _download_data_wrds_compustat(
     elif "compustat_quarterly" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq
-                {", " + additional_columns if additional_columns else ""}
+                {additional_columns_str}
             FROM comp.fundq
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
             AND datadate BETWEEN '{start_date}' AND '{end_date}'
@@ -1316,10 +1313,17 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
     """
     wrds_connection = get_wrds_connection()
 
+    if additional_columns:
+        if not all(re.match(r'^[a-z_][a-z0-9_]*$', col)
+                   for col in additional_columns):
+            raise ValueError("Column names must be valid SQL identifiers.")
+
+    additional_columns_str = _process_additional_columns(additional_columns)
+
     fisd_query = (
         "SELECT complete_cusip, maturity, offering_amt, offering_date, "
         "dated_date, interest_frequency, coupon, last_interest_date, "
-        "issue_id, issuer_id "
+        f"issue_id, issuer_id{additional_columns_str} "
         "FROM fisd.fisd_mergedissue "
         "WHERE security_level = 'SEN' "
         "AND (slob = 'N' OR slob IS NULL) "
