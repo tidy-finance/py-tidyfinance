@@ -379,15 +379,18 @@ def _download_data_factors_q(
             f"Unsupported dataset: '{dataset}'. Dataset name must include the "
             "year, e.g. 'q5_factors_daily_2024'."
         )
-    raw_data = (
-        pd.read_csv(
-            f"{url}{dataset}.csv",
-            engine="python",
-            on_bad_lines="skip",
+    try:
+        raw_data = (
+            pd.read_csv(
+                f"{url}{dataset}.csv",
+                engine="python",
+                on_bad_lines="skip",
+            )
+            .rename(columns=lambda x: x.lower().replace("r_", ""))
+            .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
-        .rename(columns=lambda x: x.lower().replace("r_", ""))
-        .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
-    )
+    except Exception as e:
+        raise ValueError(f"Could not download dataset '{dataset}': {e}") from e
 
     if "monthly" in dataset:
         raw_data = raw_data.assign(
@@ -1035,7 +1038,7 @@ def _download_data_wrds_crsp(
     try:
         if "crsp_monthly" in dataset:
             if version == "v1":
-                pass
+                raise NotImplementedError("version='v1' is not yet implemented.")
             if version == "v2":
                 crsp_query = f"""
                     SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
@@ -1097,7 +1100,7 @@ def _download_data_wrds_crsp(
                 processed_data = crsp_monthly
         elif "crsp_daily" in dataset:
             if version == "v1":
-                pass
+                raise NotImplementedError("version='v1' is not yet implemented.")
             if version == "v2":
                 permnos = pd.read_sql(
                     sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
