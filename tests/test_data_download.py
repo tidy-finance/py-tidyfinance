@@ -21,8 +21,14 @@ from tidyfinance.data_download import (
     _download_data_osap,
     _download_data_stock_prices,
     _download_data_wrds_compustat,
+    _download_data_wrds_crsp,
     download_data
 )  # noqa: E402
+
+wrds_available = pytest.mark.skipif(
+    not os.getenv("WRDS_USER"),
+    reason="Requires WRDS credentials",
+)
 
 
 def test_download_data_factors_invalid_data_set():
@@ -219,24 +225,14 @@ def test_download_data_breakpoints_valid():
 
 
 def test_download_data_factors_q_valid():
-    df = _download_data_factors_q("q5_factors_monthly_2024")
+    df = _download_data_factors_q("q5_factors_monthly")
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
 
-def test_download_data_factors_q_deprecated_name():
-    with pytest.warns(DeprecationWarning, match="without a year suffix is deprecated"):
-        df = _download_data_factors_q("q5_factors_monthly")
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-
-
-def test_download_data_constituents_index_kwarg_warns():
-    from unittest.mock import patch
-    dummy = pd.DataFrame({"symbol": ["AAPL"], "name": ["Apple"]})
-    with patch("tidyfinance.data_download._download_data_constituents", return_value=dummy):
-        with pytest.warns(UserWarning, match="index.*passed via kwargs is ignored"):
-            download_data(domain="constituents", dataset="sp500", index="wrong_thing")
+def test_download_data_constituents_dataset_kwarg_warns():
+    with pytest.warns(UserWarning, match="'dataset' argument is not valid"):
+        download_data(domain="constituents", dataset="DAX")
 
 
 def test_download_data_macro_predictors_valid():
@@ -295,38 +291,15 @@ def test_download_data_wrds_crsp_adjust_volume_missing_columns():
         _download_data_wrds_crsp(dataset="crsp_daily", adjust_volume=True)
 
 
+@wrds_available
 def test_download_data_wrds_crsp_monthly_no_prc_column():
-    import pandas as pd
-    from unittest.mock import patch, MagicMock
-    from tidyfinance.data_download import _download_data_wrds_crsp
-
-    crsp_df = pd.DataFrame({
-        "permno": [10001, 10001],
-        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
-        "ret": [0.02, 0.01],
-        "shrout": [1000, 1000],
-        "prc": [49.0, 50.0],
-        "primaryexch": ["N", "N"],
-        "siccd": [3990, 3990],
-    })
-    factors_df = pd.DataFrame({
-        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
-        "mkt_excess": [0.003, 0.005],
-        "smb": [0.001, 0.001],
-        "hml": [0.002, 0.002],
-        "risk_free": [0.0002, 0.0002],
-    })
-
-    with patch("tidyfinance.data_download.get_wrds_connection", return_value=MagicMock()):
-        with patch("pandas.read_sql_query", return_value=crsp_df):
-            with patch("tidyfinance.data_download._download_data_factors_ff", return_value=factors_df):
-                result = _download_data_wrds_crsp(
-                    dataset="crsp_monthly",
-                    start_date="2020-01-01",
-                    end_date="2020-01-31",
-                )
-
-    assert len(result) > 0
+    result = _download_data_wrds_crsp(
+        dataset="crsp_monthly",
+        start_date="2020-01-01",
+        end_date="2020-01-31",
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert not result.empty
     assert "prc" not in result.columns
 
 

@@ -5,7 +5,3 @@ tidyfinance/__pycache__/
 config.yaml
 .ruff_cache
 .venv
-.roborev
-.claude/
- 
- 

@@ -168,14 +168,7 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        if "index" in kwargs:
-            warnings.warn(
-                "'index' passed via kwargs is ignored; use the 'dataset' argument instead",
-                UserWarning,
-                stacklevel=2,
-            )
-            kwargs.pop("index")
-        processed_data = _download_data_constituents(index=dataset, **kwargs)
+        processed_data = _download_data_constituents(dataset=dataset, **kwargs)
     elif domain == "fred":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
@@ -353,8 +346,8 @@ def _download_data_factors_q(
     Parameters
     ----------
     dataset : str
-        The name of the dataset to download (e.g.,
-        "q5_factors_daily_2024", "q5_factors_monthly_2024").
+        The name of the dataset to download (e.g., "q5_factors_daily",
+        "q5_factors_monthly"). The year suffix is added automatically.
     start_date : str, optional
         A string in "YYYY-MM-DD" format specifying the start date for
         the data. If not provided, the full dataset is returned.
@@ -381,33 +374,26 @@ def _download_data_factors_q(
         "q5_factors_quarterly_",
         "q5_factors_annual_",
     ]
-    if not any(dataset.startswith(p) for p in valid_prefixes):
-        base_prefixes = [p.rstrip("_") for p in valid_prefixes]
-        if any(dataset == p for p in base_prefixes):
-            warnings.warn(
-                f"Dataset name '{dataset}' without a year suffix is deprecated. "
-                f"Use '{dataset}_2024' instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            dataset = f"{dataset}_2024"
-        else:
-            raise ValueError(
-                f"Unsupported dataset: '{dataset}'. Dataset name must include the "
-                "year, e.g. 'q5_factors_daily_2024'."
-            )
+    base_prefixes = [p.rstrip("_") for p in valid_prefixes]
+    if any(dataset == p for p in base_prefixes):
+        dataset = f"{dataset}_2024"
+    elif not any(dataset.startswith(p) for p in valid_prefixes):
+        raise ValueError(
+            f"Unsupported dataset: '{dataset}'. Dataset name"
+            " must include the year, e.g. 'q5_factors_daily_2024'."
+        )
     try:
         raw_data = (
-            pd.read_csv(
-                f"{url}{dataset}.csv",
-                engine="python",
-                on_bad_lines="skip",
-            )
+            pd.read_csv(f"{url}{dataset}.csv", engine="python",
+                        on_bad_lines="skip"
+                        )
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
     except Exception as e:
-        raise ValueError(f"Could not download or parse dataset '{dataset}': {e}") from e
+        raise ValueError(
+            f"Could not download or parse dataset '{dataset}': {e}"
+        ) from e
 
     if "monthly" in dataset:
         raw_data = raw_data.assign(
@@ -559,7 +545,9 @@ def _download_data_macro_predictors(
     return raw_data
 
 
-def _download_data_constituents(index: str) -> pd.DataFrame:
+def _download_data_constituents(
+    index: str = None, dataset: str = None, **kwargs
+) -> pd.DataFrame:
     """
     Download constituent data for a given stock index.
 
@@ -574,6 +562,16 @@ def _download_data_constituents(index: str) -> pd.DataFrame:
     pd.DataFrame
         A data frame containing the processed constituent data.
     """
+    if dataset is not None and index is None:
+        warnings.warn(
+            "The 'dataset' argument is not valid for domain='constituents'. "
+            "Use 'index' instead, e.g. download_data(domain='constituents',"
+            " index='DAX').",
+            UserWarning,
+            stacklevel=2,
+        )
+        index = dataset
+
     symbol_blacklist = {"", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
     supported_indexes = list_supported_indexes()
 
@@ -591,7 +589,6 @@ def _download_data_constituents(index: str) -> pd.DataFrame:
     ].values[0]
     headers = {"User-Agent": _get_random_user_agent()}
 
-    headers = {"User-Agent": _get_random_user_agent()}
     try:
         response = requests.get(url, impersonate="chrome120", headers=headers)
     except Exception:
