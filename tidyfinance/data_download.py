@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from curl_cffi import requests
 from sqlalchemy import text
-from huggingface_hub import HfApi, hf_hub_download
+import pyarrow.parquet as pq
 from datetime import date
 
 from ._internal import (
@@ -1452,33 +1452,42 @@ def _download_data_wrds_trace_enhanced(
 def _get_available_huggingface_files(
     organization: str, dataset: str
 ) -> pd.DataFrame:
-    """List parquet files available in a Hugging Face dataset repository.
+    """
+    List parquet files available in a Hugging Face dataset repository.
 
-    Uses ''HfApi.list_repo_tree'' to enumerate all files recursively,
-    handling pagination automatically. Returns only files with a ''.parquet''
-    suffix.
+    Queries the Hugging Face Datasets API and returns only files with a
+    '.parquet' suffix. Follows pagination links in the 'Link' response
+    header automatically.
 
     Parameters
     ----------
-        organization: Hugging Face organization or user name.
-        dataset: Dataset repository name under the organization.
+    organization : str
+        Hugging Face organization or user name.
+    dataset : str
+        Dataset repository name under the organization.
 
     Returns
     -------
-        pd.DataFrame: DataFrame with columns ''path'' (str) and ''size'' (int).
+    pd.DataFrame
+        DataFrame with columns 'path' (str) and 'size' (int).
     """
-    repo_id = f"{organization}/{dataset}"
-    api = HfApi()
+    api_url = (f"https://huggingface.co/api/datasets/{organization}/{dataset}"
+               "/tree/main?recursive=1"
+               )
+    rows = []
+    next_url = api_url
 
-    rows = [
-        {"path": entry.path, "size": entry.size}
-        for entry in api.list_repo_tree(
-            repo_id=repo_id,
-            repo_type="dataset",
-            recursive=True,
-        )
-        if hasattr(entry, "size") and entry.path.endswith(".parquet")
-    ]
+    while next_url:
+        resp = requests.get(next_url, timeout=30)
+        resp.raise_for_status()
+        for entry in resp.json():
+            is_file = entry.get("type") == "file"
+            is_parquet = entry["path"].endswith(".parquet")
+            if is_file and is_parquet:
+                rows.append({"path": entry["path"], "size": entry.get("size")})
+        link = resp.headers.get("Link", "")
+        match = re.search(r'<([^>]+)>;\s*rel="next"', link)
+        next_url = match.group(1) if match else None
 
     return pd.DataFrame(rows, columns=["path", "size"])
 
@@ -1552,16 +1561,16 @@ def _filter_factor_library_grid(
             "'tidy-finance/factor-library-grid'."
         )
     grid_path = available["path"].iloc[0]
-    local_path = hf_hub_download(
-        repo_id="tidy-finance/factor-library-grid",
-        filename=grid_path,
-        repo_type="dataset",
-    )
-    grid = (pd.read_parquet(local_path)
+    grid_url = ("https://huggingface.co/datasets/tidy-finance"
+                f"/factor-library-grid/resolve/main/{grid_path}"
+                )
+    grid = (pd.read_parquet(grid_url)
             .assign(sorting_variable=lambda x:
-                    x["sorting_variable"].str.replace(r"^sv_", "", regex=True)
+                    x["sorting_variable"].str.replace(r"^sv_", "",
+                                                      regex=True)
                     )
             )
+
     for col, value in filters.items():
         values = value if isinstance(value, (list, tuple)) else [value]
         if values == [None]:
@@ -1636,12 +1645,10 @@ def _download_factor_library_ids(
             "or the file listing may have failed."
         )
     grid_path = grid_files["path"].iloc[0]
-    local_path = hf_hub_download(
-        repo_id="tidy-finance/factor-library-grid",
-        filename=grid_path,
-        repo_type="dataset",
-    )
-    grid = (pd.read_parquet(local_path)
+    grid_url = ("https://huggingface.co/datasets/tidy-finance"
+                f"/factor-library-grid/resolve/main/{grid_path}"
+                )
+    grid = (pd.read_parquet(grid_url)
             .assign(sorting_variable=lambda x:
                     x["sorting_variable"].str.replace(r"^sv_", "", regex=True)
                     )
@@ -1669,11 +1676,8 @@ def _download_factor_library_ids(
     returns = pd.concat(
         [
             pd.read_parquet(
-                hf_hub_download(
-                    repo_id=f"{organization}/{dataset_name}",
-                    filename=path,
-                    repo_type="dataset",
-                )
+                f"https://huggingface.co/datasets/{organization}"
+                f"/{dataset_name}/resolve/main/{path}"
             )
             for path in unique_paths
         ],
@@ -1813,11 +1817,8 @@ def _download_data_huggingface(
         return pd.concat(
             [
                 pd.read_parquet(
-                    hf_hub_download(
-                        repo_id=f"{organization}/{dataset_name}",
-                        filename=path,
-                        repo_type="dataset",
-                    )
+                    f"https://huggingface.co/datasets/{organization}"
+                    f"/{dataset_name}/resolve/main/{path}"
                 )
                 for path in files_to_download["path"]
             ],

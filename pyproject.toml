@@ -41,7 +41,8 @@ Changelog = "https://github.com/tidy-finance/py-tidyfinance/blob/master/CHANGELO
 
 [tool.pytest.ini_options]
 filterwarnings = [
-    "ignore:distutils Version classes are deprecated:DeprecationWarning"
+    "ignore:distutils Version classes are deprecated:DeprecationWarning",
+    "ignore::pytest.PytestAssertRewriteWarning",
 ]
 
 [tool.ruff]
