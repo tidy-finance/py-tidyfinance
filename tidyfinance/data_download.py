@@ -3,6 +3,7 @@
 import io
 import os
 import re
+import time
 import warnings
 import zipfile
 
@@ -42,12 +43,14 @@ def create_wrds_dummy_database(
 
     Parameters
     ----------
-        path (str): The file path where the SQLite database should be saved.
-        url (str, optional): The URL where the SQLite database is stored.
+    path : str
+        The file path where the SQLite database should be saved.
+    url : str, optional
+        The URL where the SQLite database is stored.
 
     Returns
     -------
-        None: Side effect - downloads a file to the specified path.
+    None
     """
     if not path:
         raise ValueError(
@@ -82,8 +85,8 @@ def get_available_famafrench_datasets():
 
     Returns
     -------
-    datasets: list
-        A list of valid inputs for _download_data_factors_ff
+    list
+        A list of valid dataset names for use with download_data_factors_ff.
     """
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
     ff_url_prefix = "ftp/"
@@ -127,22 +130,26 @@ def download_data(
     Parameters
     ----------
     domain : str
-        The domain of the dataset to download.
+        The domain of the dataset to download (e.g., "famafrench",
+        "globalq", "macro_predictors", "wrds", "constituents", "fred",
+        "stock_prices", "osap").
     dataset : str, optional
-        The dataset to download.
+        The specific dataset within the domain to download.
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
-    **kwargs : dict
-        Additional arguments passed to specific download functions depending
-        on the domain and dataset.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
+    **kwargs
+        Additional arguments passed to the domain-specific download
+        function.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed data, including dates and relevant financial
-        metrics, filtered by the specified date range.
+        A data frame with processed data, including dates and relevant
+        financial metrics, filtered by the specified date range.
     """
     if domain in ["famafrench", "factors_ff"]:
         processed_data = _download_data_factors_ff(
@@ -161,7 +168,7 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "constituents":
-        processed_data = _download_data_constituents(**kwargs)
+        processed_data = _download_data_constituents(dataset=dataset, **kwargs)
     elif domain == "fred":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
@@ -260,7 +267,33 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
 def _download_data_factors_ff(
     dataset: str, start_date: str = None, end_date: str = None
 ) -> pd.DataFrame:
-    """Download and process Fama-French factor data."""
+    """
+    Download and process Fama-French factor data.
+
+    Downloads and processes Fama-French factor data based on the
+    specified dataset name and date range. It processes the raw data
+    into a structured format, including date conversion, scaling factor
+    values, and filtering by the specified date range.
+
+    Parameters
+    ----------
+    dataset : str
+        The name of the Fama-French dataset to download
+        (e.g., "Fama/French 3 Factors").
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame with processed factor data, including the date,
+        risk-free rate, market excess return, and other factors,
+        filtered by the specified date range.
+    """
     start_date, end_date = _validate_dates(start_date, end_date)
     all_datasets = get_available_famafrench_datasets()
     if dataset in all_datasets:
@@ -305,7 +338,6 @@ def _download_data_factors_q(
     dataset: str,
     start_date: str = None,
     end_date: str = None,
-    ref_year: int = 2024,
     url: str = "https://global-q.org/uploads/1/2/2/6/122679606/",
 ) -> pd.DataFrame:
     """
@@ -314,68 +346,77 @@ def _download_data_factors_q(
     Parameters
     ----------
     dataset : str
-        The dataset to download.
+        The name of the dataset to download (e.g., "q5_factors_daily",
+        "q5_factors_monthly"). The year suffix is added automatically.
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
-    ref_year : int, optional
-        The reference year for dataset selection (default is 2024).
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
     url : str, optional
         The base URL from which to download the dataset files.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed factor data, including the date,
-        risk-free rate, market excess return, and other factors.
+        A data frame with processed factor data, including the date,
+        risk-free rate, market excess return, and other factors,
+        filtered by the specified date range.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = [
-        f"q5_factors_daily_{ref_year}",
-        f"q5_factors_weekly_{ref_year}",
-        f"q5_factors_weekly_w2w_{ref_year}",
-        f"q5_factors_monthly_{ref_year}",
-        f"q5_factors_quarterly_{ref_year}",
-        f"q5_factors_annual_{ref_year}",
-    ]
-    matched_dataset = next((d for d in all_datasets if dataset in d), None)
 
-    if matched_dataset:
+    valid_prefixes = [
+        "q5_factors_daily_",
+        "q5_factors_weekly_w2w_",
+        "q5_factors_weekly_",
+        "q5_factors_monthly_",
+        "q5_factors_quarterly_",
+        "q5_factors_annual_",
+    ]
+    base_prefixes = [p.rstrip("_") for p in valid_prefixes]
+    if any(dataset == p for p in base_prefixes):
+        dataset = f"{dataset}_2024"
+    elif not any(dataset.startswith(p) for p in valid_prefixes):
+        raise ValueError(
+            f"Unsupported dataset: '{dataset}'. Dataset name"
+            " must include the year, e.g. 'q5_factors_daily_2024'."
+        )
+    try:
         raw_data = (
-            pd.read_csv(
-                f"{url}{matched_dataset}.csv",
-                engine="python",
-                on_bad_lines="skip",
-            )
+            pd.read_csv(f"{url}{dataset}.csv", engine="python",
+                        on_bad_lines="skip"
+                        )
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
+    except Exception as e:
+        raise ValueError(
+            f"Could not download or parse dataset '{dataset}': {e}"
+        ) from e
 
-        if "monthly" in matched_dataset:
-            raw_data = raw_data.assign(
-                date=pd.to_datetime(
-                    dict(year=raw_data.year, month=raw_data.month, day=1)
-                )
-            ).drop(columns=["year", "month"])
-        if "annual" in matched_dataset:
-            raw_data = raw_data.assign(
-                date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
-            ).drop(columns=["year"])
-
+    if "monthly" in dataset:
         raw_data = raw_data.assign(
-            date=lambda x: pd.to_datetime(x["date"])
-        ).apply(lambda x: x.div(100) if x.name != "date" else x)
+            date=pd.to_datetime(
+                dict(year=raw_data.year, month=raw_data.month, day=1)
+            )
+        ).drop(columns=["year", "month"])
+    if "annual" in dataset:
+        raw_data = raw_data.assign(
+            date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
+        ).drop(columns=["year"])
 
-        if start_date and end_date:
-            raw_data = raw_data.query("@start_date <= date <= @end_date")
+    raw_data = raw_data.assign(
+        date=lambda x: pd.to_datetime(x["date"])
+    ).apply(lambda x: x.div(100) if x.name != "date" else x)
 
-        raw_data = raw_data[
-            ["date"] + [col for col in raw_data.columns if col != "date"]
-        ].reset_index(drop=True)
-        return raw_data
-    else:
-        raise ValueError("No matching dataset found.")
+    if start_date and end_date:
+        raw_data = raw_data.query("@start_date <= date <= @end_date")
+
+    raw_data = raw_data[
+        ["date"] + [col for col in raw_data.columns if col != "date"]
+    ].reset_index(drop=True)
+    return raw_data
 
 
 def _download_data_macro_predictors(
@@ -390,19 +431,22 @@ def _download_data_macro_predictors(
     Parameters
     ----------
     dataset : str
-        The dataset to download ("monthly", "quarterly", "annual")
+        The dataset to download. Accepts "monthly", "quarterly", or
+        "annual".
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
     sheet_id : str, optional
         The Google Sheets ID from which to download the dataset.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed data, including financial metrics, filtered
-        by the specified date range.
+        A data frame with processed data, including financial metrics,
+        filtered by the specified date range.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -501,18 +545,33 @@ def _download_data_macro_predictors(
     return raw_data
 
 
-def _download_data_constituents(index: str) -> pd.DataFrame:
+def _download_data_constituents(
+    index: str = None, dataset: str = None, **kwargs
+) -> pd.DataFrame:
     """
     Download constituent data for a given stock index.
 
     Parameters
     ----------
-        index (str): The name of the stock index to download data for.
+    index : str
+        The name of the stock index to download data for. Must match
+        a supported index from list_supported_indexes().
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing the processed constituent data.
+    pd.DataFrame
+        A data frame containing the processed constituent data.
     """
+    if dataset is not None and index is None:
+        warnings.warn(
+            "The 'dataset' argument is not valid for domain='constituents'. "
+            "Use 'index' instead, e.g. download_data(domain='constituents',"
+            " index='DAX').",
+            UserWarning,
+            stacklevel=2,
+        )
+        index = dataset
+
     symbol_blacklist = {"", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
     supported_indexes = list_supported_indexes()
 
@@ -530,7 +589,6 @@ def _download_data_constituents(index: str) -> pd.DataFrame:
     ].values[0]
     headers = {"User-Agent": _get_random_user_agent()}
 
-    headers = {"User-Agent": _get_random_user_agent()}
     try:
         response = requests.get(url, impersonate="chrome120", headers=headers)
     except Exception:
@@ -602,73 +660,96 @@ def _download_data_fred(
     start_date: str = None,
     end_date: str = None,
 ) -> pd.DataFrame:
-    """
-    Download and process data from FRED.
+    """Download data from FRED (Federal Reserve Economic Data).
 
     Parameters
     ----------
-    series : str or list
-        A list of FRED series IDs to download.
+    series : str or list of str
+        The FRED series ID(s) to download (e.g., ``"GDP"``, ``["GDP",
+        "UNRATE"]``).
     start_date : str, optional
-        The start date for filtering the data, in "YYYY-MM-DD" format.
+        The start date for filtering data in ``YYYY-MM-DD`` format.
     end_date : str, optional
-        The end date for filtering the data, in "YYYY-MM-DD" format.
+        The end date for filtering data in ``YYYY-MM-DD`` format.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame with processed data, including the date, value,
-        and series ID, filtered by the specified date range.
+        A data frame with columns ``date``, ``series``, and ``value``
+        containing the requested FRED series data.
     """
     if isinstance(series, str):
         series = [series]
-
     start_date, end_date = _validate_dates(start_date, end_date)
     fred_data = []
-
     for s in series:
         urls = [
-            # f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
-            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}"
+            f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={s}",
+            f"https://fred.stlouisfed.org/series/{s}/downloaddata/{s}.csv",
         ]
-
-        headers = {"User-Agent": _get_random_user_agent()}
-
+        headers = {
+            "User-Agent": _get_random_user_agent(),
+            "Accept": "text/csv,text/plain,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        success = False
         for url in urls:
-            try:
-                response = requests.get(url, headers=headers)
-                response.raise_for_status()
-
-                raw_data = (
-                    pd.read_csv(pd.io.common.StringIO(response.text))
-                    .rename(columns=lambda x: x.lower())
-                    .assign(
-                        date=lambda x: pd.to_datetime(
-                            x[[c for c in x.columns if "date" in c][0]]
-                        ),
-                        value=lambda x: pd.to_numeric(
-                            x[s.lower()], errors="coerce"
-                        ),
-                        series=s,
+            for attempt in range(3):
+                try:
+                    response = requests.get(
+                        url,
+                        headers=headers,
+                        impersonate="chrome110",
+                        timeout=30,
                     )
-                    .get(["date", "series", "value"])
-                )
+                    response.raise_for_status()
+                except Exception as e:
+                    print(
+                        f"HTTP error for {s} at {url} "
+                        f"(attempt {attempt + 1}): {e}"
+                    )
+                    if attempt < 2:
+                        time.sleep(1 * (attempt + 1))
+                    continue
 
-                fred_data.append(raw_data)
-                break  # exit the loop on successful load
-            except Exception as e:
-                print(f"Failed to retrieve data for series {s}: {e}")
-                fred_data.append(
-                    pd.DataFrame(columns=["date", "value", "series"])
-                )
+                try:
+                    raw_data = (
+                        pd.read_csv(pd.io.common.StringIO(response.text))
+                        .rename(columns=lambda c: c.strip().lower())
+                        .assign(
+                            date=lambda x: pd.to_datetime(
+                                x[x.columns[x.columns.str.contains("date")][0]]
+                            ),
+                            value=lambda x: pd.to_numeric(
+                                x[x.columns[
+                                    ~x.columns.str.contains("date")][0]],
+                                errors="coerce",
+                            ),
+                            series=s,
+                        )
+                        .get(["date", "series", "value"])
+                    )
+                    fred_data.append(raw_data)
+                    success = True
+                    break
+                except Exception as e:
+                    print(f"Parse error for {s}: {e}")
+                    break
+
+            if success:
+                break
+
+        if not success:
+            print(f"Failed to retrieve data for series {s}")
+            fred_data.append(
+                pd.DataFrame(columns=["date", "series", "value"])
+            )
 
     fred_data = pd.concat(fred_data, ignore_index=True)
-
     if start_date and end_date:
         fred_data = fred_data.query(
             "@start_date <= date <= @end_date"
         ).reset_index(drop=True)
-
     return fred_data
 
 
@@ -682,19 +763,21 @@ def _download_data_stock_prices(
 
     Parameters
     ----------
-    symbols : list
-        A list of stock symbols to download data for.
+    symbols : str or list
+        A string or list of stock ticker symbols to download data for.
         At least one symbol must be provided.
     start_date : str, optional
-        Start date in "YYYY-MM-DD" format. Defaults to "2000-01-01".
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        End date in "YYYY-MM-DD" format. Defaults to today's date.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
 
     Returns
     -------
     pd.DataFrame
-        A DataFrame containing columns: symbol, date, volume, open, low,
-        high, close, adjusted_close.
+        A data frame containing columns: symbol, date, volume, open,
+        low, high, close, adjusted_close.
     """
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -795,18 +878,19 @@ def _download_data_osap(
     Parameters
     ----------
     start_date : str, optional
-        Start date in "YYYY-MM-DD" format. If None, full dataset is returned.
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
     end_date : str, optional
-        End date in "YYYY-MM-DD" format. If None, full dataset is returned.
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
     sheet_id : str, optional
-        Google Sheet ID from which to download the dataset.
-        Default is "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY".
+        The Google Sheets ID from which to download the dataset.
 
     Returns
     -------
     pd.DataFrame
-        Processed dataset with snake_case column names,
-        filtered by date range if provided.
+        A data frame with snake_case column names, filtered by the
+        specified date range.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -838,21 +922,29 @@ def _download_data_osap(
 
 def _download_data_wrds(
     dataset: str, start_date: str = None, end_date: str = None, **kwargs
-) -> dict:
+) -> pd.DataFrame:
     """
-    Download data from WRDS based on the specified dataet.
+    Download data from WRDS based on the specified dataset.
 
     Parameters
     ----------
-    dataset (str): Dataset to download
-        (e.g., "crsp_monthly", "compustat_annual").
-    start_date (str, optional): Start date in "YYYY-MM-DD" format.
-    end_date (str, optional): End date in "YYYY-MM-DD" format.
-    **kwargs: Additional parameters specific to the dataset.
+    dataset : str
+        The dataset to download. Accepts "crsp_monthly", "crsp_daily",
+        "compustat_annual", "compustat_quarterly", "ccm_links", "fisd",
+        or "trace_enhanced".
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, a subset of the dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, a subset of the dataset is returned.
+    **kwargs
+        Additional parameters passed to the dataset-specific function.
 
     Returns
     -------
-        dict: A dictionary representing the downloaded data.
+    pd.DataFrame
+        A data frame containing the requested information.
     """
     if "crsp" in dataset:
         return _download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
@@ -879,26 +971,53 @@ def _download_data_wrds_crsp(
     batch_size: int = 500,
     version: str = "v2",
     additional_columns: list = None,
+    add_ccm_links: bool = False,
+    adjust_volume: bool = False,
 ) -> pd.DataFrame:
     """
     Download stock return data from WRDS CRSP.
 
     Parameters
     ----------
-        dataset (str): The dataset to download. Expected values:
-            "crsp_monthly" or "crsp_daily".
-        start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
-        end_date (str or None): End date in "YYYY-MM-DD" format (optional).
-        batch_size (int): The batch size for processing daily data
-            (default: 500).
-        version (str): CRSP version to use ("v2" for updated, "v1" for legacy).
-        additional_columns (list or None): List of additional column names
-            to retrieve (optional).
+    dataset : str
+        A string specifying the CRSP dataset to download:
+        "crsp_monthly" or "crsp_daily".
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, a subset of the dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, a subset of the dataset is returned.
+    batch_size : int, optional
+        An integer specifying the batch size for processing daily data,
+        with a default of 500.
+    version : str, optional
+        A string specifying which CRSP version to use. "v2" (the
+        default) uses the updated second version of CRSP, and "v1"
+        downloads the legacy version of CRSP.
+    additional_columns : list, optional
+        Additional columns from the CRSP monthly or daily data as a
+        list of strings.
+    add_ccm_links : bool, optional
+        A boolean indicating whether CRSP-Compustat links should be
+        added automatically using _download_data_wrds_ccm_links().
+        Defaults to False.
+    adjust_volume : bool, optional
+        A boolean indicating whether daily CRSP trading volume data
+        should be adjusted according to Gao & Ritter (2010).
+        Defaults to False. Note: cumulative price adjustment factors are
+        computed from the data in memory; results may be incorrect if
+        start_date excludes early observations for some permnos.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing CRSP stock return data,
-            adjusted for delistings.
+    pd.DataFrame
+        A data frame containing CRSP stock returns, adjusted for
+        delistings, along with calculated market capitalization and
+        excess returns over the risk-free rate. The daily dataset
+        includes all requested additional_columns plus ret_excess.
+        The structure of the returned data frame depends on the
+        selected dataset.
     """
     if dataset not in ["crsp_monthly", "crsp_daily"]:
         raise ValueError(
@@ -907,115 +1026,48 @@ def _download_data_wrds_crsp(
 
     start_date, end_date = _validate_dates(start_date, end_date)
 
-    # Validate batch_size
     batch_size = int(batch_size)
     if batch_size <= 0:
         raise ValueError("batch_size must be an integer larger than 0.")
 
-    # Validate version
     if version not in ["v1", "v2"]:
         raise ValueError("version must be 'v1' or 'v2'.")
 
-    # Connect to WRDS
+    additional_columns_list = additional_columns or []
+
+    if adjust_volume and dataset != "crsp_daily":
+        raise ValueError("adjust_volume is only supported for 'crsp_daily'.")
+
+    if adjust_volume:
+        required = {"dlyprc", "dlyvol", "dlyfacprc", "primaryexch"}
+        if not required.issubset(set(additional_columns_list)):
+            raise ValueError(
+                "dlyprc, dlyvol, primaryexch, and dlyfacprc must be contained "
+                "in additional_columns for adjust_volume=True."
+            )
+
     wrds_connection = get_wrds_connection()
-    additional_columns = (
-        ", ".join(additional_columns) if additional_columns else ""
+    additional_columns_sql = (
+        ", ".join(additional_columns_list) if additional_columns_list else ""
     )
 
     crsp_data = pd.DataFrame()
-    if "crsp_monthly" in dataset:
-        if version == "v1":
-            pass
-        if version == "v2":
-            crsp_query = f"""
-                SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
-                    AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
-                    AS altprc, ssih.primaryexch, ssih.siccd
-                    {", " + additional_columns if additional_columns else ""}
-                FROM crsp.msf_v2 AS msf
-                INNER JOIN crsp.stksecurityinfohist AS ssih
-                ON msf.permno = ssih.permno AND
-                    ssih.secinfostartdt <= msf.mthcaldt AND
-                    msf.mthcaldt <= ssih.secinfoenddt
-                WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
-                AND ssih.sharetype = 'NS'
-                AND ssih.securitytype = 'EQTY'
-                AND ssih.securitysubtype = 'COM'
-                AND ssih.usincflg = 'Y'
-                AND ssih.issuertype in ('ACOR', 'CORP')
-                AND ssih.primaryexch in ('N', 'A', 'Q')
-                AND ssih.conditionaltype in ('RW', 'NW')
-                AND ssih.tradingstatusflg = 'A'
-                """
-
-            crsp_monthly = (
-                pd.read_sql_query(
-                    sql=crsp_query,
-                    con=wrds_connection,
-                    dtype={"permno": int, "siccd": int},
-                    parse_dates={"date"},
-                )
-                .assign(shrout=lambda x: x["shrout"] * 1000)
-                .assign(mktcap=lambda x: x["shrout"] * x["altprc"] / 1000000)
-                .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
-            )
-
-            mktcap_lag = crsp_monthly.assign(
-                date=lambda x: x["date"] + pd.DateOffset(months=1),
-                mktcap_lag=lambda x: x["mktcap"],
-            ).get(["permno", "date", "mktcap_lag"])
-
-            crsp_monthly = crsp_monthly.merge(
-                mktcap_lag, how="left", on=["permno", "date"]
-            ).assign(
-                exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
-                industry=lambda x: x["siccd"].apply(_assign_industry),
-            )
-            factors_ff3_monthly = _download_data_factors_ff(
-                dataset="F-F_Research_Data_Factors",
-                start_date=start_date,
-                end_date=end_date,
-            )
-
-            crsp_monthly = (
-                crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
-                .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
-                .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
-                .drop(columns=["risk_free"])
-                .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
-            )
-            return crsp_monthly
-    elif "crsp_daily" in dataset:
-        if version == "v1":
-            pass
-        if version == "v2":
-            permnos = pd.read_sql(
-                sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
-                con=wrds_connection,
-                dtype={"permno": int},
-            )
-            permnos = list(permnos["permno"].astype(str))
-            batches = np.ceil(len(permnos) / batch_size).astype(int)
-
-            for j in range(1, batches + 1):
-                permno_batch = permnos[
-                    ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
-                ]
-                permno_batch_formatted = ", ".join(
-                    f"'{permno}'" for permno in permno_batch
-                )
-                permno_string = f"({permno_batch_formatted})"
-
-                crsp_daily_sub_query = f"""
-                    SELECT dsf.permno, dlycaldt AS date, dlyret AS ret
-                        {", " + additional_columns if additional_columns else ""}
-                    FROM crsp.dsf_v2 AS dsf
+    try:
+        if "crsp_monthly" in dataset:
+            if version == "v1":
+                raise NotImplementedError("version='v1' is not yet implemented.")
+            if version == "v2":
+                crsp_query = f"""
+                    SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
+                        AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
+                        AS prc, ssih.primaryexch, ssih.siccd
+                        {", " + additional_columns_sql if additional_columns_sql else ""}
+                    FROM crsp.msf_v2 AS msf
                     INNER JOIN crsp.stksecurityinfohist AS ssih
-                    ON dsf.permno = ssih.permno AND
-                        ssih.secinfostartdt <= dsf.dlycaldt AND
-                        dsf.dlycaldt <= ssih.secinfoenddt
-                    WHERE dsf.permno IN {permno_string}
-                    AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+                    ON msf.permno = ssih.permno AND
+                        ssih.secinfostartdt <= msf.mthcaldt AND
+                        msf.mthcaldt <= ssih.secinfoenddt
+                    WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
                     AND ssih.sharetype = 'NS'
                     AND ssih.securitytype = 'EQTY'
                     AND ssih.securitysubtype = 'COM'
@@ -1026,44 +1078,189 @@ def _download_data_wrds_crsp(
                     AND ssih.tradingstatusflg = 'A'
                     """
 
-                crsp_daily_sub = pd.read_sql_query(
-                    sql=crsp_daily_sub_query,
-                    con=wrds_connection,
-                    dtype={"permno": int},
-                    parse_dates={"date"},
-                ).dropna()
-
-                if not crsp_daily_sub.empty:
-                    factors_ff3_daily = _download_data_factors_ff(
-                        dataset="F-F_Research_Data_Factors_Daily",
-                        start_date=start_date,
-                        end_date=end_date,
+                crsp_monthly = (
+                    pd.read_sql_query(
+                        sql=crsp_query,
+                        con=wrds_connection,
+                        dtype={"permno": int, "siccd": int},
+                        parse_dates={"date"},
                     )
-
-                    crsp_daily_sub = (
-                        crsp_daily_sub.merge(
-                            factors_ff3_daily[["date", "risk_free"]],
-                            on="date",
-                            how="left",
-                        )
-                        .assign(
-                            ret_excess=lambda x: (
-                                (x["ret"] - x["risk_free"]).clip(lower=-1)
-                            )
-                        )
-                        .get(["permno", "date", "ret_excess"])
-                    )
-
-                print(
-                    f"Batch {j} out of {batches} done ({{(j/batches)*100:.2f}}%)\n"
+                    .assign(shrout=lambda x: x["shrout"] * 1000)
+                    .assign(mktcap=lambda x: x["shrout"] * x["altprc"]/1000000)
+                    .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
                 )
 
-                crsp_data = pd.concat([crsp_data, crsp_daily_sub])
-            return crsp_data
-    else:
-        raise ValueError(
-            "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
+                mktcap_lag = crsp_monthly.assign(
+                    date=lambda x: x["date"] + pd.DateOffset(months=1),
+                    mktcap_lag=lambda x: x["mktcap"],
+                ).get(["permno", "date", "mktcap_lag"])
+
+                crsp_monthly = crsp_monthly.merge(
+                    mktcap_lag, how="left", on=["permno", "date"]
+                ).assign(
+                    exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
+                    industry=lambda x: x["siccd"].apply(_assign_industry),
+                )
+                factors_ff3_monthly = _download_data_factors_ff(
+                    dataset="F-F_Research_Data_Factors",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+
+                crsp_monthly = (
+                    crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
+                    .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
+                    .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
+                    .drop(columns=["risk_free"])
+                    .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
+                )
+                processed_data = crsp_monthly
+        elif "crsp_daily" in dataset:
+            if version == "v1":
+                raise NotImplementedError("version='v1' is not yet implemented.")
+            if version == "v2":
+                permnos = pd.read_sql(
+                    sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
+                    con=wrds_connection,
+                    dtype={"permno": int},
+                )
+                permnos = list(permnos["permno"].astype(str))
+                batches = np.ceil(len(permnos) / batch_size).astype(int)
+
+                factors_ff3_daily = _download_data_factors_ff(
+                    dataset="F-F_Research_Data_Factors_Daily",
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+
+                for j in range(1, batches + 1):
+                    permno_batch = permnos[
+                        ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
+                    ]
+                    permno_batch_formatted = ", ".join(
+                        f"'{permno}'" for permno in permno_batch
+                    )
+                    permno_string = f"({permno_batch_formatted})"
+
+                    crsp_daily_sub_query = f"""
+                        SELECT dsf.permno, dlycaldt AS date, dlyret AS ret
+                            {", " + additional_columns_sql if additional_columns_sql else ""}
+                        FROM crsp.dsf_v2 AS dsf
+                        INNER JOIN crsp.stksecurityinfohist AS ssih
+                        ON dsf.permno = ssih.permno AND
+                            ssih.secinfostartdt <= dsf.dlycaldt AND
+                            dsf.dlycaldt <= ssih.secinfoenddt
+                        WHERE dsf.permno IN {permno_string}
+                        AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
+                        AND ssih.sharetype = 'NS'
+                        AND ssih.securitytype = 'EQTY'
+                        AND ssih.securitysubtype = 'COM'
+                        AND ssih.usincflg = 'Y'
+                        AND ssih.issuertype in ('ACOR', 'CORP')
+                        AND ssih.primaryexch in ('N', 'A', 'Q')
+                        AND ssih.conditionaltype in ('RW', 'NW')
+                        AND ssih.tradingstatusflg = 'A'
+                        """
+
+                    crsp_daily_sub = pd.read_sql_query(
+                        sql=crsp_daily_sub_query,
+                        con=wrds_connection,
+                        dtype={"permno": int},
+                        parse_dates={"date"},
+                    ).dropna(subset=["permno", "date", "ret"])
+
+                    if not crsp_daily_sub.empty:
+                        crsp_daily_sub = (
+                            crsp_daily_sub.merge(
+                                factors_ff3_daily[["date", "risk_free"]],
+                                on="date",
+                                how="left",
+                            )
+                            .assign(
+                                ret_excess=lambda x: (
+                                    (x["ret"] - x["risk_free"]).clip(lower=-1)
+                                )
+                            )
+                            .drop(columns=["risk_free"])
+                        )
+
+                    print(
+                        f"Batch {j} out of {batches} done "
+                        f"({(j / batches) * 100:.2f}%)\n"
+                    )
+
+                    crsp_data = pd.concat([crsp_data, crsp_daily_sub])
+
+                if adjust_volume and not crsp_data.empty:
+                    gr_date_1 = pd.Timestamp("2001-02-01")
+                    gr_date_2 = pd.Timestamp("2002-01-01")
+                    gr_date_3 = pd.Timestamp("2004-01-01")
+
+                    crsp_data = (
+                        crsp_data
+                        .sort_values(["permno", "date"])
+                        .assign(
+                            cfacpr=lambda df: df.groupby("permno")[
+                                "dlyfacprc"
+                            ].cumprod(),
+                            vol=lambda df: df["dlyvol"].replace(-99, np.nan),
+                            prc=lambda df: df["dlyprc"].replace(0, np.nan),
+                        )
+                        .assign(
+                            prc_adj=lambda df: (
+                                df["prc"].abs() / df["cfacpr"]
+                            ).replace([np.inf, -np.inf], np.nan)
+                        )
+                        .assign(
+                            vol_adj=lambda df: np.select(
+                                [
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] < gr_date_1),
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] >= gr_date_1)
+                                    & (df["date"] < gr_date_2),
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] >= gr_date_2)
+                                    & (df["date"] < gr_date_3),
+                                    (df["primaryexch"] == "Q")
+                                    & (df["date"] >= gr_date_3),
+                                ],
+                                [
+                                    df["vol"] / 2.0,
+                                    df["vol"] / 1.8,
+                                    df["vol"] / 1.6,
+                                    df["vol"] / 1.0,
+                                ],
+                                default=df["vol"],
+                            )
+                        )
+                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc",
+                                       "cfacpr", "vol", "prc", "prc_adj"])
+                    )
+
+                processed_data = crsp_data
+        else:
+            raise ValueError(
+                "Invalid dataset. Use 'crsp_monthly' or 'crsp_daily'."
+            )
+    finally:
+        disconnect_connection(wrds_connection)
+
+    if add_ccm_links:
+        ccm_links = _download_data_wrds_ccm_links()
+        merged = processed_data[["permno", "date"]].merge(
+            ccm_links, on="permno", how="inner"
         )
+        valid_links = (
+            merged
+            .query("gvkey.notna() and linkdt <= date <= linkenddt")
+            [["permno", "gvkey", "date"]]
+        )
+        processed_data = processed_data.merge(
+            valid_links, on=["permno", "date"], how="left"
+        )
+
+    return processed_data
 
 
 def _download_data_wrds_ccm_links(
@@ -1074,19 +1271,18 @@ def _download_data_wrds_ccm_links(
 
     Parameters
     ----------
-        linktype (list): A list of strings indicating the types of links to
-        download. Default is ["LU", "LC"].
-        linkprim (list): A list of strings indicating the primacy of the links.
-        Default is ["P", "C"].
+    linktype : list of str, optional
+        A list of strings indicating the types of links to download.
+        Defaults to ["LU", "LC"].
+    linkprim : list of str, optional
+        A list of strings indicating the primacy of the links.
+        Defaults to ["P", "C"].
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing columns:
-            - `permno` (int): CRSP permanent number.
-            - `gvkey` (str): Global company key.
-            - `linkdt`: Start date of the link.
-            - `linkenddt`: End date of the link
-            (missing values replaced with today's date).
+    pd.DataFrame
+        A data frame containing columns permno, gvkey, linkprim, linkdt, and
+        linkenddt (missing end dates replaced with today's date).
     """
     conn = get_wrds_connection()
 
@@ -1099,7 +1295,9 @@ def _download_data_wrds_ccm_links(
 
     ccm_links = pd.read_sql(query, conn)
 
-    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp.today())
+    ccm_links["linkenddt"] = (ccm_links["linkenddt"]
+                              .fillna(pd.Timestamp.today())
+                              )
 
     disconnect_connection(conn)
 
@@ -1111,25 +1309,34 @@ def _download_data_wrds_compustat(
     start_date: str = None,
     end_date: str = None,
     additional_columns: list = None,
+    only_us: bool = False,
 ) -> pd.DataFrame:
     """
     Download financial data from WRDS Compustat.
 
     Parameters
     ----------
-        dataset (str): Dataset to download. Expected values:
-            "compustat_annual" or "compustat_quarterly".
-        start_date (str or None): Start date in "YYYY-MM-DD" format (optional).
-        end_date (str or None): End date in "YYYY-MM-DD" format (optional).
-        additional_columns (list or None): A list of additional column names
-        to retrieve (optional).
+    dataset : str
+        The dataset to download ("compustat_annual" or
+        "compustat_quarterly").
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, a subset of the dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, a subset of the dataset is returned.
+    additional_columns : list, optional
+        Additional columns from the Compustat table as a list of strings.
+    only_us : bool, optional
+        A boolean indicating whether only US firms should be returned
+        (i.e., excluding Canadian firms). Defaults to False.
 
     Returns
     -------
-        pandas.DataFrame: A DataFrame containing financial data for the
-            specified period, including computed variables such as book equity
-            (be), operating profitability (op), and investment (inv)
-            for annual data.
+    pd.DataFrame
+        A data frame with financial data for the specified period,
+        including variables for book equity (be), operating profitability
+        (op), investment (inv), and others.
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -1141,17 +1348,26 @@ def _download_data_wrds_compustat(
             )
         )
 
-    # Connect to WRDS
     wrds_connection = get_wrds_connection()
-    additional_columns = (
-        ", ".join(additional_columns) if additional_columns else ""
+    extra_annual = [
+        c for c in (additional_columns or []) if c != "curcd"
+    ]
+    extra_quarterly = [
+        c for c in (additional_columns or []) if c != "curcdq"
+    ]
+    additional_columns_annual = (
+        ", ".join(extra_annual) if extra_annual else ""
+    )
+    additional_columns_quarterly = (
+        ", ".join(extra_quarterly) if extra_quarterly else ""
     )
 
     if "compustat_annual" in dataset:
         query = text(f"""
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
-                pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga
-                {", " + additional_columns if additional_columns else ""}
+                pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga,
+                curcd
+                {", " + additional_columns_annual if additional_columns_annual else ""}
             FROM comp.funda
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
             AND datadate BETWEEN '{start_date}' AND '{end_date}'
@@ -1219,12 +1435,15 @@ def _download_data_wrds_compustat(
             .assign(inv=lambda x: np.where(x["at_lag"] <= 0, np.nan, x["inv"]))
         )
 
-        processed_data = compustat.drop(columns=["year", "at_lag"])
+        if only_us:
+            compustat = compustat[compustat["curcd"] == "USD"]
+
+        processed_data = compustat.drop(columns=["year", "at_lag", "curcd"])
 
     elif "compustat_quarterly" in dataset:
         query = text(f"""
-            SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq
-                {", " + additional_columns if additional_columns else ""}
+            SELECT gvkey, datadate, rdq, fqtr, fyearq, atq, ceqq, curcdq
+                {", " + additional_columns_quarterly if additional_columns_quarterly else ""}
             FROM comp.fundq
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
             AND datadate BETWEEN '{start_date}' AND '{end_date}'
@@ -1252,13 +1471,12 @@ def _download_data_wrds_compustat(
             .query("rdq.isna() or date < rdq")
         )
 
+        if only_us:
+            compustat = compustat[compustat["curcdq"] == "USD"]
+
         processed_data = compustat.get(
             ["gvkey", "date", "datadate", "atq", "ceqq"]
-            + (
-                [col for col in additional_columns.split(", ")]
-                if additional_columns
-                else []
-            )
+            + extra_quarterly
         )
 
     return processed_data
@@ -1270,12 +1488,14 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
 
     Parameters
     ----------
-        additional_columns (list, optional): Additional columns from the FISD
-        table to include.
+    additional_columns : list, optional
+        Additional columns from the FISD table to include as a list
+        of strings.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing filtered FISD data with bond
+    pd.DataFrame
+        A data frame containing filtered FISD data with bond
         characteristics and issuer information.
     """
     wrds_connection = get_wrds_connection()
@@ -1362,16 +1582,20 @@ def _download_data_wrds_trace_enhanced(
 
     Parameters
     ----------
-        cusips (list): A list of 9-digit CUSIPs to download.
-        start_date (str, optional): Start date in "YYYY-MM-DD" format.
-        Defaults to None.
-        end_date (str, optional): End date in "YYYY-MM-DD" format.
-        Defaults to None.
+    cusips : list
+        A list of 9-character CUSIPs to download.
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the start date for
+        the data. If not provided, the full dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format specifying the end date for
+        the data. If not provided, the full dataset is returned.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame containing cleaned TRACE trade messages for
-        the specified CUSIPs.
+    pd.DataFrame
+        A data frame containing cleaned TRACE trade messages for the
+        specified CUSIPs.
     """
     if not all(isinstance(cusip, str) and len(cusip) == 9 for cusip in cusips):
         raise ValueError("All CUSIPs must be 9-character strings.")
