@@ -287,7 +287,7 @@ def test_download_data_wrds_crsp_monthly_no_prc_column():
         "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
         "ret": [0.02, 0.01],
         "shrout": [1000, 1000],
-        "prc": [49.0, 50.0],
+        "altprc": [49.0, 50.0],
         "primaryexch": ["N", "N"],
         "siccd": [3990, 3990],
     })

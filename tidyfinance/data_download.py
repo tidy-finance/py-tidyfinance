@@ -1086,7 +1086,7 @@ def _download_data_wrds_crsp(
                         parse_dates={"date"},
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
+                    .assign(mktcap=lambda x: x["shrout"] * x["altprc"]/1000000)
                     .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
                 )
 
@@ -1234,13 +1234,14 @@ def _download_data_wrds_crsp(
                                 default=df["vol"],
                             )
                         )
-                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc", "cfacpr", "vol", "prc", "prc_adj"])
+                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc",
+                                       "cfacpr", "vol", "prc", "prc_adj"])
                     )
 
                 processed_data = crsp_data
         else:
             raise ValueError(
-                "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
+                "Invalid dataset. Use 'crsp_monthly' or 'crsp_daily'."
             )
     finally:
         disconnect_connection(wrds_connection)
@@ -1250,19 +1251,11 @@ def _download_data_wrds_crsp(
         merged = processed_data[["permno", "date"]].merge(
             ccm_links, on="permno", how="inner"
         )
-        valid_links = merged[
-            merged["gvkey"].notna()
-            & (merged["linkdt"] <= merged["date"])
-            & (merged["date"] <= merged["linkenddt"])
-        ][["permno", "gvkey", "linkprim", "date"]].sort_values("linkprim", ascending=False)
-        n_before = len(valid_links)
-        valid_links = valid_links.drop_duplicates(subset=["permno", "date"], keep="first")
-        if len(valid_links) < n_before:
-            warnings.warn(
-                f"{n_before - len(valid_links)} ambiguous CCM link(s) dropped; 'P' links preferred over 'C' links.",
-                stacklevel=2,
-            )
-        valid_links = valid_links[["permno", "gvkey", "date"]]
+        valid_links = (
+            merged
+            .query("gvkey.notna() and linkdt <= date <= linkenddt")
+            [["permno", "gvkey", "date"]]
+        )
         processed_data = processed_data.merge(
             valid_links, on=["permno", "date"], how="left"
         )
@@ -1294,7 +1287,7 @@ def _download_data_wrds_ccm_links(
     conn = get_wrds_connection()
 
     query = f"""
-        SELECT lpermno AS permno, gvkey, linkprim, linkdt, linkenddt
+        SELECT lpermno AS permno, gvkey, linkdt, linkenddt
         FROM crsp.ccmxpf_lnkhist
         WHERE linktype IN ({",".join(f"'{lt}'" for lt in linktype)})
         AND linkprim IN ({",".join(f"'{lp}'" for lp in linkprim)})
@@ -1302,7 +1295,9 @@ def _download_data_wrds_ccm_links(
 
     ccm_links = pd.read_sql(query, conn)
 
-    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp.today())
+    ccm_links["linkenddt"] = (ccm_links["linkenddt"]
+                              .fillna(pd.Timestamp.today())
+                              )
 
     disconnect_connection(conn)
 
