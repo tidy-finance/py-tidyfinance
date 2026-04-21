@@ -1111,7 +1111,7 @@ def _download_data_wrds_crsp(
                     crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
                     .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
                     .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
-                    .drop(columns=["risk_free", "prc"])
+                    .drop(columns=["risk_free"])
                     .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
                 )
                 processed_data = crsp_monthly
