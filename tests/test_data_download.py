@@ -5,6 +5,7 @@ import sys
 
 import pandas as pd
 import pytest
+from unittest.mock import patch
 import yaml
 
 sys.path.insert(
@@ -20,10 +21,8 @@ from tidyfinance.data_download import (
     _download_data_osap,
     _download_data_stock_prices,
     _download_data_wrds_compustat,
-    _download_data_huggingface,
-    _download_factor_library_ids,
-    _filter_factor_library_grid,
-    download_data,
+    _download_data_wrds_crsp,
+    download_data
 )  # noqa: E402
 
 
@@ -65,7 +64,7 @@ def test_download_data_column_ordering():
 def test_download_data_factors_q_handles_broken_url():
     with pytest.raises(
         ValueError,
-        match=("No matching dataset found."),
+        match="Unsupported dataset",
     ):
         download_data(
             domain="factors_q",
@@ -213,6 +212,25 @@ def test_download_data_breakpoints_valid():
     assert not df.empty
 
 
+def test_download_data_breakpoints_valid():
+    df = _download_data_factors_ff(dataset="ME_Breakpoints",
+                                   start_date='2010-02-01',
+                                   end_date='2012-02-01')
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_factors_q_valid():
+    df = _download_data_factors_q("q5_factors_monthly")
+    assert isinstance(df, pd.DataFrame)
+    assert not df.empty
+
+
+def test_download_data_constituents_dataset_kwarg_warns():
+    with pytest.warns(UserWarning, match="'dataset' argument is not valid"):
+        download_data(domain="constituents", dataset="DAX")
+
+
 def test_download_data_macro_predictors_valid():
     df = _download_data_macro_predictors("monthly")
     assert isinstance(df, pd.DataFrame)
@@ -241,64 +259,59 @@ def test_download_data_stock_prices_valid():
     assert not df.empty
 
 
-def test_download_data_huggingface_missing_dataset():
-    with pytest.raises(ValueError, match="'dataset' is required"):
-        _download_data_huggingface(dataset=None)
+def test_download_data_wrds_crsp_v1_monthly_not_implemented():
+    with patch("tidyfinance.data_download.get_wrds_connection"):
+        with pytest.raises(NotImplementedError):
+            _download_data_wrds_crsp(dataset="crsp_monthly", version="v1")
 
 
-def test_download_data_huggingface_unsupported_dataset():
-    with pytest.raises(ValueError, match="Unsupported Hugging Face dataset"):
-        _download_data_huggingface(dataset="not_a_dataset")
+def test_download_data_wrds_crsp_v1_daily_not_implemented():
+    with patch("tidyfinance.data_download.get_wrds_connection"):
+        with pytest.raises(NotImplementedError):
+            _download_data_wrds_crsp(dataset="crsp_daily", version="v1")
 
 
-def test_filter_factor_library_grid_unsupported_filter():
-    with pytest.raises(ValueError, match="Unsupported filter name"):
-        _filter_factor_library_grid(not_a_column="x")
+def test_download_data_wrds_crsp_adjust_volume_wrong_dataset():
+    with pytest.raises(ValueError, match="adjust_volume is only supported"):
+        _download_data_wrds_crsp(dataset="crsp_monthly", adjust_volume=True)
 
 
-def test_download_factor_library_ids_empty_ids():
-    with pytest.raises(ValueError, match="No portfolio IDs provided"):
-        _download_factor_library_ids([])
+def test_download_data_wrds_crsp_adjust_volume_missing_columns():
+    with pytest.raises(ValueError, match="dlyprc, dlyvol"):
+        _download_data_wrds_crsp(dataset="crsp_daily", adjust_volume=True)
 
 
-def test_download_data_huggingface_factor_library_valid():
-    df = _download_data_huggingface(
-        dataset="factor_library", sorting_variable="me"
-    )
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-    assert "id" in df.columns
-
-
-def test_download_data_huggingface_high_frequency_sp500_valid():
-    df = _download_data_huggingface(
-        dataset="high_frequency_sp500",
-        start_date="2007-07-26",
-        end_date="2007-07-27",
-    )
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-
-
-def test_download_data_huggingface_high_frequency_sp500_empty_date_range():
-    df = _download_data_huggingface(
-        dataset="high_frequency_sp500",
-        start_date="2000-01-01",
-        end_date="2000-01-02",
-    )
-    assert isinstance(df, pd.DataFrame)
-    assert df.empty
-
-
-def test_download_data_tidyfinance_domain():
-    df = download_data(
-        domain="tidyfinance",
-        dataset="high_frequency_sp500",
-        start_date="2007-07-26",
-        end_date="2007-07-27",
-    )
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
+def test_download_data_wrds_crsp_monthly_no_prc_column():
+    crsp_df = pd.DataFrame({
+        "permno": [10001, 10001],
+        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
+        "ret": [0.02, 0.01],
+        "shrout": [1000, 1000],
+        "altprc": [49.0, 50.0],
+        "primaryexch": ["N", "N"],
+        "siccd": [3990, 3990],
+    })
+    factors_df = pd.DataFrame({
+        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
+        "mkt_excess": [0.003, 0.005],
+        "smb": [0.001, 0.001],
+        "hml": [0.002, 0.002],
+        "risk_free": [0.0002, 0.0002],
+    })
+    with patch("tidyfinance.data_download.get_wrds_connection"):
+        with patch("pandas.read_sql_query", return_value=crsp_df):
+            with patch(
+                "tidyfinance.data_download._download_data_factors_ff",
+                return_value=factors_df,
+            ):
+                result = _download_data_wrds_crsp(
+                    dataset="crsp_monthly",
+                    start_date="2020-01-01",
+                    end_date="2020-01-31",
+                )
+    assert isinstance(result, pd.DataFrame)
+    assert not result.empty
+    assert "prc" not in result.columns
 
 
 if __name__ == "__main__":
