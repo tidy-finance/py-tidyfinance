@@ -527,7 +527,9 @@ def _download_data_macro_predictors(
         else x
     )
     raw_data = raw_data.assign(
-        IndexDiv=lambda df: df["Index"] + df["D12"],
+        IndexDiv=lambda df: pd.to_numeric(df["Index"].str.replace(",", ""),
+                                          errors="coerce") + df["D12"],
+        # IndexDiv=lambda df: df["Index"] + df["D12"],
         logret=lambda df: df["IndexDiv"]
         .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
         .diff(),
