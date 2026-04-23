@@ -523,13 +523,16 @@ def _download_data_macro_predictors(
         lambda x: pd.to_numeric(
             x.astype(str).str.replace(",", ""), errors="coerce"
         )
-        if x.dtype == "object"
+        if x.dtype == "object" or pd.api.types.is_string_dtype(x)
         else x
     )
-    raw_data = raw_data.assign(
-        IndexDiv=lambda df: pd.to_numeric(df["Index"].str.replace(",", ""),
-                                          errors="coerce") + df["D12"],
-        # IndexDiv=lambda df: df["Index"] + df["D12"],
+    raw_data = raw_data.apply(lambda x: pd.to_numeric(
+        x.astype(str).str.replace(",", ""), errors="coerce"
+        )
+        if pd.api.types.is_string_dtype(x) or x.dtype == "object"
+        else x
+    ).assign(
+        IndexDiv=lambda df: df["Index"] + df["D12"],
         logret=lambda df: df["IndexDiv"]
         .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
         .diff(),
