@@ -18,7 +18,7 @@ dependencies = [
     "sqlalchemy>=2.0.21",
     "pyyaml>=6.0.2",
     "statsmodels>=0.14.0",
-    "requests>=2.31.0",
+    "requests>=2.32.4",
     "pyarrow>=19.0.1",
     "psycopg2-binary>=2.9.9",
     "dotenv>=0.9.9",
@@ -28,7 +28,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=8.3.4",
+    "pytest>=9.0.3",
     "pytest-httpx>=0.35.0",
     "pytest-cov>=6.0.0"
 ]

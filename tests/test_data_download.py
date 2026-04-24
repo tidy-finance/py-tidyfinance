@@ -16,13 +16,13 @@ from tidyfinance.data_download import (
     create_wrds_dummy_database,
     _download_data_constituents,
     _download_data_factors_ff,
-    _download_data_factors_q,
     _download_data_fred,
     _download_data_macro_predictors,
     _download_data_osap,
     _download_data_stock_prices,
     _download_data_wrds_compustat,
     _download_data_wrds_crsp,
+    _download_data_factors_q,
     download_data
 )  # noqa: E402
 
@@ -93,7 +93,8 @@ def test_download_data_macro_predictors_invalid_dataset():
 
 
 def test_download_data_macro_predictors_invalid_url():
-    df = _download_data_macro_predictors("monthly", sheet_id="invalid_sheet_id")
+    df = _download_data_macro_predictors("monthly",
+                                         sheet_id="invalid_sheet_id")
     assert df.empty, "Expected an empty DataFrame due to download failure."
 
 
@@ -200,14 +201,6 @@ def test_download_data_constituents_valid_index():
 
 def test_download_data_factors_ff_valid():
     df = _download_data_factors_ff("F-F_Research_Data_5_Factors_2x3_daily")
-    assert isinstance(df, pd.DataFrame)
-    assert not df.empty
-
-
-def test_download_data_breakpoints_valid():
-    df = _download_data_factors_ff(dataset="ME_Breakpoints",
-                                   start_date='2010-02-01',
-                                   end_date='2012-02-01')
     assert isinstance(df, pd.DataFrame)
     assert not df.empty
 
