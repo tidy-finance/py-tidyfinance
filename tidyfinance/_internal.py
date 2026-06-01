@@ -75,7 +75,7 @@ def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
                 # Move to last day of the month
                 ts = ts + pd.offsets.MonthEnd(0)
             return ts.normalize()
-        return pd.to_datetime(d).normalize().date()
+        return pd.to_datetime(d).normalize()
 
 
 def _validate_dates(

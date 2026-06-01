@@ -213,9 +213,15 @@ def download_data(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "tidyfinance":
-        processed_data = _download_data_huggingface(
-            dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
-        )
+        if dataset == "risk_free":
+            processed_data = _download_data_risk_free(
+                start_date=start_date, end_date=end_date, **kwargs
+            )
+        else:
+            processed_data = _download_data_huggingface(
+                dataset=dataset, start_date=start_date, end_date=end_date,
+                **kwargs
+            )
     else:
         raise ValueError("Unsupported domain.")
     return processed_data
@@ -833,8 +839,8 @@ def _download_data_stock_prices(
     if end_date is None:
         end_date = pd.Timestamp.today()
 
-    start_timestamp = int(pd.Timestamp(start_date).timestamp())
-    end_timestamp = int(pd.Timestamp(end_date).timestamp())
+    start_timestamp = int(start_date.timestamp())
+    end_timestamp = int(end_date.timestamp())
 
     all_data = []
 
@@ -958,6 +964,63 @@ def _download_data_osap(
         raw_data = raw_data.query("@start_date <= date <= @end_date")
 
     return raw_data
+
+
+def _download_data_risk_free(
+    start_date: str = None,
+    end_date: str = None,
+    frequency: str = "monthly",
+) -> pd.DataFrame:
+    """
+    Download risk-free rate data from the tidy-finance/risk-free
+    HuggingFace dataset.
+
+    The dataset splices the 3-Month Treasury Bill Secondary Market Rate
+    (pre-2001) with the 4-Week Treasury Bill Secondary Market Rate
+    (from 2001 onwards), both sourced from FRED. Monthly data starts
+    1934-01-01 (TB3MS). Daily data starts 1954-01-04 (DTB3).
+
+    Parameters
+    ----------
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format. If not provided, the full
+        dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format. If not provided, the full
+        dataset is returned.
+    frequency : str, optional
+        Either "monthly" (default) or "daily".
+
+    Returns
+    -------
+    pd.DataFrame
+        Two columns: date and risk_free.
+    """
+    if frequency not in ("monthly", "daily"):
+        raise ValueError("frequency must be 'monthly' or 'daily'.")
+
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    url = (
+        "https://huggingface.co/datasets/tidy-finance/risk-free/"
+        f"resolve/main/risk_free_{frequency}.parquet"
+    )
+
+    try:
+        risk_free_data = pd.read_parquet(url)
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to download risk-free rate data from HuggingFace. "
+            f"URL attempted: {url}"
+        ) from e
+
+    if start_date is not None:
+        risk_free_data = risk_free_data[
+            (risk_free_data["date"] >= start_date)
+            & (risk_free_data["date"] <= end_date)
+        ].reset_index(drop=True)
+
+    return risk_free_data
 
 
 def _download_data_wrds(

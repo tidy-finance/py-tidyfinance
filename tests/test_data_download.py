@@ -19,12 +19,15 @@ from tidyfinance.data_download import (
     _download_data_fred,
     _download_data_macro_predictors,
     _download_data_osap,
+    _download_data_risk_free,
     _download_data_stock_prices,
     _download_data_wrds_compustat,
     _download_data_wrds_crsp,
     _download_data_factors_q,
     download_data
 )  # noqa: E402
+
+from tidyfinance._internal import _parse_date, _validate_dates  # noqa: E402
 
 
 def test_download_data_factors_invalid_data_set():
@@ -307,6 +310,105 @@ def test_download_data_wrds_crsp_monthly_no_prc_column():
     assert isinstance(result, pd.DataFrame)
     assert not result.empty
     assert "altprc" not in result.columns
+
+
+def test_download_data_risk_free_invalid_frequency():
+    """Reject any frequency other than 'monthly' or 'daily'."""
+    with pytest.raises(ValueError, match="frequency must be"):
+        _download_data_risk_free(frequency="weekly")
+
+
+def test_download_data_risk_free_monthly_url_and_shape():
+    """Use the monthly parquet URL and return the expected columns."""
+    mock_df = pd.DataFrame({
+        "date": pd.to_datetime(["2020-01-01", "2020-02-01", "2020-03-01"]),
+        "risk_free": [0.001, 0.0011, 0.0012],
+    })
+    with patch("pandas.read_parquet", return_value=mock_df) as mock_read:
+        result = _download_data_risk_free(frequency="monthly")
+
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == ["date", "risk_free"]
+    assert len(result) == 3
+
+    called_url = mock_read.call_args[0][0]
+    assert "tidy-finance/risk-free" in called_url
+    assert called_url.endswith("risk_free_monthly.parquet")
+
+
+def test_download_data_risk_free_date_filter():
+    """start_date/end_date filter rows inclusively."""
+    mock_df = pd.DataFrame({
+        "date": pd.to_datetime([
+            "2019-12-01", "2020-01-01", "2020-02-01",
+            "2020-06-30", "2020-12-01",
+        ]),
+        "risk_free": [0.0009, 0.0010, 0.0011, 0.0013, 0.0015],
+    })
+    with patch("pandas.read_parquet", return_value=mock_df):
+        result = _download_data_risk_free(
+            start_date="2020-01-01",
+            end_date="2020-06-30",
+            frequency="monthly",
+        )
+
+    assert len(result) == 3
+    assert result["date"].min() == pd.Timestamp("2020-01-01")
+    assert result["date"].max() == pd.Timestamp("2020-06-30")
+
+
+def test_download_data_risk_free_download_failure():
+    """Wrap parquet download failures in a RuntimeError with URL info."""
+    with patch(
+        "pandas.read_parquet",
+        side_effect=OSError("connection refused"),
+    ):
+        with pytest.raises(RuntimeError, match="Failed to download"):
+            _download_data_risk_free(frequency="monthly")
+
+
+def test_parse_date_yyyy_mm_dd_returns_timestamp():
+    """YYYY-MM-DD input must return a pd.Timestamp (not datetime.date)."""
+    result = _parse_date("2020-01-15")
+    assert isinstance(result, pd.Timestamp)
+    assert result == pd.Timestamp("2020-01-15")
+
+
+def test_parse_date_yyyymm_returns_timestamp():
+    """YYYYMM input returns a pd.Timestamp at month-start (or month-end)."""
+    start = _parse_date("202001", is_end=False)
+    end = _parse_date("202001", is_end=True)
+    assert isinstance(start, pd.Timestamp)
+    assert isinstance(end, pd.Timestamp)
+    assert start == pd.Timestamp("2020-01-01")
+    assert end == pd.Timestamp("2020-01-31")
+
+
+def test_parse_date_returns_same_type_for_both_formats():
+    """Both date formats must return the same type (consistency guard)."""
+    assert type(_parse_date("2020-01-15")) is type(_parse_date("202001"))
+
+
+def test_validate_dates_returns_timestamps():
+    """_validate_dates must propagate _parse_date's Timestamp return type."""
+    start, end = _validate_dates("2020-01-01", "2020-12-31")
+    assert isinstance(start, pd.Timestamp)
+    assert isinstance(end, pd.Timestamp)
+
+
+def test_validate_dates_returned_values_compare_against_datetime_series():
+    """
+    Regression guard: the returned dates must compare cleanly against a
+    datetime Series. This was previously broken because
+    _parse_date returned datetime.date, which pandas refuses to compare
+    against datetime64[ns].
+    """
+    series = pd.to_datetime([
+        "2019-12-01", "2020-01-15", "2020-06-30", "2021-01-01"
+    ])
+    start, end = _validate_dates("2020-01-01", "2020-12-31")
+    mask = (series >= start) & (series <= end)
+    assert mask.tolist() == [False, True, True, False]
 
 
 if __name__ == "__main__":
