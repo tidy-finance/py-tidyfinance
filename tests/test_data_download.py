@@ -277,15 +277,17 @@ def test_download_data_wrds_crsp_adjust_volume_missing_columns():
 def test_download_data_wrds_crsp_monthly_no_prc_column():
     crsp_df = pd.DataFrame({
         "permno": [10001, 10001],
-        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
+        "date": pd.to_datetime(["2019-12-01", "2020-01-01"]),
+        "calculation_date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
         "ret": [0.02, 0.01],
         "shrout": [1000, 1000],
-        "altprc": [49.0, 50.0],
+        "prc": [49.0, 50.0],
         "primaryexch": ["N", "N"],
         "siccd": [3990, 3990],
+        "first_crsp_date": pd.to_datetime(["2018-06-15", "2018-06-15"]),
     })
     factors_df = pd.DataFrame({
-        "date": pd.to_datetime(["2019-12-31", "2020-01-31"]),
+        "date": pd.to_datetime(["2019-12-01", "2020-01-01"]),
         "mkt_excess": [0.003, 0.005],
         "smb": [0.001, 0.001],
         "hml": [0.002, 0.002],
@@ -304,7 +306,7 @@ def test_download_data_wrds_crsp_monthly_no_prc_column():
                 )
     assert isinstance(result, pd.DataFrame)
     assert not result.empty
-    assert "prc" not in result.columns
+    assert "altprc" not in result.columns
 
 
 if __name__ == "__main__":

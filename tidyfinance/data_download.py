@@ -1098,15 +1098,25 @@ def _download_data_wrds_crsp(
                 raise NotImplementedError("version='v1' is not yet implemented.")
             if version == "v2":
                 crsp_query = f"""
-                    SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
-                        AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
-                        AS prc, ssih.primaryexch, ssih.siccd
+                    SELECT msf.permno,
+                        date_trunc('month', msf.mthcaldt)::date AS date,
+                        msf.mthcaldt AS calculation_date,
+                        msf.mthret AS ret, msf.shrout,
+                        msf.mthprc AS prc,
+                        ssih.primaryexch, ssih.siccd,
+                        fcd.first_crsp_date
                         {", " + additional_columns_sql if additional_columns_sql else ""}
                     FROM crsp.msf_v2 AS msf
                     INNER JOIN crsp.stksecurityinfohist AS ssih
                     ON msf.permno = ssih.permno AND
                         ssih.secinfostartdt <= msf.mthcaldt AND
                         msf.mthcaldt <= ssih.secinfoenddt
+                    LEFT JOIN (
+                        SELECT permno,
+                            MIN(secinfostartdt) AS first_crsp_date
+                        FROM crsp.stksecurityinfohist
+                        GROUP BY permno
+                    ) AS fcd ON msf.permno = fcd.permno
                     WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
                     AND ssih.sharetype = 'NS'
                     AND ssih.securitytype = 'EQTY'
@@ -1123,11 +1133,26 @@ def _download_data_wrds_crsp(
                         sql=crsp_query,
                         con=wrds_connection,
                         dtype={"permno": int, "siccd": int},
-                        parse_dates={"date"},
+                        parse_dates={
+                            "date",
+                            "calculation_date",
+                            "first_crsp_date",
+                        },
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    .assign(mktcap=lambda x: x["shrout"] * x["altprc"]/1000000)
+                    .assign(mktcap=lambda x: x["shrout"] * x["prc"]/1000000)
                     .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                    .assign(
+                        listing_age=lambda df: (
+                            (df["date"].dt.year
+                             - df["first_crsp_date"].dt.year) * 12
+                            + (df["date"].dt.month
+                               - df["first_crsp_date"].dt.month)
+                            - (df["date"].dt.day
+                               < df["first_crsp_date"].dt.day).astype(int)
+                        ).clip(lower=0)
+                    )
+                    .drop(columns=["first_crsp_date"])
                 )
 
                 mktcap_lag = crsp_monthly.assign(
@@ -1146,13 +1171,14 @@ def _download_data_wrds_crsp(
                     start_date=start_date,
                     end_date=end_date,
                 )
-
+                factors_ff3_monthly = factors_ff3_monthly.assign(
+                    date=lambda x: x["date"].dt.to_period("M").dt.start_time
+                )
                 crsp_monthly = (
                     crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
                     .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
-                    .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
                     .drop(columns=["risk_free"])
-                    .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
+                    .dropna(subset=["ret_excess", "mktcap"])
                 )
                 processed_data = crsp_monthly
         elif "crsp_daily" in dataset:
@@ -1217,9 +1243,7 @@ def _download_data_wrds_crsp(
                                 how="left",
                             )
                             .assign(
-                                ret_excess=lambda x: (
-                                    (x["ret"] - x["risk_free"]).clip(lower=-1)
-                                )
+                                ret_excess=lambda x: x["ret"] - x["risk_free"]
                             )
                             .drop(columns=["risk_free"])
                         )
@@ -1274,8 +1298,7 @@ def _download_data_wrds_crsp(
                                 default=df["vol"],
                             )
                         )
-                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc",
-                                       "cfacpr", "vol", "prc", "prc_adj"])
+                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc"])
                     )
 
                 processed_data = crsp_data
