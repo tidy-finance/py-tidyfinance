@@ -1349,7 +1349,7 @@ def _download_data_wrds_compustat(
     start_date: str = None,
     end_date: str = None,
     additional_columns: list = None,
-    only_us: bool = False,
+    only_usd: bool = False,
 ) -> pd.DataFrame:
     """
     Download financial data from WRDS Compustat.
@@ -1367,9 +1367,9 @@ def _download_data_wrds_compustat(
         the data. If not provided, a subset of the dataset is returned.
     additional_columns : list, optional
         Additional columns from the Compustat table as a list of strings.
-    only_us : bool, optional
-        A boolean indicating whether only US firms should be returned
-        (i.e., excluding Canadian firms). Defaults to False.
+    only_usd : bool, optional
+        A boolean indicating whether only USD-denominated shares should be
+        returned. (i.e., excluding Canadian firms). Defaults to False.
 
     Returns
     -------
@@ -1475,7 +1475,7 @@ def _download_data_wrds_compustat(
             .assign(inv=lambda x: np.where(x["at_lag"] <= 0, np.nan, x["inv"]))
         )
 
-        if only_us:
+        if only_usd:
             compustat = compustat[compustat["curcd"] == "USD"]
 
         processed_data = compustat.drop(columns=["year", "at_lag", "curcd"])
@@ -1511,7 +1511,7 @@ def _download_data_wrds_compustat(
             .query("rdq.isna() or date < rdq")
         )
 
-        if only_us:
+        if only_usd:
             compustat = compustat[compustat["curcdq"] == "USD"]
 
         processed_data = compustat.get(
