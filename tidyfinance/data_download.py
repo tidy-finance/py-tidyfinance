@@ -1406,7 +1406,7 @@ def _download_data_wrds_compustat(
         query = text(f"""
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
                 pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga,
-                curcd
+                ib, curcd
                 {", " + additional_columns_annual if additional_columns_annual else ""}
             FROM comp.funda
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
@@ -1432,17 +1432,6 @@ def _download_data_wrds_compustat(
             )
             .assign(
                 be=lambda x: x["be"].apply(lambda y: np.nan if y <= 0 else y)
-            )
-            .assign(
-                op=lambda x: (
-                    (
-                        x["sale"]
-                        - x["cogs"].fillna(0)
-                        - x["xsga"].fillna(0)
-                        - x["xint"].fillna(0)
-                    )
-                    / x["be"]
-                )
             )
         )
         # Compute Operating Profitability (op)
@@ -1478,7 +1467,15 @@ def _download_data_wrds_compustat(
         if only_usd:
             compustat = compustat[compustat["curcd"] == "USD"]
 
-        processed_data = compustat.drop(columns=["year", "at_lag", "curcd"])
+        processed_data = (
+            compustat
+            .assign(
+                date=lambda df: pd.to_datetime(df["datadate"])
+                .dt.to_period("M")
+                .dt.start_time
+            )
+            .drop(columns=["year", "at_lag", "curcd"])
+        )
 
     elif "compustat_quarterly" in dataset:
         query = text(f"""
