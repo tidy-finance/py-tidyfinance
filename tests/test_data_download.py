@@ -13,9 +13,9 @@ sys.path.insert(
 )
 
 from tidyfinance.data_download import (
-    create_wrds_dummy_database,
     _download_data_constituents,
     _download_data_factors_ff,
+    _download_data_factors_q,
     _download_data_fred,
     _download_data_macro_predictors,
     _download_data_osap,
@@ -23,7 +23,6 @@ from tidyfinance.data_download import (
     _download_data_stock_prices,
     _download_data_wrds_compustat,
     _download_data_wrds_crsp,
-    _download_data_factors_q,
     download_data
 )  # noqa: E402
 
@@ -134,20 +133,6 @@ def test_download_data_osap_returns_dataframe():
     df = _download_data_osap()
     assert isinstance(df, pd.DataFrame), "Function should return a DataFrame"
     assert not df.empty, "Returned DataFrame should not be empty"
-
-
-def test_create_wrds_dummy_database(tmp_path):
-    """Test that the function correctly downloads and saves a file."""
-    test_path = tmp_path / "test_wrds_dummy.sqlite"
-    create_wrds_dummy_database(str(test_path))
-    assert test_path.exists(), "Database file was not created."
-    assert test_path.stat().st_size > 0, "Database file is empty."
-
-
-def test_create_wrds_dummy_database_invalid_path():
-    """Test that the function raises an error when no path is given."""
-    with pytest.raises(ValueError):
-        create_wrds_dummy_database("")
 
 
 def test_set_wrds_credentials(tmp_path):
@@ -443,6 +428,21 @@ def test_download_data_legacy_type_as_domain_warns():
         with pytest.warns(DeprecationWarning, match="legacy"):
             result = download_data("factors_ff_3_monthly")
     assert result == "sentinel"
+
+
+def test_download_data_pseudo_dispatches_to_simulate():
+    """Route domain="pseudo" through _simulate_pseudo_data."""
+    with pytest.warns(UserWarning, match="pseudo"):
+        result = download_data(
+            domain="pseudo",
+            dataset="crsp_monthly",
+            start_date="2020-01-01",
+            end_date="2020-03-31",
+            n_assets=3,
+        )
+    assert isinstance(result, pd.DataFrame)
+    assert not result.empty
+    assert {"permno", "date", "ret"}.issubset(result.columns)
 
 
 if __name__ == "__main__":

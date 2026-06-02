@@ -1,9 +1,7 @@
 """Supported datasets and legacy-type translation helpers."""
 
 from __future__ import annotations
-
 from typing import Optional
-
 import pandas as pd
 
 __all__ = ["list_supported_datasets"]

@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 from curl_cffi import requests
 from sqlalchemy import text
-import pyarrow.parquet as pq
 from datetime import date
 
 from ._internal import (
@@ -35,6 +34,8 @@ from .supported_datasets import (
     _is_legacy_type,
     _parse_type_to_domain_dataset,
 )
+
+from ._pseudo import _simulate_pseudo_data
 
 # %% constant
 
@@ -62,57 +63,6 @@ _FACTOR_LIBRARY_SUPPORTED_FILTERS = (
 )
 
 # %% functions
-
-
-def create_wrds_dummy_database(
-    path: str,
-    url: str = (
-        "https://github.com/tidy-finance/website/raw/main/blog/"
-        "tidy-finance-dummy-data/data/tidy_finance.sqlite"
-    ),
-) -> None:
-    """
-    Download the WRDS dummy database from the Tidy Finance GitHub repository.
-
-    It saves it to the specified path. If the file already exists,
-    the user is prompted before it is replaced.
-
-    Parameters
-    ----------
-    path : str
-        The file path where the SQLite database should be saved.
-    url : str, optional
-        The URL where the SQLite database is stored.
-
-    Returns
-    -------
-    None
-    """
-    if not path:
-        raise ValueError(
-            "Please provide a file path for the SQLite database. "
-            "We recommend 'data/tidy_finance.sqlite'."
-        )
-
-    if os.path.exists(path):
-        response = input(
-            "The database file already exists at this path. Do "
-            "you want to replace it? (Y/n): "
-        )
-        if response.strip().lower() != "y":
-            print("Operation aborted by the user.")
-            return
-
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        with open(path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                print(chunk)
-                file.write(chunk)
-        print(f"Downloaded WRDS dummy database to {path}.")
-    except Exception as e:
-        print(f"Error downloading the WRDS dummy database: {e}")
 
 
 def get_available_famafrench_datasets():
@@ -148,7 +98,7 @@ def get_available_famafrench_datasets():
         and dataset_i.endswith(ff_url_suffix)
     ]
     datasets_list = list(
-        map(lambda x: x[len(ff_url_prefix) : -len(ff_url_suffix)], datasets)
+        map(lambda x: x[len(ff_url_prefix): -len(ff_url_suffix)], datasets)
     )
     return datasets_list
 
@@ -193,7 +143,6 @@ def download_data(
         A data frame with processed data, including dates and relevant
         financial metrics, filtered by the specified date range.
     """
-
     if type is not None:
         warnings.warn(
             "`type` is deprecated; use `domain` and `dataset` instead.",
@@ -257,6 +206,13 @@ def download_data(
                 dataset=dataset, start_date=start_date, end_date=end_date,
                 **kwargs
             )
+    elif domain == "pseudo":
+        processed_data = _simulate_pseudo_data(
+            dataset=dataset,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
     else:
         raise ValueError("Unsupported domain.")
     return processed_data
