@@ -1220,16 +1220,13 @@ def _download_data_wrds_crsp(
                     exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
                     industry=lambda x: x["siccd"].apply(_assign_industry),
                 )
-                factors_ff3_monthly = _download_data_factors_ff(
-                    dataset="F-F_Research_Data_Factors",
+                risk_free_monthly = _download_data_risk_free(
                     start_date=start_date,
                     end_date=end_date,
                 )
-                factors_ff3_monthly = factors_ff3_monthly.assign(
-                    date=lambda x: x["date"].dt.to_period("M").dt.start_time
-                )
                 crsp_monthly = (
-                    crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
+                    crsp_monthly.merge(risk_free_monthly, how="left",
+                                       on="date")
                     .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
                     .drop(columns=["risk_free"])
                     .dropna(subset=["ret_excess", "mktcap"])
@@ -1247,10 +1244,10 @@ def _download_data_wrds_crsp(
                 permnos = list(permnos["permno"].astype(str))
                 batches = np.ceil(len(permnos) / batch_size).astype(int)
 
-                factors_ff3_daily = _download_data_factors_ff(
-                    dataset="F-F_Research_Data_Factors_Daily",
+                risk_free_daily = _download_data_risk_free(
                     start_date=start_date,
                     end_date=end_date,
+                    frequency="daily",
                 )
 
                 for j in range(1, batches + 1):
@@ -1292,7 +1289,7 @@ def _download_data_wrds_crsp(
                     if not crsp_daily_sub.empty:
                         crsp_daily_sub = (
                             crsp_daily_sub.merge(
-                                factors_ff3_daily[["date", "risk_free"]],
+                                risk_free_daily,
                                 on="date",
                                 how="left",
                             )

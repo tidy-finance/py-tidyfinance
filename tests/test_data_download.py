@@ -274,18 +274,15 @@ def test_download_data_wrds_crsp_monthly_no_prc_column():
         "siccd": [3990, 3990],
         "first_crsp_date": pd.to_datetime(["2018-06-15", "2018-06-15"]),
     })
-    factors_df = pd.DataFrame({
+    risk_free_df = pd.DataFrame({
         "date": pd.to_datetime(["2019-12-01", "2020-01-01"]),
-        "mkt_excess": [0.003, 0.005],
-        "smb": [0.001, 0.001],
-        "hml": [0.002, 0.002],
         "risk_free": [0.0002, 0.0002],
     })
     with patch("tidyfinance.data_download.get_wrds_connection"):
         with patch("pandas.read_sql_query", return_value=crsp_df):
             with patch(
-                "tidyfinance.data_download._download_data_factors_ff",
-                return_value=factors_df,
+                "tidyfinance.data_download._download_data_risk_free",
+                return_value=risk_free_df,
             ):
                 result = _download_data_wrds_crsp(
                     dataset="crsp_monthly",
