@@ -413,9 +413,8 @@ def list_supported_datasets(
     """List all datasets supported by ``download_data``.
 
     Aggregates the Global Q, Fama-French, Goyal-Welch, WRDS, pseudo, and
-    "other" tables into a single :class:`pandas.DataFrame`.  Mirrors the
-    behaviour of R's ``list_supported_datasets()``: the legacy Fama-French
-    table is intentionally excluded from the master listing.
+    "other" tables into a single :class:`pandas.DataFrame`. The legacy
+    Fama-French table is intentionally excluded from the master listing.
 
     Parameters
     ----------
@@ -457,8 +456,8 @@ def list_supported_datasets(
 # %% Legacy-type translation helpers
 
 # Domains that are valid both as a top-level domain name and as a "legacy"
-# type string.  When a value appears here it is treated as a domain, not a
-# legacy type, exactly as in R.
+# type string. When a value appears here it is treated as a domain, not
+# a legacy type.
 _SIMPLE_DOMAINS: tuple[str, ...] = (
     "constituents",
     "fred",
@@ -488,7 +487,7 @@ def _parse_type_to_domain_dataset(
 ) -> tuple[str, Optional[str]]:
     """Translate a legacy ``type`` string into a ``(domain, dataset)`` pair.
 
-    Mirrors R's ``parse_type_to_domain_dataset``.  The dispatch rules are:
+    The dispatch rules are:
 
     * Fama-French legacy / current types resolve to
       ``("factors_ff", <dataset_name>)``.
@@ -574,8 +573,7 @@ def _is_legacy_type(x: str) -> bool:
     would succeed on it *and* it is not one of the simple domain names
     listed in :data:`_SIMPLE_DOMAINS` (those are already valid domains in
     their own right).  ``tidyfinance``-domain "other" datasets such as
-    ``risk_free`` or ``factor_library`` are not treated as legacy either,
-    matching R's ``is_legacy_type``.
+    ``risk_free`` or ``factor_library`` are not treated as legacy either.
     """
     if x in _SIMPLE_DOMAINS:
         return False
@@ -599,8 +597,7 @@ def _is_legacy_type(x: str) -> bool:
 def _check_supported_domain(domain: str) -> None:
     """Raise :class:`ValueError` when ``domain`` is not supported.
 
-    Mirrors R's ``check_supported_domain``.  The list of supported domains
-    is exposed via :data:`_SUPPORTED_DOMAINS`.
+    The list of supported domains is exposed via :data:`_SUPPORTED_DOMAINS`.
     """
     if domain not in _SUPPORTED_DOMAINS:
         joined = ", ".join(repr(d) for d in _SUPPORTED_DOMAINS)

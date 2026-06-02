@@ -1,7 +1,4 @@
-"""Tests for ``tidyfinance.supported_datasets``.
-
-Mirrors ``r-tidyfinance/tests/testthat/test-list_supported_datasets.R``.
-"""
+"""Tests for ``tidyfinance.supported_datasets``."""
 
 from __future__ import annotations
 
@@ -91,7 +88,7 @@ def test_default_call_returns_dataframe_with_all_domains():
 
 
 def test_default_call_excludes_ff_legacy_table():
-    # FF legacy types must NOT appear in the master listing (matches R).
+    # FF legacy types must NOT appear in the master listing.
     result = list_supported_datasets()
     legacy_only = {
         row["type"]
