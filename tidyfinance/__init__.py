@@ -26,6 +26,7 @@ from .utilities import (
     trim,
     winsorize,
 )
+from .supported_datasets import list_supported_datasets
 
 __all__ = [
     "download_data",
@@ -50,4 +51,5 @@ __all__ = [
     "create_summary_statistics",
     "add_lag_columns",
     "get_wrds_connection",
+    "list_supported_datasets",
 ]

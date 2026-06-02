@@ -411,6 +411,40 @@ def test_validate_dates_returned_values_compare_against_datetime_series():
     assert mask.tolist() == [False, True, True, False]
 
 
+def test_download_data_requires_domain():
+    """Raise when neither `domain` nor legacy `type` is supplied."""
+    with pytest.raises(ValueError, match="domain` is required"):
+        download_data()
+
+
+def test_download_data_rejects_unsupported_domain():
+    """Raise an informative error for an unknown domain."""
+    with pytest.raises(ValueError, match="Unsupported domain"):
+        download_data(domain="not_a_domain")
+
+
+def test_download_data_legacy_type_kwarg_warns():
+    """Emit DeprecationWarning when `type=` is used and translate it."""
+    with patch(
+        "tidyfinance.data_download._download_data_factors_ff",
+        return_value="sentinel",
+    ):
+        with pytest.warns(DeprecationWarning, match="`type` is deprecated"):
+            result = download_data(type="factors_ff_3_monthly")
+    assert result == "sentinel"
+
+
+def test_download_data_legacy_type_as_domain_warns():
+    """Emit DeprecationWarning when a legacy type is passed as `domain`."""
+    with patch(
+        "tidyfinance.data_download._download_data_factors_ff",
+        return_value="sentinel",
+    ):
+        with pytest.warns(DeprecationWarning, match="legacy"):
+            result = download_data("factors_ff_3_monthly")
+    assert result == "sentinel"
+
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])

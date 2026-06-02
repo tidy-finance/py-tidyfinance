@@ -30,6 +30,11 @@ from .utilities import (
     process_trace_data,
     _process_additional_columns
 )
+from .supported_datasets import (
+    _check_supported_domain,
+    _is_legacy_type,
+    _parse_type_to_domain_dataset,
+)
 
 # %% constant
 
@@ -149,10 +154,11 @@ def get_available_famafrench_datasets():
 
 
 def download_data(
-    domain: str,
+    domain: str = None,
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
+    type: str = None,
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -172,6 +178,11 @@ def download_data(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, the full dataset is returned.
+    type : str, optional
+        Deprecated. Use ``domain`` and ``dataset`` instead. If
+        provided, a ``DeprecationWarning`` is emitted and the legacy
+        ``type`` is translated to a ``(domain, dataset)`` pair via
+        ``list_supported_datasets()``.
     **kwargs
         Additional arguments passed to the domain-specific download
         function.
@@ -182,6 +193,30 @@ def download_data(
         A data frame with processed data, including dates and relevant
         financial metrics, filtered by the specified date range.
     """
+
+    if type is not None:
+        warnings.warn(
+            "`type` is deprecated; use `domain` and `dataset` instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        domain, dataset = _parse_type_to_domain_dataset(type)
+
+    if domain is not None and _is_legacy_type(domain):
+        warnings.warn(
+            "Passing a legacy `type` string as `domain` is deprecated; "
+            "use `domain` and `dataset` instead. "
+            "See list_supported_datasets() for the mapping.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        domain, dataset = _parse_type_to_domain_dataset(domain)
+
+    if domain is None:
+        raise ValueError("Argument `domain` is required.")
+
+    _check_supported_domain(domain)
+
     if domain in ["famafrench", "factors_ff"]:
         processed_data = _download_data_factors_ff(
             dataset=dataset, start_date=start_date, end_date=end_date
