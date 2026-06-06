@@ -104,8 +104,12 @@ def test_aborts_when_dataset_is_none():
 
 def test_deprecated_type_arg_warns_and_strips_hf_prefix():
     """Test deprecated type arg warns and strips hf_ prefix."""
-    with pytest.warns(DeprecationWarning, match="deprecated"):
-        _download_data_huggingface(type="hf_factor_library_grid")
+    with patch(
+        "tidyfinance.data_download._download_factor_library_grid",
+        return_value=pd.DataFrame(),
+    ):
+        with pytest.warns(DeprecationWarning, match="deprecated"):
+            _download_data_huggingface(type="hf_factor_library_grid")
 
 
 def test_legacy_hf_dataset_value_warns_and_strips_prefix():
