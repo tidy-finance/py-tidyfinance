@@ -24,7 +24,7 @@ def add_lag_columns(
         cols (list[str]): List of column names to lag.
         by (str | None): Optional column to group by. Default is None.
         lag (int): Number of periods to lag. Must be non-negative.
-        max_lag (int | None): Maximum lag period. Defaults to `lag` if None.
+        max_lag (int | None): Maximum lag period. Defaults to 'lag' if None.
         drop_na (bool): Whether to drop rows with missing values in lagged
         columns. Default is False.
         date_col (str): The name of the date column. Default is "date".
@@ -35,9 +35,9 @@ def add_lag_columns(
     """
     if lag < 0 or (max_lag is not None and max_lag < lag):
         raise ValueError(
-            "`lag` must be non-negative, "
-            "and `max_lag` must be greater than or "
-            "equal to `lag`."
+            "'lag' must be non-negative, "
+            "and 'max_lag' must be greater than or "
+            "equal to 'lag'."
         )
 
     if max_lag is None:
@@ -45,12 +45,12 @@ def add_lag_columns(
 
     # Ensure the date column is available
     if date_col not in data.columns:
-        raise ValueError(f"Date column `{date_col}` not found in DataFrame.")
+        raise ValueError(f"Date column '{date_col}' not found in DataFrame.")
 
     result = data.copy()
     for col in cols:
         if col not in data.columns:
-            raise ValueError(f"Column `{col}` not found in the DataFrame.")
+            raise ValueError(f"Column '{col}' not found in the DataFrame.")
 
         for index_lag in range(lag, max_lag + 1):
             lag_col_name = f"{col}_lag_{index_lag}"

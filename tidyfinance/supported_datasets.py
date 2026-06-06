@@ -410,26 +410,26 @@ def list_supported_datasets(
     domain: Optional[str | list[str]] = None,
     as_vector: bool = False,
 ) -> "pd.DataFrame | list[str]":
-    """List all datasets supported by ``download_data``.
+    """List all datasets supported by ''download_data''.
 
     Aggregates the Global Q, Fama-French, Goyal-Welch, WRDS, pseudo, and
-    "other" tables into a single :class:`pandas.DataFrame`. The legacy
+    "other" tables into a single :class:'pandas.DataFrame'. The legacy
     Fama-French table is intentionally excluded from the master listing.
 
     Parameters
     ----------
     domain : str or list of str, optional
         Restrict the result to one or more domain labels (for example
-        ``"WRDS"`` or ``["Fama-French", "Global Q"]``).
+        ''"WRDS"'' or ''["Fama-French", "Global Q"]'').
     as_vector : bool, default False
-        If ``True``, return a list of dataset ``type`` strings instead of a
+        If ''True'', return a list of dataset ''type'' strings instead of a
         DataFrame.
 
     Returns
     -------
     pandas.DataFrame or list of str
-        Either a DataFrame with columns ``type``, ``dataset_name``, and
-        ``domain``, or a list of ``type`` strings when ``as_vector=True``.
+        Either a DataFrame with columns ''type'', ''dataset_name'', and
+        ''domain'', or a list of ''type'' strings when ''as_vector=True''.
     """
     rows = (
         _Q_DATASETS
@@ -485,36 +485,36 @@ _SUPPORTED_DOMAINS: tuple[str, ...] = (
 def _parse_type_to_domain_dataset(
     type_str: str,
 ) -> tuple[str, Optional[str]]:
-    """Translate a legacy ``type`` string into a ``(domain, dataset)`` pair.
+    """Translate a legacy ''type'' string into a ''(domain, dataset)'' pair.
 
     The dispatch rules are:
 
     * Fama-French legacy / current types resolve to
-      ``("factors_ff", <dataset_name>)``.
+      ''("factors_ff", <dataset_name>)''.
     * Global Q types resolve to
-      ``("factors_q", <dataset_name without trailing ".csv">)``.
-    * ``macro_predictors_*`` strings resolve to
-      ``("macro_predictors", <suffix>)``.
-    * ``wrds_*`` strings resolve to ``("wrds", <suffix>)``.
-    * ``hf_*`` strings resolve to ``("tidyfinance", <suffix>)``.
-    * Any of ``constituents``, ``fred``, ``stock_prices``, ``osap`` resolve
-      to ``(<value>, None)``.
-    * Anything else raises :class:`ValueError`.
+      ''("factors_q", <dataset_name without trailing ".csv">)''.
+    * ''macro_predictors_*'' strings resolve to
+      ''("macro_predictors", <suffix>)''.
+    * ''wrds_*'' strings resolve to ''("wrds", <suffix>)''.
+    * ''hf_*'' strings resolve to ''("tidyfinance", <suffix>)''.
+    * Any of ''constituents'', ''fred'', ''stock_prices'', ''osap'' resolve
+      to ''(<value>, None)''.
+    * Anything else raises :class:'ValueError'.
 
     Parameters
     ----------
     type_str : str
-        The legacy ``type`` string passed by the caller.
+        The legacy ''type'' string passed by the caller.
 
     Returns
     -------
     tuple of (str, str or None)
-        The resolved ``(domain, dataset)`` pair.
+        The resolved ''(domain, dataset)'' pair.
 
     Raises
     ------
     ValueError
-        If ``type_str`` does not match any known legacy pattern.
+        If ''type_str'' does not match any known legacy pattern.
     """
     # Fama-French (current + legacy share the lookup table)
     for row in _FF_DATASETS:
@@ -567,13 +567,13 @@ def _parse_type_to_domain_dataset(
 
 
 def _is_legacy_type(x: str) -> bool:
-    """Return ``True`` iff ``x`` is a legacy ``type`` string.
+    """Return ''True'' iff ''x'' is a legacy ''type'' string.
 
-    A value is considered legacy when ``_parse_type_to_domain_dataset``
+    A value is considered legacy when ''_parse_type_to_domain_dataset''
     would succeed on it *and* it is not one of the simple domain names
-    listed in :data:`_SIMPLE_DOMAINS` (those are already valid domains in
-    their own right).  ``tidyfinance``-domain "other" datasets such as
-    ``risk_free`` or ``factor_library`` are not treated as legacy either.
+    listed in :data:'_SIMPLE_DOMAINS' (those are already valid domains in
+    their own right).  ''tidyfinance''-domain "other" datasets such as
+    ''risk_free'' or ''factor_library'' are not treated as legacy either.
     """
     if x in _SIMPLE_DOMAINS:
         return False
@@ -595,12 +595,114 @@ def _is_legacy_type(x: str) -> bool:
 
 
 def _check_supported_domain(domain: str) -> None:
-    """Raise :class:`ValueError` when ``domain`` is not supported.
+    """Raise :class:'ValueError' when ''domain'' is not supported.
 
-    The list of supported domains is exposed via :data:`_SUPPORTED_DOMAINS`.
+    The list of supported domains is exposed via :data:'_SUPPORTED_DOMAINS'.
     """
     if domain not in _SUPPORTED_DOMAINS:
         joined = ", ".join(repr(d) for d in _SUPPORTED_DOMAINS)
         raise ValueError(
             f"Unsupported domain: {domain!r}. Supported domains: {joined}."
+        )
+
+
+def _is_legacy_type_wrds(x: str) -> bool:
+    """Return True if x is a legacy WRDS type string (starts with 'wrds_')."""
+    return isinstance(x, str) and x.startswith("wrds_")
+
+
+_WRDS_SUPPORTED_DATASETS = (
+    "crsp_monthly",
+    "crsp_daily",
+    "compustat_annual",
+    "compustat_quarterly",
+    "ccm_links",
+    "fisd",
+    "trace_enhanced",
+)
+
+
+def _check_supported_dataset_wrds(dataset: str) -> None:
+    """Raise ValueError if dataset is not a supported WRDS dataset."""
+    if dataset not in _WRDS_SUPPORTED_DATASETS:
+        raise ValueError(
+            f"Unsupported WRDS dataset: {dataset!r}. "
+            f"Supported: {', '.join(_WRDS_SUPPORTED_DATASETS)}."
+        )
+
+
+_WRDS_CRSP_SUPPORTED_DATASETS = ("crsp_monthly", "crsp_daily")
+
+
+def _check_supported_dataset_wrds_crsp(dataset: str) -> None:
+    """Raise ValueError if dataset is not a supported CRSP dataset."""
+    if dataset not in _WRDS_CRSP_SUPPORTED_DATASETS:
+        raise ValueError(
+            f"Unsupported CRSP dataset: {dataset!r}. "
+            f"Supported: {', '.join(_WRDS_CRSP_SUPPORTED_DATASETS)}."
+        )
+
+
+def _is_legacy_type_ff(x: str) -> bool:
+    """Return True if x is a known Fama-French type (current or legacy)."""
+    types = {row["type"] for row in _FF_DATASETS}
+    types.update(row["type"] for row in _FF_LEGACY_DATASETS)
+    return x in types
+
+
+def _is_legacy_type_q(x: str) -> bool:
+    """Return True if x is a known Global Q dataset type."""
+    return x in {row["type"] for row in _Q_DATASETS}
+
+
+def _determine_frequency_ff(dataset: str) -> str:
+    """Map a Fama-French dataset name to its reporting frequency."""
+    if "[Daily]" in dataset:
+        return "daily"
+    if "[Weekly]" in dataset:
+        return "weekly"
+    return "monthly"
+
+
+def _is_breakpoints_ff(dataset: str) -> bool:
+    """Return True if dataset is a Fama-French breakpoints file."""
+    return "Breakpoints" in dataset
+
+
+def _determine_frequency_q(dataset: str) -> str:
+    """Map a Global Q dataset name to its reporting frequency."""
+    lowered = dataset.lower()
+    for frequency in ("daily", "weekly", "monthly", "quarterly", "annual"):
+        if frequency in lowered:
+            return frequency
+    raise ValueError(
+        f"Cannot determine frequency from dataset name: {dataset!r}."
+    )
+
+
+def _check_supported_dataset_ff(dataset: str) -> str:
+    """Validate a Fama-French dataset_name and return its source file URL.
+
+    Raises
+    ------
+    ValueError
+        If dataset is not a supported Fama-French dataset_name.
+    """
+    for row in _FF_DATASETS + _FF_LEGACY_DATASETS:
+        if row["dataset_name"] == dataset:
+            return row["file_url"]
+    raise ValueError(
+        f"Unsupported Fama-French dataset: {dataset!r}. "
+        "Use list_supported_datasets(domain='Fama-French') to see "
+        "available datasets."
+    )
+
+
+def _check_supported_dataset_q(dataset: str) -> None:
+    """Raise ValueError if dataset is not a supported Global Q dataset_name."""
+    if dataset not in {row["dataset_name"] for row in _Q_DATASETS}:
+        raise ValueError(
+            f"Unsupported Global Q dataset: {dataset!r}. "
+            "Use list_supported_datasets(domain='Global Q') to see "
+            "available datasets."
         )
