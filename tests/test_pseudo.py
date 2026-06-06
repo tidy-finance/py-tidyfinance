@@ -26,7 +26,7 @@ from tidyfinance.data_download import download_data  # noqa: E402
 
 def test_simulate_pseudo_data_requires_dataset():
     """Raise when no dataset is supplied."""
-    with pytest.raises(ValueError, match="dataset` is required"):
+    with pytest.raises(ValueError, match="'dataset' is required"):
         _simulate_pseudo_data()
 
 
@@ -144,7 +144,7 @@ def test_pseudo_crsp_daily_schema_weekdays_only():
 
 def test_pseudo_crsp_validates_dataset():
     """Per-dataset CRSP generator validates its dataset argument."""
-    with pytest.raises(ValueError, match="dataset` is required"):
+    with pytest.raises(ValueError, match="'dataset' is required"):
         _download_data_pseudo_crsp()
     with pytest.raises(ValueError, match="Unsupported CRSP dataset"):
         _download_data_pseudo_crsp("compustat_annual")
@@ -203,7 +203,7 @@ def test_pseudo_compustat_quarterly_schema():
 
 def test_pseudo_compustat_validates_dataset():
     """Per-dataset Compustat generator validates its dataset argument."""
-    with pytest.raises(ValueError, match="dataset` is required"):
+    with pytest.raises(ValueError, match="'dataset' is required"):
         _download_data_pseudo_compustat()
     with pytest.raises(ValueError, match="Unsupported Compustat dataset"):
         _download_data_pseudo_compustat("crsp_monthly")
