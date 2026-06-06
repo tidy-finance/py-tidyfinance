@@ -5,63 +5,342 @@ import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
+from ._internal import _to_offset
 
-def add_lag_columns(
+
+def add_lagged_columns(
     data: pd.DataFrame,
-    cols: list[str],
-    by: str | None = None,
-    lag: int = 0,
-    max_lag: int | None = None,
+    cols: list[str] | str,
+    lag,
+    max_lag=None,
+    by: list[str] | str | None = None,
     drop_na: bool = False,
+    ff_adjustment: bool = False,
     date_col: str = "date",
 ) -> pd.DataFrame:
-    """
-    Add lagged versions of specified columns to a Pandas DataFrame.
+    """Append lagged versions of specified columns to a DataFrame using
+    a join-based approach.
+
+    When lag == max_lag (the default), an equi-join is used: source
+    dates are shifted forward by lag and matched exactly. When
+    lag < max_lag, a window join is used: for each row, the most
+    recent source value within [date - max_lag, date - lag] is
+    selected.
+
+    The combination of by and the date column must be unique in
+    data. If by is None, dates alone must be unique.
 
     Parameters
     ----------
-        data (pd.DataFrame): The input DataFrame.
-        cols (list[str]): List of column names to lag.
-        by (str | None): Optional column to group by. Default is None.
-        lag (int): Number of periods to lag. Must be non-negative.
-        max_lag (int | None): Maximum lag period. Defaults to `lag` if None.
-        drop_na (bool): Whether to drop rows with missing values in lagged
-        columns. Default is False.
-        date_col (str): The name of the date column. Default is "date".
+    data : pd.DataFrame
+        DataFrame containing the variables to lag.
+    cols : list of str or str
+        Names of the columns to lag. Each column produces a new column
+        suffixed with _lag.
+    lag : int, pd.Timedelta, or pd.DateOffset
+        Minimum lag (inclusive) to apply. An int is interpreted as
+        days.
+    max_lag : int, pd.Timedelta, or pd.DateOffset, optional
+        Maximum lag (inclusive). Defaults to lag (exact lag).
+    by : list of str or str, optional
+        Grouping columns (e.g. a stock identifier). Lagged values are
+        matched within groups. Defaults to None.
+    drop_na : bool, optional
+        If True, NaN values in the source columns are excluded
+        before matching, so the lookup skips over missing observations.
+        Applied independently per column. Defaults to False.
+    ff_adjustment : bool, optional
+        If True, only the last observation per year (within each
+        group defined by by) is retained as a source for lagged
+        values, following Fama-French conventions for annual
+        accounting data. Defaults to False.
+    date_col : str, optional
+        Name of the date column. Defaults to "date".
 
     Returns
     -------
-        pd.DataFrame: DataFrame with lagged columns appended.
+    pd.DataFrame
+        DataFrame with the same rows as data and new columns
+        appended, each suffixed with _lag. Unmatched rows receive
+        NaN in the lagged columns.
     """
-    if lag < 0 or (max_lag is not None and max_lag < lag):
+    if isinstance(cols, str):
+        cols = [cols]
+    if isinstance(by, str):
+        by = [by]
+    by_list = by or []
+
+    lag_offset = _to_offset(lag)
+    max_lag_offset = _to_offset(max_lag if max_lag is not None else lag)
+
+    if date_col not in data.columns:
         raise ValueError(
-            "`lag` must be non-negative, "
-            "and `max_lag` must be greater than or "
-            "equal to `lag`."
+            f"`data` must contain the date column `{date_col}`."
         )
 
-    if max_lag is None:
-        max_lag = lag
+    ref = pd.Timestamp("2020-01-01")
+    lag_end = ref + lag_offset
+    max_lag_end = ref + max_lag_offset
+    if lag_end < ref or max_lag_end < lag_end:
+        raise ValueError(
+            "`lag` and `max_lag` must be non-negative and `max_lag` "
+            "must be >= `lag`."
+        )
 
-    # Ensure the date column is available
-    if date_col not in data.columns:
-        raise ValueError(f"Date column `{date_col}` not found in DataFrame.")
+    missing_cols = [c for c in cols if c not in data.columns]
+    if missing_cols:
+        raise ValueError(
+            f"`data` is missing column(s): {missing_cols}."
+        )
 
+    if by_list:
+        missing_by = [c for c in by_list if c not in data.columns]
+        if missing_by:
+            raise ValueError(
+                f"`data` is missing grouping column(s): {missing_by}."
+            )
+
+    join_cols = by_list + [date_col]
+    if data[join_cols].duplicated().any():
+        raise ValueError(
+            "The combination of `by` and date columns must be unique "
+            "in `data`."
+        )
+
+    exact_lag = (lag_end == max_lag_end)
     result = data.copy()
+
+    if not exact_lag:
+        result["_upper"] = result[date_col] - lag_offset
+        result["_lower"] = result[date_col] - max_lag_offset
+
     for col in cols:
-        if col not in data.columns:
-            raise ValueError(f"Column `{col}` not found in the DataFrame.")
+        lag_col_name = f"{col}_lag"
+        if lag_col_name in result.columns:
+            raise ValueError(
+                f"Column `{lag_col_name}` already exists in `data`."
+            )
 
-        for index_lag in range(lag, max_lag + 1):
-            lag_col_name = f"{col}_lag_{index_lag}"
+        lagged = data[join_cols + [col]].copy()
 
-            if by:
-                result[lag_col_name] = result.groupby(by)[col].shift(index_lag)
-            else:
-                result[lag_col_name] = result[col].shift(index_lag)
+        if drop_na:
+            lagged = lagged.dropna(subset=[col])
 
-            if drop_na:
-                result = result.dropna(subset=[lag_col_name])
+        if ff_adjustment:
+            grp_cols = by_list + ["_yr"]
+            lagged = lagged.assign(_yr=lagged[date_col].dt.year)
+            max_dates = lagged.groupby(grp_cols)[date_col].transform("max")
+            lagged = lagged[lagged[date_col] == max_dates].drop(
+                columns="_yr"
+            )
+
+        if exact_lag:
+            lagged[date_col] = lagged[date_col] + lag_offset
+            lagged = lagged.rename(columns={col: lag_col_name})
+            result = result.merge(lagged, on=join_cols, how="left")
+        else:
+            result = _window_lag_join(
+                result, lagged, by_list, date_col, col, lag_col_name
+            )
+
+    if not exact_lag:
+        result = result.drop(columns=["_upper", "_lower"])
+
+    return result
+
+
+def _window_lag_join(
+    result: pd.DataFrame,
+    lagged: pd.DataFrame,
+    by_list: list[str],
+    date_col: str,
+    col: str,
+    lag_col_name: str,
+) -> pd.DataFrame:
+    """For each row in result (which carries _upper and
+    _lower bounds), find the most recent row in lagged whose
+    date falls in [_lower, _upper] and copy its col value into
+    a new lag_col_name column.
+    """
+    result = result.assign(_orig_idx=np.arange(len(result)))
+    lagged = lagged.rename(
+        columns={date_col: "_src_date", col: lag_col_name}
+    )
+
+    sort_keys_left = by_list + ["_upper"]
+    sort_keys_right = by_list + ["_src_date"]
+    left_sorted = result.sort_values(sort_keys_left, kind="mergesort")
+    right_sorted = lagged.sort_values(sort_keys_right, kind="mergesort")
+
+    merged = pd.merge_asof(
+        left_sorted,
+        right_sorted,
+        left_on="_upper",
+        right_on="_src_date",
+        by=by_list if by_list else None,
+        direction="backward",
+    )
+
+    mask = merged["_src_date"].notna() & (
+        merged["_src_date"] >= merged["_lower"]
+    )
+    merged.loc[~mask, lag_col_name] = np.nan
+
+    merged = merged.sort_values("_orig_idx", kind="mergesort")
+    merged = merged.drop(
+        columns=["_orig_idx", "_src_date"]
+    ).reset_index(drop=True)
+    return merged
+
+
+def join_lagged_values(
+    original_data: pd.DataFrame,
+    new_data: pd.DataFrame,
+    id_keys: list[str] | str,
+    min_lag,
+    max_lag,
+    ff_adjustment: bool = False,
+    date_col: str = "date",
+) -> pd.DataFrame:
+    """Join lagged values from new_data into original_data over
+    a date range.
+
+    Unlike :func:`add_lagged_columns`, this supports joining across
+    DataFrames with different date grids (e.g. monthly source into
+    quarterly target). All columns in new_data besides id_keys
+    and the date column are lagged and joined under their original
+    names.
+
+    Parameters
+    ----------
+    original_data : pd.DataFrame
+        Target panel data.
+    new_data : pd.DataFrame
+        Source variables to lag and merge.
+    id_keys : list of str or str
+        Identifier column(s) shared by both frames.
+    min_lag, max_lag : int, pd.Timedelta, or pd.DateOffset
+        Inclusive lag bounds.
+    ff_adjustment : bool, optional
+        If True, keeps only the last observation per identifier and
+        year in new_data before lagging. Defaults to False.
+    date_col : str, optional
+        Name of the date column. Defaults to "date".
+
+    Returns
+    -------
+    pd.DataFrame
+        original_data with new columns from new_data appended.
+    """
+    if isinstance(id_keys, str):
+        id_keys = [id_keys]
+    if not isinstance(id_keys, list) or not all(
+        isinstance(k, str) for k in id_keys
+    ):
+        raise ValueError("`id_keys` must be a string or list of strings.")
+
+    min_lag_offset = _to_offset(min_lag)
+    max_lag_offset = _to_offset(max_lag)
+
+    if date_col not in original_data.columns:
+        raise ValueError(
+            f"`original_data` must contain the column `{date_col}`."
+        )
+    if date_col not in new_data.columns:
+        raise ValueError(
+            f"`new_data` must contain the column `{date_col}`."
+        )
+
+    missing_original = [
+        k for k in id_keys if k not in original_data.columns
+    ]
+    if missing_original:
+        raise ValueError(
+            f"`original_data` is missing id column(s): "
+            f"{missing_original}."
+        )
+
+    missing_new = [k for k in id_keys if k not in new_data.columns]
+    if missing_new:
+        raise ValueError(
+            f"`new_data` is missing id column(s): {missing_new}."
+        )
+
+    new_column_names = [
+        c for c in new_data.columns if c not in id_keys + [date_col]
+    ]
+    if not new_column_names:
+        raise ValueError(
+            f"`new_data` must contain columns besides {id_keys} and "
+            f"`{date_col}`."
+        )
+
+    original_non_key = [
+        c for c in original_data.columns
+        if c not in id_keys + [date_col]
+    ]
+    duplicate_cols = [
+        c for c in new_column_names if c in original_non_key
+    ]
+    if duplicate_cols:
+        raise ValueError(
+            f"Column(s) in `new_data` already exist in "
+            f"`original_data`: {duplicate_cols}. Remove or rename them "
+            "before joining."
+        )
+
+    new_data = new_data.copy()
+    new_data["_lower"] = new_data[date_col] + min_lag_offset
+    new_data["_upper"] = new_data[date_col] + max_lag_offset
+    if ff_adjustment:
+        new_data["_year"] = new_data[date_col].dt.year
+
+    result = original_data.copy()
+
+    for col in new_column_names:
+        select_cols = id_keys + [date_col, col, "_lower", "_upper"]
+        if ff_adjustment:
+            select_cols.append("_year")
+        tmp = new_data[select_cols].copy()
+
+        if ff_adjustment:
+            grp_cols = id_keys + ["_year"]
+            max_dates = tmp.groupby(grp_cols)[date_col].transform("max")
+            tmp = tmp[tmp[date_col] == max_dates].drop(
+                columns=[date_col, "_year"]
+            )
+        else:
+            tmp = tmp.drop(columns=[date_col])
+
+        result = result.assign(_orig_idx=np.arange(len(result)))
+        sort_keys_left = id_keys + [date_col]
+        sort_keys_right = id_keys + ["_lower"]
+        left_sorted = result.sort_values(
+            sort_keys_left, kind="mergesort"
+        )
+        right_sorted = tmp.sort_values(
+            sort_keys_right, kind="mergesort"
+        )
+
+        merged = pd.merge_asof(
+            left_sorted,
+            right_sorted,
+            left_on=date_col,
+            right_on="_lower",
+            by=id_keys if id_keys else None,
+            direction="backward",
+        )
+
+        mask = merged["_lower"].notna() & (
+            merged[date_col] <= merged["_upper"]
+        )
+        merged.loc[~mask, col] = np.nan
+
+        merged = merged.sort_values("_orig_idx", kind="mergesort")
+        merged = merged.drop(
+            columns=["_orig_idx", "_lower", "_upper"]
+        ).reset_index(drop=True)
+        result = merged
 
     return result
 

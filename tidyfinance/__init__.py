@@ -1,9 +1,10 @@
 from .core import (
-    add_lag_columns,
+    add_lagged_columns,
     assign_portfolio,
     create_summary_statistics,
     estimate_betas,
     estimate_fama_macbeth,
+    join_lagged_values,
 )
 from .data_download import (
     _download_data_constituents,
@@ -49,7 +50,8 @@ __all__ = [
     "estimate_fama_macbeth",
     "set_wrds_credentials",
     "create_summary_statistics",
-    "add_lag_columns",
+    "add_lagged_columns",
+    "join_lagged_values",
     "get_wrds_connection",
     "list_supported_datasets",
 ]
