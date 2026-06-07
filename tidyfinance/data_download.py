@@ -4,6 +4,7 @@
 import io
 import os
 import re
+import tempfile
 import time
 import warnings
 import zipfile
@@ -12,7 +13,6 @@ import numpy as np
 import pandas as pd
 from curl_cffi import requests
 from sqlalchemy import text
-import pyarrow.parquet as pq
 from datetime import date
 
 from ._internal import (
@@ -30,24 +30,46 @@ from .utilities import (
     process_trace_data,
     _process_additional_columns
 )
+from .supported_datasets import (
+    _check_supported_domain,
+    _is_legacy_type,
+    _is_legacy_type_wrds,
+    _check_supported_dataset_wrds,
+    _check_supported_dataset_wrds_crsp,
+    _is_legacy_type_ff,
+    _is_legacy_type_q,
+    _determine_frequency_ff,
+    _determine_frequency_q,
+    _is_breakpoints_ff,
+    _check_supported_dataset_ff,
+    _check_supported_dataset_q,
+    _parse_type_to_domain_dataset,
+)
+
+from ._pseudo import _simulate_pseudo_data
 
 # %% constant
 
 os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
-_SUPPORTED_DATASETS_HF = ("high_frequency_sp500", "factor_library")
+_SUPPORTED_DATASETS_HF = (
+    "high_frequency_sp500",
+    "factor_library",
+    "factor_library_grid",
+)
 
 _FACTOR_LIBRARY_DEFAULTS = {
-    "exclude_size": 0.2,
+    "min_size_quantile": 0.2,
     "exclude_financials": False,
     "exclude_utilities": False,
     "exclude_negative_earnings": False,
     "sorting_variable_lag": "6m",
     "rebalancing": "monthly",
-    "breakpoints_main": 10,
+    "n_portfolios_main": 10,
     "sorting_method": "univariate",
-    "breakpoints_secondary": None,
+    "n_portfolios_secondary": None,
     "breakpoints_exchanges": "NYSE",
+    "breakpoints_min_size_threshold": None,
     "weighting_scheme": "VW",
 }
 
@@ -57,57 +79,6 @@ _FACTOR_LIBRARY_SUPPORTED_FILTERS = (
 )
 
 # %% functions
-
-
-def create_wrds_dummy_database(
-    path: str,
-    url: str = (
-        "https://github.com/tidy-finance/website/raw/main/blog/"
-        "tidy-finance-dummy-data/data/tidy_finance.sqlite"
-    ),
-) -> None:
-    """
-    Download the WRDS dummy database from the Tidy Finance GitHub repository.
-
-    It saves it to the specified path. If the file already exists,
-    the user is prompted before it is replaced.
-
-    Parameters
-    ----------
-    path : str
-        The file path where the SQLite database should be saved.
-    url : str, optional
-        The URL where the SQLite database is stored.
-
-    Returns
-    -------
-    None
-    """
-    if not path:
-        raise ValueError(
-            "Please provide a file path for the SQLite database. "
-            "We recommend 'data/tidy_finance.sqlite'."
-        )
-
-    if os.path.exists(path):
-        response = input(
-            "The database file already exists at this path. Do "
-            "you want to replace it? (Y/n): "
-        )
-        if response.strip().lower() != "y":
-            print("Operation aborted by the user.")
-            return
-
-    try:
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-        with open(path, "wb") as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                print(chunk)
-                file.write(chunk)
-        print(f"Downloaded WRDS dummy database to {path}.")
-    except Exception as e:
-        print(f"Error downloading the WRDS dummy database: {e}")
 
 
 def get_available_famafrench_datasets():
@@ -143,16 +114,17 @@ def get_available_famafrench_datasets():
         and dataset_i.endswith(ff_url_suffix)
     ]
     datasets_list = list(
-        map(lambda x: x[len(ff_url_prefix) : -len(ff_url_suffix)], datasets)
+        map(lambda x: x[len(ff_url_prefix): -len(ff_url_suffix)], datasets)
     )
     return datasets_list
 
 
 def download_data(
-    domain: str,
+    domain: str = None,
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
+    type: str = None,
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -172,6 +144,11 @@ def download_data(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, the full dataset is returned.
+    type : str, optional
+        Deprecated. Use domain and dataset instead. If provided, a
+        DeprecationWarning is emitted and the legacy type is
+        translated to a (domain, dataset) pair via
+        list_supported_datasets().
     **kwargs
         Additional arguments passed to the domain-specific download
         function.
@@ -182,6 +159,29 @@ def download_data(
         A data frame with processed data, including dates and relevant
         financial metrics, filtered by the specified date range.
     """
+    if type is not None:
+        warnings.warn(
+            "'type' is deprecated; use 'domain' and 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        domain, dataset = _parse_type_to_domain_dataset(type)
+
+    if domain is not None and _is_legacy_type(domain):
+        warnings.warn(
+            "Passing a legacy 'type' string as 'domain' is deprecated; "
+            "use 'domain' and 'dataset' instead. "
+            "See list_supported_datasets() for the mapping.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        domain, dataset = _parse_type_to_domain_dataset(domain)
+
+    if domain is None:
+        raise ValueError("Argument 'domain' is required.")
+
+    _check_supported_domain(domain)
+
     if domain in ["famafrench", "factors_ff"]:
         processed_data = _download_data_factors_ff(
             dataset=dataset, start_date=start_date, end_date=end_date
@@ -213,21 +213,43 @@ def download_data(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "tidyfinance":
-        processed_data = _download_data_huggingface(
-            dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
+        if dataset == "risk_free":
+            processed_data = _download_data_risk_free(
+                start_date=start_date, end_date=end_date, **kwargs
+            )
+        else:
+            processed_data = _download_data_huggingface(
+                dataset=dataset, start_date=start_date, end_date=end_date,
+                **kwargs
+            )
+    elif domain == "pseudo":
+        processed_data = _simulate_pseudo_data(
+            dataset=dataset,
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
         )
     else:
         raise ValueError("Unsupported domain.")
     return processed_data
 
 
-def _famafrench_downloader(dataset, start_date=None, end_date=None):
-    """Download function for famafrench ala pandas_datareader."""
-    # urls
+def _famafrench_downloader(file_url, start_date=None, end_date=None):
+    """Download a Kenneth French data ZIP and parse its first table.
+
+    Parameters
+    ----------
+    file_url : str
+        Path relative to the Kenneth French data library base URL,
+        matching the file_url column of _FF_DATASETS, e.g.
+        "ftp/F-F_Research_Data_Factors_CSV.zip".
+    start_date : str, optional
+        Filter the parsed table to dates >= start_date.
+    end_date : str, optional
+        Filter the parsed table to dates <= end_date.
+    """
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
-    ff_url_prefix = "ftp/"
-    ff_url_suffix = "_CSV.zip"
-    datatset_url = "".join([ff_url, ff_url_prefix, dataset, ff_url_suffix])
+    datatset_url = ff_url + file_url
     resp = requests.get(datatset_url, impersonate="chrome")
     resp.raise_for_status()
 
@@ -236,16 +258,24 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
         name = zf.namelist()[0]
         data_raw = zf.read(name).decode("latin1")
 
+    # Derive the stem (e.g., "ME_Breakpoints") for breakpoint column-
+    # naming logic by stripping the ftp/ prefix and _CSV.zip suffix.
+    stem = file_url
+    if stem.startswith("ftp/"):
+        stem = stem[len("ftp/"):]
+    if stem.endswith("_CSV.zip"):
+        stem = stem[:-len("_CSV.zip")]
+
     # Breakpoint dataset cases
     params = {"index_col": 0}
-    if dataset.endswith("_Breakpoints"):
-        if "-" in dataset:
+    if stem.endswith("_Breakpoints"):
+        if "-" in stem:
             cols = ["<=0", ">0"]
         else:
             cols = ["Count"]
         r = list(range(0, 105, 5))
         params["names"] = ["Date"] + cols + list(zip(r, r[1:]))
-        params["skiprows"] = 1 if dataset != "Prior_2-12_Breakpoints" else 3
+        params["skiprows"] = 1 if stem != "Prior_2-12_Breakpoints" else 3
 
     doc_chunks, tables = [], []
     for chunk in data_raw.split(2 * "\r\n"):
@@ -262,7 +292,7 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
         try:
             df = pd.read_csv(io.StringIO("Date" + src[start:]), **params)
         except pd.errors.ParserError as e:
-            print(e)
+            warnings.warn(str(e), UserWarning, stacklevel=2)
             continue
 
         # get index as datetime
@@ -300,7 +330,10 @@ def _famafrench_downloader(dataset, start_date=None, end_date=None):
 
 
 def _download_data_factors_ff(
-    dataset: str, start_date: str = None, end_date: str = None
+    dataset: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    type: str = None,
 ) -> pd.DataFrame:
     """
     Download and process Fama-French factor data.
@@ -321,6 +354,10 @@ def _download_data_factors_ff(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, the full dataset is returned.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If supplied, the value is
+        translated to a dataset_name via list_supported_datasets and a
+        DeprecationWarning is emitted.
 
     Returns
     -------
@@ -329,50 +366,82 @@ def _download_data_factors_ff(
         risk-free rate, market excess return, and other factors,
         filtered by the specified date range.
     """
+    if type is not None:
+        warnings.warn(
+            "The 'type' argument is deprecated. Use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _, dataset = _parse_type_to_domain_dataset(type)
+
+    if dataset is not None and _is_legacy_type_ff(dataset):
+        warnings.warn(
+            "Passing a legacy type as 'dataset' is deprecated. "
+            "Use the dataset_name from list_supported_datasets("
+            "domain='Fama-French').",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _, dataset = _parse_type_to_domain_dataset(dataset)
+
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
+    file_url = _check_supported_dataset_ff(dataset)
+
     start_date, end_date = _validate_dates(start_date, end_date)
-    all_datasets = get_available_famafrench_datasets()
-    if dataset in all_datasets:
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", FutureWarning)
-                raw_data = (
-                    _famafrench_downloader(
-                        dataset, start_date=start_date, end_date=end_date
-                    )
-                    .div(100)
-                    .reset_index()
-                    .rename(
-                        columns=lambda x: (
-                            x.lower()
-                            .replace("-rf", "_excess")
-                            .replace("rf", "risk_free")
-                            if isinstance(x, str)
-                            else x
-                        )
-                    )
-                    # .assign(date=lambda x: _return_datetime(x["date"]))
-                    .apply(
-                        lambda x: x.replace([-99.99, -999], pd.NA)
-                        if x.name != "date"
+
+    frequency = _determine_frequency_ff(dataset)
+    if frequency not in ("daily", "weekly", "monthly"):
+        raise ValueError(
+            "This dataset has neither daily, weekly, nor monthly frequency."
+        )
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            raw_downloaded = _famafrench_downloader(
+                file_url, start_date=start_date, end_date=end_date
+            )
+            if not _is_breakpoints_ff(dataset):
+                raw_downloaded = raw_downloaded.div(100)
+            raw_data = (
+                raw_downloaded
+                .reset_index()
+                .rename(
+                    columns=lambda x: (
+                        x.lower()
+                        .replace("-rf", "_excess")
+                        .replace("rf", "risk_free")
+                        if isinstance(x, str)
                         else x
                     )
                 )
-                raw_data = raw_data[
-                    ["date"]
-                    + [col for col in raw_data.columns if col != "date"]
-                ].reset_index(drop=True)
-                return raw_data
-        except Exception as e:
-            print(f"Returning an empty dataset due to download failure: {e}")
-            return pd.DataFrame()
-    else:
-        raise ValueError("Unsupported dataset.")
+                .apply(
+                    lambda x: x.replace([-99.99, -999], pd.NA)
+                    if x.name != "date"
+                    else x
+                )
+            )
+            raw_data = raw_data[
+                ["date"]
+                + [col for col in raw_data.columns if col != "date"]
+            ].reset_index(drop=True)
+            return raw_data
+    except Exception as e:
+        warnings.warn(
+            f"Returning an empty dataset due to download failure: {e}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pd.DataFrame()
 
 
 def _download_data_factors_q(
-    dataset: str,
+    dataset: str = None,
     start_date: str = None,
     end_date: str = None,
+    type: str = None,
     url: str = "https://global-q.org/uploads/1/2/2/6/122679606/",
 ) -> pd.DataFrame:
     """
@@ -389,6 +458,10 @@ def _download_data_factors_q(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, the full dataset is returned.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If supplied, the value is
+        translated to a dataset_name via list_supported_datasets and a
+        DeprecationWarning is emitted.
     url : str, optional
         The base URL from which to download the dataset files.
 
@@ -399,6 +472,27 @@ def _download_data_factors_q(
         risk-free rate, market excess return, and other factors,
         filtered by the specified date range.
     """
+    if type is not None:
+        warnings.warn(
+            "The 'type' argument is deprecated. Use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _, dataset = _parse_type_to_domain_dataset(type)
+
+    if dataset is not None and _is_legacy_type_q(dataset):
+        warnings.warn(
+            "Passing a legacy type as 'dataset' is deprecated. "
+            "Use the dataset_name from list_supported_datasets("
+            "domain='Global Q').",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        _, dataset = _parse_type_to_domain_dataset(dataset)
+
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
     start_date, end_date = _validate_dates(start_date, end_date)
 
     valid_prefixes = [
@@ -436,6 +530,16 @@ def _download_data_factors_q(
                 dict(year=raw_data.year, month=raw_data.month, day=1)
             )
         ).drop(columns=["year", "month"])
+    if "weekly" in dataset:
+        raw_data = raw_data.assign(
+            date=pd.to_datetime(
+                dict(
+                    year=raw_data.year,
+                    month=raw_data.month,
+                    day=raw_data.day,
+                )
+            )
+        ).drop(columns=["year", "month", "day"])
     if "annual" in dataset:
         raw_data = raw_data.assign(
             date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
@@ -458,6 +562,7 @@ def _download_data_macro_predictors(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
+    type: str = None,
     sheet_id: str = "1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG",
 ) -> pd.DataFrame:
     """
@@ -474,6 +579,11 @@ def _download_data_macro_predictors(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, the full dataset is returned.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If supplied, a leading
+        'macro_predictors_' prefix is stripped (e.g.,
+        'macro_predictors_monthly' becomes 'monthly') and a
+        DeprecationWarning is emitted.
     sheet_id : str, optional
         The Google Sheets ID from which to download the dataset.
 
@@ -483,6 +593,27 @@ def _download_data_macro_predictors(
         A data frame with processed data, including financial metrics,
         filtered by the specified date range.
     """
+    if type is not None:
+        warnings.warn(
+            "The 'type' argument is deprecated. Use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^macro_predictors_", "", type)
+
+    if dataset is not None and dataset.startswith("macro_predictors_"):
+        warnings.warn(
+            "Passing 'macro_predictors_'-prefixed dataset names is "
+            "deprecated. Use 'monthly' instead of "
+            "'macro_predictors_monthly'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^macro_predictors_", "", dataset)
+
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
     start_date, end_date = _validate_dates(start_date, end_date)
 
     if dataset in ["monthly", "quarterly", "annual"]:
@@ -494,10 +625,17 @@ def _download_data_macro_predictors(
             )
             raw_data = pd.read_csv(macro_sheet_url)
         except Exception as e:
-            print(f"Returning an empty dataset due to download failure: {e}")
+            warnings.warn(
+                f"Returning an empty dataset due to download failure: {e}",
+                UserWarning,
+                stacklevel=2,
+            )
             return pd.DataFrame()
     else:
-        raise ValueError("Unsupported dataset.")
+        raise ValueError(
+            f"Unsupported dataset: {dataset!r}. "
+            "Use 'monthly', 'quarterly', or 'annual'."
+        )
 
     if dataset == "monthly":
         raw_data = raw_data.assign(
@@ -612,7 +750,7 @@ def _download_data_constituents(
         )
         index = dataset
 
-    symbol_blacklist = {"", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
+    symbol_blacklist = {"", "-", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
     supported_indexes = list_supported_indexes()
 
     if index not in supported_indexes["index"].values:
@@ -644,20 +782,28 @@ def _download_data_constituents(
 
     if "Anlageklasse" in df.columns:
         df = df[df["Anlageklasse"] == "Aktien"][
-            ["Emittententicker", "Name", "Börse"]
+            ["Emittententicker", "Name", "Standort", "Börse"]
         ]
-        df.columns = ["symbol", "name", "exchange"]
+        df.columns = ["symbol", "name", "location", "exchange"]
     elif "Asset Class" in df.columns:
-        df = df[df["Asset Class"] == "Equity"][["Ticker", "Name", "Exchange"]]
-        df.columns = ["symbol", "name", "exchange"]
+        df = df[df["Asset Class"] == "Equity"][
+            ["Ticker", "Name", "Location", "Exchange"]
+        ]
+        df.columns = ["symbol", "name", "location", "exchange"]
     else:
         raise ValueError("Unknown column format in downloaded data.")
 
+    df["symbol"] = df["symbol"].astype(str).str.strip()
     df = df[~df["symbol"].isin(symbol_blacklist)]
     df = df[df["name"] != ""]
     df = df[~df["name"].str.contains(index, case=False, na=False)]
     df = df[~df["name"].str.contains("CASH", case=False, na=False)]
+    index_no_space = re.sub(r"\s+", "", index).lower()
+    df = df[
+        ~df["name"].str.lower().str.contains(index_no_space, na=False)
+    ]
 
+    df.loc[df["name"] == "NATIONAL BANK OF CANADA", "symbol"] = "NA"
     df["symbol"] = df["symbol"].str.replace(" ", "-").str.replace("/", "-")
 
     exchange_suffixes = {
@@ -691,6 +837,36 @@ def _download_data_constituents(
         lambda row: row["symbol"] + exchange_suffixes.get(row["exchange"], ""),
         axis=1,
     )
+    df["symbol"] = df["symbol"].str.replace("..", ".", regex=False)
+
+    currency_map = {
+        "Xetra": "EUR",
+        "Deutsche Börse AG": "EUR",
+        "Boerse Berlin": "EUR",
+        "Borsa Italiana": "EUR",
+        "Nyse Euronext - Euronext Paris": "EUR",
+        "Euronext Amsterdam": "EUR",
+        "Nasdaq Omx Helsinki Ltd.": "EUR",
+        "Euronext Brussels": "EUR",
+        "Euronext Lisbon": "EUR",
+        "Singapore Exchange": "SGD",
+        "Asx - All Markets": "AUD",
+        "London Stock Exchange": "GBP",
+        "SIX Swiss Exchange": "CHF",
+        "Tel Aviv Stock Exchange": "ILS",
+        "Tokyo Stock Exchange": "JPY",
+        "Hong Kong Stock Exchange": "HKD",
+        "Toronto Stock Exchange": "CAD",
+        "Bovespa": "BRL",
+        "Mexican Stock Exchange": "MXN",
+        "Stockholm Stock Exchange": "SEK",
+        "Oslo Stock Exchange": "NOK",
+        "Johannesburg Stock Exchange": "ZAR",
+        "Korea Exchange": "KRW",
+        "Shanghai Stock Exchange": "CNY",
+        "Shenzhen Stock Exchange": "CNY",
+    }
+    df["currency"] = df["exchange"].map(currency_map).fillna("USD")
 
     return df
 
@@ -705,18 +881,18 @@ def _download_data_fred(
     Parameters
     ----------
     series : str or list of str
-        The FRED series ID(s) to download (e.g., ``"GDP"``, ``["GDP",
-        "UNRATE"]``).
+        The FRED series ID(s) to download (e.g., "GDP",
+        ["GDP", "UNRATE"]).
     start_date : str, optional
-        The start date for filtering data in ``YYYY-MM-DD`` format.
+        The start date for filtering data in YYYY-MM-DD format.
     end_date : str, optional
-        The end date for filtering data in ``YYYY-MM-DD`` format.
+        The end date for filtering data in YYYY-MM-DD format.
 
     Returns
     -------
     pd.DataFrame
-        A data frame with columns ``date``, ``series``, and ``value``
-        containing the requested FRED series data.
+        A data frame with columns date, series, and value containing
+        the requested FRED series data.
     """
     if isinstance(series, str):
         series = [series]
@@ -743,11 +919,7 @@ def _download_data_fred(
                         timeout=30,
                     )
                     response.raise_for_status()
-                except Exception as e:
-                    print(
-                        f"HTTP error for {s} at {url} "
-                        f"(attempt {attempt + 1}): {e}"
-                    )
+                except Exception:
                     if attempt < 2:
                         time.sleep(1 * (attempt + 1))
                     continue
@@ -772,15 +944,18 @@ def _download_data_fred(
                     fred_data.append(raw_data)
                     success = True
                     break
-                except Exception as e:
-                    print(f"Parse error for {s}: {e}")
+                except Exception:
                     break
 
             if success:
                 break
 
         if not success:
-            print(f"Failed to retrieve data for series {s}")
+            warnings.warn(
+                f"Failed to retrieve data for series {s}",
+                UserWarning,
+                stacklevel=2,
+            )
             fred_data.append(
                 pd.DataFrame(columns=["date", "series", "value"])
             )
@@ -833,8 +1008,8 @@ def _download_data_stock_prices(
     if end_date is None:
         end_date = pd.Timestamp.today()
 
-    start_timestamp = int(pd.Timestamp(start_date).timestamp())
-    end_timestamp = int(pd.Timestamp(end_date).timestamp())
+    start_timestamp = int(start_date.timestamp())
+    end_timestamp = int(end_date.timestamp())
 
     all_data = []
 
@@ -857,7 +1032,11 @@ def _download_data_stock_prices(
             raw_data = response.json().get("chart", {}).get("result", [])
 
             if (not raw_data) or ("timestamp" not in raw_data[0]):
-                print(f"Warning: No data found for {symbol}.")
+                warnings.warn(
+                    f"No data found for {symbol}.",
+                    UserWarning,
+                    stacklevel=2,
+                )
                 continue
 
             timestamps = raw_data[0]["timestamp"]
@@ -880,7 +1059,6 @@ def _download_data_stock_prices(
                     close=indicators.get("close"),
                     adjusted_close=adjusted_close,
                 )
-                .dropna()
             )
 
             # Ensure symbol and date are the first columns
@@ -892,9 +1070,11 @@ def _download_data_stock_prices(
             all_data.append(df_symbol)
 
         else:
-            print(
-                f"Failed to retrieve data for {symbol} (Status code: "
-                f"{response.status_code})"
+            warnings.warn(
+                f"Failed to retrieve data for symbol {symbol} "
+                f"(Status code: {response.status_code})",
+                UserWarning,
+                stacklevel=2,
             )
     if all_data:
         df_all = pd.concat(all_data, ignore_index=True)
@@ -940,11 +1120,19 @@ def _download_data_osap(
     try:
         raw_data = pd.read_csv(url)
     except Exception:
-        print("Returning an empty dataset due to download failure.")
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
         return pd.DataFrame()
 
     if raw_data.empty:
-        print("Returning an empty dataset due to download failure.")
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
         return raw_data
 
     if "date" in raw_data.columns:
@@ -960,8 +1148,69 @@ def _download_data_osap(
     return raw_data
 
 
+def _download_data_risk_free(
+    start_date: str = None,
+    end_date: str = None,
+    frequency: str = "monthly",
+) -> pd.DataFrame:
+    """
+    Download risk-free rate data from the tidy-finance/risk-free
+    HuggingFace dataset.
+
+    The dataset splices the 3-Month Treasury Bill Secondary Market Rate
+    (pre-2001) with the 4-Week Treasury Bill Secondary Market Rate
+    (from 2001 onwards), both sourced from FRED. Monthly data starts
+    1934-01-01 (TB3MS). Daily data starts 1954-01-04 (DTB3).
+
+    Parameters
+    ----------
+    start_date : str, optional
+        A string in "YYYY-MM-DD" format. If not provided, the full
+        dataset is returned.
+    end_date : str, optional
+        A string in "YYYY-MM-DD" format. If not provided, the full
+        dataset is returned.
+    frequency : str, optional
+        Either "monthly" (default) or "daily".
+
+    Returns
+    -------
+    pd.DataFrame
+        Two columns: date and risk_free.
+    """
+    if frequency not in ("monthly", "daily"):
+        raise ValueError("frequency must be 'monthly' or 'daily'.")
+
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    url = (
+        "https://huggingface.co/datasets/tidy-finance/risk-free/"
+        f"resolve/main/risk_free_{frequency}.parquet"
+    )
+
+    try:
+        risk_free_data = pd.read_parquet(url)
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to download risk-free rate data from HuggingFace. "
+            f"URL attempted: {url}"
+        ) from e
+
+    if start_date is not None:
+        risk_free_data = risk_free_data[
+            (risk_free_data["date"] >= start_date)
+            & (risk_free_data["date"] <= end_date)
+        ].reset_index(drop=True)
+
+    return risk_free_data
+
+
 def _download_data_wrds(
-    dataset: str, start_date: str = None, end_date: str = None, **kwargs
+    dataset: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    type: str = None,
+    **kwargs,
 ) -> pd.DataFrame:
     """
     Download data from WRDS based on the specified dataset.
@@ -978,6 +1227,9 @@ def _download_data_wrds(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, a subset of the dataset is returned.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If supplied, a leading
+        'wrds_' prefix is stripped and a DeprecationWarning is emitted.
     **kwargs
         Additional parameters passed to the dataset-specific function.
 
@@ -986,28 +1238,53 @@ def _download_data_wrds(
     pd.DataFrame
         A data frame containing the requested information.
     """
-    if "crsp" in dataset:
-        return _download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
-    elif "compustat" in dataset:
+    if type is not None:
+        warnings.warn(
+            "The 'type' argument is deprecated. Use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^wrds_", "", type)
+
+    if dataset is not None and _is_legacy_type_wrds(dataset):
+        warnings.warn(
+            "Passing 'wrds_'-prefixed dataset names is deprecated. "
+            "Use 'crsp_monthly' instead of 'wrds_crsp_monthly'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^wrds_", "", dataset)
+
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
+    _check_supported_dataset_wrds(dataset)
+
+    if dataset.startswith("crsp"):
+        return _download_data_wrds_crsp(
+            dataset, start_date, end_date, **kwargs
+        )
+    elif dataset.startswith("compustat"):
         return _download_data_wrds_compustat(
             dataset, start_date, end_date, **kwargs
         )
-    elif "ccm_links" in dataset:
+    elif dataset == "ccm_links":
         return _download_data_wrds_ccm_links(**kwargs)
-    elif "fisd" in dataset:
+    elif dataset == "fisd":
         return _download_data_wrds_fisd(**kwargs)
-    elif "trace_enhanced" in dataset:
+    elif dataset == "trace_enhanced":
         return _download_data_wrds_trace_enhanced(
             start_date=start_date, end_date=end_date, **kwargs
         )
     else:
-        raise ValueError("Unsupported dataset.")
+        raise ValueError(f"Unsupported WRDS dataset: {dataset!r}.")
 
 
 def _download_data_wrds_crsp(
-    dataset: str,
+    dataset: str = None,
     start_date: str = None,
     end_date: str = None,
+    type: str = None,
     batch_size: int = 500,
     version: str = "v2",
     additional_columns: list = None,
@@ -1028,9 +1305,10 @@ def _download_data_wrds_crsp(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, a subset of the dataset is returned.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If supplied, a leading
+        'wrds_' prefix is stripped and a DeprecationWarning is emitted.
     batch_size : int, optional
-        An integer specifying the batch size for processing daily data,
-        with a default of 500.
     version : str, optional
         A string specifying which CRSP version to use. "v2" (the
         default) uses the updated second version of CRSP, and "v1"
@@ -1059,10 +1337,27 @@ def _download_data_wrds_crsp(
         The structure of the returned data frame depends on the
         selected dataset.
     """
-    if dataset not in ["crsp_monthly", "crsp_daily"]:
-        raise ValueError(
-            "Invalid dataset specified. Use 'crsp_monthly' or 'crsp_daily'."
+    if type is not None:
+        warnings.warn(
+            "The 'type' argument is deprecated. Use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
         )
+        dataset = re.sub(r"^wrds_", "", type)
+
+    if dataset is not None and _is_legacy_type_wrds(dataset):
+        warnings.warn(
+            "Passing 'wrds_'-prefixed dataset names is deprecated. "
+            "Use 'crsp_monthly' instead of 'wrds_crsp_monthly'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^wrds_", "", dataset)
+
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
+    _check_supported_dataset_wrds_crsp(dataset)
 
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -1098,15 +1393,25 @@ def _download_data_wrds_crsp(
                 raise NotImplementedError("version='v1' is not yet implemented.")
             if version == "v2":
                 crsp_query = f"""
-                    SELECT msf.permno, date_trunc('month', msf.mthcaldt)::date
-                        AS date, msf.mthret AS ret, msf.shrout, msf.mthprc
-                        AS prc, ssih.primaryexch, ssih.siccd
+                    SELECT msf.permno,
+                        date_trunc('month', msf.mthcaldt)::date AS date,
+                        msf.mthcaldt AS calculation_date,
+                        msf.mthret AS ret, msf.shrout,
+                        msf.mthprc AS prc,
+                        ssih.primaryexch, ssih.siccd,
+                        fcd.first_crsp_date
                         {", " + additional_columns_sql if additional_columns_sql else ""}
                     FROM crsp.msf_v2 AS msf
                     INNER JOIN crsp.stksecurityinfohist AS ssih
                     ON msf.permno = ssih.permno AND
                         ssih.secinfostartdt <= msf.mthcaldt AND
                         msf.mthcaldt <= ssih.secinfoenddt
+                    LEFT JOIN (
+                        SELECT permno,
+                            MIN(secinfostartdt) AS first_crsp_date
+                        FROM crsp.stksecurityinfohist
+                        GROUP BY permno
+                    ) AS fcd ON msf.permno = fcd.permno
                     WHERE msf.mthcaldt BETWEEN '{start_date}' AND '{end_date}'
                     AND ssih.sharetype = 'NS'
                     AND ssih.securitytype = 'EQTY'
@@ -1123,11 +1428,26 @@ def _download_data_wrds_crsp(
                         sql=crsp_query,
                         con=wrds_connection,
                         dtype={"permno": int, "siccd": int},
-                        parse_dates={"date"},
+                        parse_dates={
+                            "date",
+                            "calculation_date",
+                            "first_crsp_date",
+                        },
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    .assign(mktcap=lambda x: x["shrout"] * x["altprc"]/1000000)
+                    .assign(mktcap=lambda x: x["shrout"] * x["prc"]/1000000)
                     .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                    .assign(
+                        listing_age=lambda df: (
+                            (df["date"].dt.year
+                             - df["first_crsp_date"].dt.year) * 12
+                            + (df["date"].dt.month
+                               - df["first_crsp_date"].dt.month)
+                            - (df["date"].dt.day
+                               < df["first_crsp_date"].dt.day).astype(int)
+                        ).clip(lower=0)
+                    )
+                    .drop(columns=["first_crsp_date"])
                 )
 
                 mktcap_lag = crsp_monthly.assign(
@@ -1141,18 +1461,16 @@ def _download_data_wrds_crsp(
                     exchange=lambda x: x["primaryexch"].apply(_assign_exchange),
                     industry=lambda x: x["siccd"].apply(_assign_industry),
                 )
-                factors_ff3_monthly = _download_data_factors_ff(
-                    dataset="F-F_Research_Data_Factors",
+                risk_free_monthly = _download_data_risk_free(
                     start_date=start_date,
                     end_date=end_date,
                 )
-
                 crsp_monthly = (
-                    crsp_monthly.merge(factors_ff3_monthly, how="left", on="date")
+                    crsp_monthly.merge(risk_free_monthly, how="left",
+                                       on="date")
                     .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
-                    .assign(ret_excess=lambda x: x["ret_excess"].clip(lower=-1))
                     .drop(columns=["risk_free"])
-                    .dropna(subset=["ret_excess", "mktcap", "mktcap_lag"])
+                    .dropna(subset=["ret_excess", "mktcap"])
                 )
                 processed_data = crsp_monthly
         elif "crsp_daily" in dataset:
@@ -1167,10 +1485,10 @@ def _download_data_wrds_crsp(
                 permnos = list(permnos["permno"].astype(str))
                 batches = np.ceil(len(permnos) / batch_size).astype(int)
 
-                factors_ff3_daily = _download_data_factors_ff(
-                    dataset="F-F_Research_Data_Factors_Daily",
+                risk_free_daily = _download_data_risk_free(
                     start_date=start_date,
                     end_date=end_date,
+                    frequency="daily",
                 )
 
                 for j in range(1, batches + 1):
@@ -1212,14 +1530,12 @@ def _download_data_wrds_crsp(
                     if not crsp_daily_sub.empty:
                         crsp_daily_sub = (
                             crsp_daily_sub.merge(
-                                factors_ff3_daily[["date", "risk_free"]],
+                                risk_free_daily,
                                 on="date",
                                 how="left",
                             )
                             .assign(
-                                ret_excess=lambda x: (
-                                    (x["ret"] - x["risk_free"]).clip(lower=-1)
-                                )
+                                ret_excess=lambda x: x["ret"] - x["risk_free"]
                             )
                             .drop(columns=["risk_free"])
                         )
@@ -1274,8 +1590,7 @@ def _download_data_wrds_crsp(
                                 default=df["vol"],
                             )
                         )
-                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc",
-                                       "cfacpr", "vol", "prc", "prc_adj"])
+                        .drop(columns=["dlyvol", "dlyprc", "dlyfacprc"])
                     )
 
                 processed_data = crsp_data
@@ -1345,11 +1660,13 @@ def _download_data_wrds_ccm_links(
 
 
 def _download_data_wrds_compustat(
-    dataset: str,
+    dataset: str = None,
     start_date: str = None,
     end_date: str = None,
+    type: str = None,
     additional_columns: list = None,
-    only_us: bool = False,
+    only_usd: bool = False,
+    only_us: bool = None,
 ) -> pd.DataFrame:
     """
     Download financial data from WRDS Compustat.
@@ -1365,11 +1682,18 @@ def _download_data_wrds_compustat(
     end_date : str, optional
         A string in "YYYY-MM-DD" format specifying the end date for
         the data. If not provided, a subset of the dataset is returned.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If supplied, a leading
+        'wrds_' prefix is stripped (e.g., 'wrds_compustat_annual'
+        becomes 'compustat_annual') and a DeprecationWarning is emitted.
     additional_columns : list, optional
         Additional columns from the Compustat table as a list of strings.
+    only_usd : bool, optional
+        A boolean indicating whether only USD-denominated shares should be
+        returned. (i.e., excluding Canadian firms). Defaults to False.
     only_us : bool, optional
-        A boolean indicating whether only US firms should be returned
-        (i.e., excluding Canadian firms). Defaults to False.
+        Deprecated. Use 'only_usd' instead. If supplied, the value is
+        forwarded to 'only_usd' and a DeprecationWarning is emitted.
 
     Returns
     -------
@@ -1378,6 +1702,34 @@ def _download_data_wrds_compustat(
         including variables for book equity (be), operating profitability
         (op), investment (inv), and others.
     """
+    if type is not None:
+        warnings.warn(
+            "The 'type' argument is deprecated. Use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^wrds_", "", type)
+
+    if only_us is not None:
+        warnings.warn(
+            "The 'only_us' argument is deprecated. Use 'only_usd' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        only_usd = only_us
+
+    if dataset is not None and dataset.startswith("wrds_"):
+        warnings.warn(
+            "Passing 'wrds_'-prefixed dataset names is deprecated. "
+            "Use 'compustat_annual' instead of 'wrds_compustat_annual'.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = re.sub(r"^wrds_", "", dataset)
+
+    if dataset is None:
+        raise ValueError("Argument 'dataset' is required.")
+
     start_date, end_date = _validate_dates(start_date, end_date)
 
     if dataset not in ["compustat_annual", "compustat_quarterly"]:
@@ -1406,7 +1758,7 @@ def _download_data_wrds_compustat(
         query = text(f"""
             SELECT gvkey, datadate, seq, ceq, at, lt, txditc, txdb, itcb,
                 pstkrv, pstkl, pstk, capx, oancf, sale, cogs, xint, xsga,
-                curcd
+                ib, curcd
                 {", " + additional_columns_annual if additional_columns_annual else ""}
             FROM comp.funda
             WHERE indfmt = 'INDL' AND datafmt = 'STD' AND consol = 'C'
@@ -1417,34 +1769,29 @@ def _download_data_wrds_compustat(
         disconnect_connection(wrds_connection)
 
         # Compute Book Equity (be)
-        compustat = (
-            compustat.assign(
-                be=lambda x: (
-                    x["seq"]
-                    .combine_first(x["ceq"] + x["pstk"])
-                    .combine_first(x["at"] - x["lt"])
-                    + x["txditc"].combine_first(x["txdb"] + x["itcb"]).fillna(0)
-                    - x["pstkrv"]
-                    .combine_first(x["pstkl"])
-                    .combine_first(x["pstk"])
-                    .fillna(0)
-                )
-            )
-            .assign(
-                be=lambda x: x["be"].apply(lambda y: np.nan if y <= 0 else y)
-            )
-            .assign(
-                op=lambda x: (
-                    (
-                        x["sale"]
-                        - x["cogs"].fillna(0)
-                        - x["xsga"].fillna(0)
-                        - x["xint"].fillna(0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", FutureWarning)
+            compustat = (
+                compustat.assign(
+                    be=lambda x: (
+                        x["seq"]
+                        .combine_first(x["ceq"] + x["pstk"])
+                        .combine_first(x["at"] - x["lt"])
+                        + x["txditc"]
+                        .combine_first(x["txdb"] + x["itcb"])
+                        .fillna(0)
+                        - x["pstkrv"]
+                        .combine_first(x["pstkl"])
+                        .combine_first(x["pstk"])
+                        .fillna(0)
                     )
-                    / x["be"]
+                )
+                .assign(
+                    be=lambda x: x["be"].apply(
+                        lambda y: np.nan if y <= 0 else y
+                    )
                 )
             )
-        )
         # Compute Operating Profitability (op)
         compustat = compustat.assign(
             op=lambda df: (
@@ -1475,10 +1822,18 @@ def _download_data_wrds_compustat(
             .assign(inv=lambda x: np.where(x["at_lag"] <= 0, np.nan, x["inv"]))
         )
 
-        if only_us:
+        if only_usd:
             compustat = compustat[compustat["curcd"] == "USD"]
 
-        processed_data = compustat.drop(columns=["year", "at_lag", "curcd"])
+        processed_data = (
+            compustat
+            .assign(
+                date=lambda df: pd.to_datetime(df["datadate"])
+                .dt.to_period("M")
+                .dt.start_time
+            )
+            .drop(columns=["year", "at_lag", "curcd"])
+        )
 
     elif "compustat_quarterly" in dataset:
         query = text(f"""
@@ -1500,18 +1855,18 @@ def _download_data_wrds_compustat(
                 .dt.to_period("M")
                 .dt.start_time
             )
-            .sort_values("datadate")
-            .groupby(["gvkey", "fyearq", "fqtr"])
-            .last()
-            .reset_index()
-            .sort_values(["gvkey", "date", "rdq"])
-            .groupby(["gvkey", "date"])
-            .first()
-            .reset_index()
+            .sort_values("datadate", ascending=False, kind="stable")
+            .drop_duplicates(
+                subset=["gvkey", "fyearq", "fqtr"], keep="first"
+            )
+            .sort_values(
+                ["gvkey", "date", "rdq"], na_position="last", kind="stable"
+            )
+            .drop_duplicates(subset=["gvkey", "date"], keep="first")
             .query("rdq.isna() or date < rdq")
         )
 
-        if only_us:
+        if only_usd:
             compustat = compustat[compustat["curcdq"] == "USD"]
 
         processed_data = compustat.get(
@@ -1723,6 +2078,38 @@ def _get_available_huggingface_files(
     return pd.DataFrame(rows, columns=["path", "size"])
 
 
+def _download_factor_library_grid() -> pd.DataFrame:
+    """
+    Download the factor-library grid from Hugging Face.
+
+    Returns
+    -------
+    pd.DataFrame
+        Grid metadata for every available factor portfolio, with the
+        sorting_variable column stripped of its sv_ prefix.
+
+    Raises
+    ------
+    ValueError
+        If an unrecognised filter name is provided, if
+        sorting_variable is missing, or if a non-univariate
+        sorting_method is requested without n_portfolios_secondary.
+    """
+    available = _get_available_huggingface_files(
+        "tidy-finance", "factor-library-grid"
+    )
+    if available.empty or "path" not in available.columns:
+        raise ValueError(
+            "No parquet files were found in the Hugging Face dataset repo "
+            "'tidy-finance/factor-library-grid'."
+        )
+    grid_path = available["path"].iloc[0]
+    grid_url = ("https://huggingface.co/datasets/tidy-finance"
+                f"/factor-library-grid/resolve/main/{grid_path}"
+                )
+    return pd.read_parquet(grid_url)
+
+
 def _filter_factor_library_grid(
     fill_all: bool = False, **filters
 ) -> list:
@@ -1746,16 +2133,17 @@ def _filter_factor_library_grid(
         levels. Supported columns and their defaults are:
 
         - 'sorting_variable': no default, required.
-        - 'exclude_size': 0.2
+        - 'min_size_quantile': 0.2
         - 'exclude_financials': False
         - 'exclude_utilities': False
         - 'exclude_negative_earnings': False
         - 'sorting_variable_lag': "6m"
         - 'rebalancing': "monthly"
-        - 'breakpoints_main': 10
+        - 'n_portfolios_main': 10
         - 'sorting_method': "univariate"
-        - 'breakpoints_secondary': None
+        - 'n_portfolios_secondary': None
         - 'breakpoints_exchanges': "NYSE"
+        - 'breakpoints_min_size_threshold': None
         - 'weighting_scheme': "VW"
 
     Returns
@@ -1780,27 +2168,22 @@ def _filter_factor_library_grid(
         raise ValueError(
             "'sorting_variable' is required in filters."
         )
+
+    if filters.get("sorting_method", "univariate") != "univariate":
+        if filters.get("n_portfolios_secondary") is None:
+            raise ValueError(
+                "When sorting_method is not 'univariate', "
+                "n_portfolios_secondary must be provided."
+            )
+
     if not fill_all:
         filters = {**_FACTOR_LIBRARY_DEFAULTS, **filters}
 
-    available = _get_available_huggingface_files(
-        "tidy-finance", "factor-library-grid"
-    )
-    if available.empty or "path" not in available.columns:
-        raise ValueError(
-            "No parquet files were found in the Hugging Face dataset repo "
-            "'tidy-finance/factor-library-grid'."
+    grid = _download_factor_library_grid().assign(
+        sorting_variable=lambda x: x["sorting_variable"].str.replace(
+            r"^sv_", "", regex=True
         )
-    grid_path = available["path"].iloc[0]
-    grid_url = ("https://huggingface.co/datasets/tidy-finance"
-                f"/factor-library-grid/resolve/main/{grid_path}"
-                )
-    grid = (pd.read_parquet(grid_url)
-            .assign(sorting_variable=lambda x:
-                    x["sorting_variable"].str.replace(r"^sv_", "",
-                                                      regex=True)
-                    )
-            )
+    )
 
     for col, value in filters.items():
         values = value if isinstance(value, (list, tuple)) else [value]
@@ -1866,24 +2249,11 @@ def _download_factor_library_ids(
             )
         )
 
-    grid_files = _get_available_huggingface_files(
-        "tidy-finance", "factor-library-grid"
+    grid = _download_factor_library_grid().assign(
+        sorting_variable=lambda x: x["sorting_variable"].str.replace(
+            r"^sv_", "", regex=True
         )
-    if grid_files.empty:
-        raise ValueError(
-            "No files were found in the 'tidy-finance/factor-library-grid' "
-            "dataset. The repository may not contain any parquet files, "
-            "or the file listing may have failed."
-        )
-    grid_path = grid_files["path"].iloc[0]
-    grid_url = ("https://huggingface.co/datasets/tidy-finance"
-                f"/factor-library-grid/resolve/main/{grid_path}"
-                )
-    grid = (pd.read_parquet(grid_url)
-            .assign(sorting_variable=lambda x:
-                    x["sorting_variable"].str.replace(r"^sv_", "", regex=True)
-                    )
-            )
+    )
 
     id_grid = grid.loc[grid["id"].isin(ids)].merge(
         available_files[["sorting_variable", "sorting_variable_lag", "path"]],
@@ -1924,40 +2294,76 @@ def _download_factor_library_ids(
 
 
 def _download_data_huggingface_factor_library(
-    fill_all: bool = False, **filters
+    fill_all: bool = False,
+    ids: list = None,
+    start_date: str = None,
+    end_date: str = None,
+    **filters,
 ) -> pd.DataFrame:
     """
     Download factor library data from Hugging Face.
 
-    Thin wrapper that combines ''_filter_factor_library_grid'' and
-    ''_download_factor_library_ids'': resolves matching portfolio IDs from
-    the grid and then downloads the corresponding return data.
+    Thin wrapper that resolves portfolio IDs from the grid (or uses an
+    explicit ids list) and then downloads the corresponding return
+    data.
 
     Parameters
     ----------
     fill_all : bool, optional
-        Forwarded to ''_filter_factor_library_grid''. When ''True'',
-        columns not specified in ''filters'' are left unrestricted rather
-        than set to their defaults.
+        Forwarded to _filter_factor_library_grid. When True, columns
+        not specified in filters are left unrestricted rather than set
+        to their defaults. Defaults to False.
+    ids : list, optional
+        Explicit portfolio IDs to download. When provided, the grid
+        filter is skipped. Cannot be combined with filters.
+    start_date : str, optional
+        Inclusive lower bound for the returned data's date column,
+        in YYYY-MM-DD format. Defaults to None (no lower bound).
+    end_date : str, optional
+        Inclusive upper bound for the returned data's date column,
+        in YYYY-MM-DD format. Defaults to None (no upper bound).
     **filters : dict
         Named filter arguments forwarded to
-        ''_filter_factor_library_grid''. See that function for the full
-        list of supported columns and their defaults.
+        _filter_factor_library_grid.
 
     Returns
     -------
     pd.DataFrame
-        Portfolio returns with grid metadata columns appended, one row per
-        portfolio-period observation for the matched IDs.
+        Portfolio returns with grid metadata columns appended.
+
+    Raises
+    ------
+    ValueError
+        If both ids and filter arguments are supplied.
     """
-    ids = _filter_factor_library_grid(fill_all=fill_all, **filters)
-    return _download_factor_library_ids(ids)
+    if ids is not None and filters:
+        raise ValueError(
+            "'ids' cannot be combined with filter arguments."
+        )
+
+    if ids is not None:
+        result = _download_factor_library_ids(ids)
+    else:
+        resolved_ids = _filter_factor_library_grid(
+            fill_all=fill_all, **filters
+        )
+        result = _download_factor_library_ids(resolved_ids)
+
+    if start_date is not None:
+        result = result[result["date"] >= pd.to_datetime(start_date)]
+    if end_date is not None:
+        result = result[result["date"] <= pd.to_datetime(end_date)]
+    if start_date is not None or end_date is not None:
+        result = result.reset_index(drop=True)
+
+    return result
 
 
 def _download_data_huggingface(
     dataset: str = None,
     start_date: str | date = "2007-06-27",
     end_date: str | date = "2007-07-27",
+    type: str = None,
     **kwargs,
 ) -> pd.DataFrame:
     """
@@ -1973,19 +2379,30 @@ def _download_data_huggingface(
     ----------
     dataset : str
         The dataset to download. Supported values are
-        'high_frequency_sp500' and 'factor_library'.
+        'high_frequency_sp500', 'factor_library', and
+        'factor_library_grid'.
     start_date : str or date, optional
-        Start date (inclusive) in 'YYYY-MM-DD' format. Only used for
-        'high_frequency_sp500'. Defaults to '2007-06-27'.
+        Start date (inclusive) in 'YYYY-MM-DD' format. Used for
+        'high_frequency_sp500' to filter parquet files by date, and
+        forwarded to 'factor_library' as a date-range lower bound.
+        Defaults to '2007-06-27'.
     end_date : str or date, optional
-        End date (inclusive) in 'YYYY-MM-DD' format. Only used for
-        'high_frequency_sp500'. Defaults to '2007-07-27'.
+        End date (inclusive) in 'YYYY-MM-DD' format. Used for
+        'high_frequency_sp500' to filter parquet files by date, and
+        forwarded to 'factor_library' as a date-range upper bound.
+        Defaults to '2007-07-27'.
+    type : str, optional
+        Deprecated. Use 'dataset' instead. If provided, emits a
+        DeprecationWarning and strips any leading 'hf_' prefix.
     **kwargs : dict
         For 'dataset="factor_library"': named arguments used to filter
         the portfolio grid (e.g. 'sorting_variable="me"'). Pass
         'fill_all=True' to leave unspecified columns unrestricted
-        (default: 'False'). Passing an unrecognised column name raises a
-        'ValueError'. Ignored when 'dataset != "factor_library"'.
+        (default: 'False'). Pass 'ids=[...]' to bypass the grid filter
+        and request specific portfolio IDs directly (cannot be
+        combined with filters). Passing an unrecognised column name
+        raises a 'ValueError'. Ignored when
+        'dataset != "factor_library"'.
 
     Returns
     -------
@@ -2001,6 +2418,14 @@ def _download_data_huggingface(
         If 'dataset' is 'None', unsupported, or if invalid filter
         names are passed for the factor library.
     """
+    if type is not None:
+        warnings.warn(
+            "'type' is deprecated; use 'dataset' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        dataset = type[len("hf_"):] if type.startswith("hf_") else type
+
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
 
@@ -2056,7 +2481,14 @@ def _download_data_huggingface(
             ignore_index=True,
         )
 
+    if dataset == "factor_library_grid":
+        return _download_factor_library_grid()
+
     if dataset == "factor_library":
-        return _download_data_huggingface_factor_library(**kwargs)
+        return _download_data_huggingface_factor_library(
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
 
     raise ValueError(f"Unsupported dataset: '{dataset}'.")

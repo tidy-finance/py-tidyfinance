@@ -11,6 +11,7 @@ from .data_download import (
     _download_data_factors_q,
     _download_data_macro_predictors,
     _download_data_osap,
+    _download_data_risk_free,
     _download_data_stock_prices,
     _download_data_wrds,
     download_data,
@@ -25,6 +26,7 @@ from .utilities import (
     trim,
     winsorize,
 )
+from .supported_datasets import list_supported_datasets
 
 __all__ = [
     "download_data",
@@ -36,6 +38,7 @@ __all__ = [
     "_download_data_constituents",
     "_download_data_stock_prices",
     "_download_data_osap",
+    "_download_data_risk_free",
     "list_supported_indexes",
     "list_tidy_finance_chapters",
     "open_tidy_finance_website",
@@ -48,4 +51,5 @@ __all__ = [
     "create_summary_statistics",
     "add_lag_columns",
     "get_wrds_connection",
+    "list_supported_datasets",
 ]

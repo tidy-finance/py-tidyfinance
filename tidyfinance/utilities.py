@@ -63,7 +63,7 @@ def list_supported_indexes() -> pd.DataFrame:
     Return a DataFrame containing information on supported financial indexes.
 
     Each index is associated with a URL pointing to a CSV file containing
-    the holdings of the index and a `skip` value indicating the number of
+    the holdings of the index and a 'skip' value indicating the number of
     lines to skip when reading the CSV.
 
     Returns
@@ -577,8 +577,8 @@ def set_wrds_credentials() -> None:
 
     Returns
     -------
-        - Saves the WRDS credentials in a `config.yaml` file
-        - Optionally adds `config.yaml` to `.gitignore`
+        - Saves the WRDS credentials in a 'config.yaml' file
+        - Optionally adds 'config.yaml' to '.gitignore'
     """
     wrds_user = input("Enter your WRDS username: ")
     wrds_password = input("Enter your WRDS password: ")

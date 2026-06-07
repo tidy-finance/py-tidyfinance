@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import re
 
 
 def _assign_exchange(primaryexch):
@@ -75,7 +76,7 @@ def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
                 # Move to last day of the month
                 ts = ts + pd.offsets.MonthEnd(0)
             return ts.normalize()
-        return pd.to_datetime(d).normalize().date()
+        return pd.to_datetime(d).normalize()
 
 
 def _validate_dates(
@@ -113,7 +114,7 @@ def _validate_dates(
         else:
             print("No start_date or end_date provided. "
                   "Returning the full dataset."
-            )
+                  )
             return None, None
 
     start_date = _parse_date(start_date, is_end=False) if start_date else None
@@ -149,10 +150,12 @@ def _transfrom_to_snake_case(column_name):
     """
     Convert a string to snake_case.
 
+    - Inserts underscores before CamelCase boundaries.
     - Converts uppercase letters to lowercase.
     - Replaces spaces and special characters with underscores.
     - Ensures no multiple underscores.
     """
+    column_name = re.sub(r"(?<!^)(?=[A-Z])", "_", column_name)
     column_name = column_name.replace(" ", "_").replace("-", "_").lower()
     column_name = "".join(
         c if c.isalnum() or c == "_" else "_" for c in column_name
