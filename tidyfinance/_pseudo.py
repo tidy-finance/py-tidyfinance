@@ -73,19 +73,19 @@ def _simulate_pseudo_identifiers(
 ) -> pd.DataFrame:
     """Draw a pseudo universe of stock identifiers.
 
-    Fully determined by ``(seed, n_assets)`` so calls to different
+    Fully determined by ''(seed, n_assets)'' so calls to different
     pseudo datasets (CRSP, Compustat, CCM links) share the same
     identifier mapping and join cleanly.
 
     Returns
     -------
     pd.DataFrame
-        One row per pseudo firm with columns ``permno``, ``permco``,
-        ``gvkey``, ``exchange``, ``industry``, and ``siccd``.
+        One row per pseudo firm with columns ''permno'', ''permco'',
+        ''gvkey'', ''exchange'', ''industry'', and ''siccd''.
     """
     n_assets = int(n_assets)
     if n_assets <= 0:
-        raise ValueError("`n_assets` must be a single positive integer.")
+        raise ValueError("'n_assets' must be a single positive integer.")
 
     rng = np.random.default_rng(seed)
     industries = np.array([n for n, _ in _INDUSTRIES])
@@ -115,7 +115,7 @@ def _simulate_pseudo_identifiers(
 # %% Router
 
 def _check_supported_dataset_pseudo(dataset: str) -> None:
-    """Raise when ``dataset`` is not a supported pseudo dataset."""
+    """Raise when ''dataset'' is not a supported pseudo dataset."""
     if dataset not in _SUPPORTED_PSEUDO_DATASETS:
         joined = ", ".join(repr(d) for d in _SUPPORTED_PSEUDO_DATASETS)
         raise ValueError(
@@ -130,15 +130,15 @@ def _simulate_pseudo_data(
     end_date: Optional[str] = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Internal router invoked when ``domain='pseudo'``.
+    """Internal router invoked when ''domain='pseudo'''.
 
-    Validates ``dataset``, emits a notice that pseudo data is being
+    Validates ''dataset'', emits a notice that pseudo data is being
     returned, and dispatches to the per-dataset generator. Users access
-    pseudo data via ``download_data(domain='pseudo', ...)`` or the
-    per-dataset ``_download_data_pseudo_*()`` functions.
+    pseudo data via ''download_data(domain='pseudo', ...)'' or the
+    per-dataset ''_download_data_pseudo_*()'' functions.
     """
     if dataset is None:
-        raise ValueError("Argument `dataset` is required.")
+        raise ValueError("Argument 'dataset' is required.")
 
     _check_supported_dataset_pseudo(dataset)
 
@@ -183,14 +183,14 @@ def _download_data_pseudo_crsp(
     seed: int = 1234,
 ) -> pd.DataFrame:
     """Generate pseudo CRSP data with the same column layout as
-    ``_download_data_wrds_crsp``. The returned values are simulated and
+    ''_download_data_wrds_crsp''. The returned values are simulated and
     not suitable for inference.
 
-    Both ``crsp_monthly`` and ``crsp_daily`` are supported. The daily
+    Both ''crsp_monthly'' and ''crsp_daily'' are supported. The daily
     panel uses weekdays (Mon–Fri) only; weekend dates are excluded.
     """
     if dataset is None:
-        raise ValueError("Argument `dataset` is required.")
+        raise ValueError("Argument 'dataset' is required.")
     if dataset not in ("crsp_monthly", "crsp_daily"):
         raise ValueError(
             f"Unsupported CRSP dataset: {dataset!r}. Supported pseudo "
@@ -329,16 +329,16 @@ def _download_data_pseudo_compustat(
     seed: int = 1234,
 ) -> pd.DataFrame:
     """Generate pseudo Compustat data with the same column layout as
-    ``_download_data_wrds_compustat``. The returned values are
+    ''_download_data_wrds_compustat''. The returned values are
     simulated and not suitable for inference.
 
-    Both ``compustat_annual`` and ``compustat_quarterly`` are
-    supported. ``only_usd`` is accepted for API compatibility and has
+    Both ''compustat_annual'' and ''compustat_quarterly'' are
+    supported. ''only_usd'' is accepted for API compatibility and has
     no effect (the pseudo universe is USD-denominated).
     """
     _ = only_usd  # kept for API parity
     if dataset is None:
-        raise ValueError("Argument `dataset` is required.")
+        raise ValueError("Argument 'dataset' is required.")
     if dataset not in ("compustat_annual", "compustat_quarterly"):
         raise ValueError(
             f"Unsupported Compustat dataset: {dataset!r}. Supported "
@@ -523,8 +523,8 @@ def _download_data_pseudo_ccm_links(
 ) -> pd.DataFrame:
     """Generate a pseudo CRSP-Compustat linking table.
 
-    Every pseudo ``permno`` is linked to its corresponding ``gvkey``
-    for the full sample horizon. ``linktype`` and ``linkprim`` are
+    Every pseudo ''permno'' is linked to its corresponding ''gvkey''
+    for the full sample horizon. ''linktype'' and ''linkprim'' are
     accepted for API compatibility and ignored.
     """
     _ = (linktype, linkprim)
