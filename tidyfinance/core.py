@@ -210,10 +210,8 @@ def _window_lag_join(
         columns={date_col: "_src_date", col: lag_col_name}
     )
 
-    sort_keys_left = by_list + ["_upper"]
-    sort_keys_right = by_list + ["_src_date"]
-    left_sorted = result.sort_values(sort_keys_left, kind="mergesort")
-    right_sorted = lagged.sort_values(sort_keys_right, kind="mergesort")
+    left_sorted = result.sort_values("_upper", kind="mergesort")
+    right_sorted = lagged.sort_values("_src_date", kind="mergesort")
 
     merged = pd.merge_asof(
         left_sorted,
