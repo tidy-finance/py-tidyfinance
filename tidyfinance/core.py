@@ -5,7 +5,7 @@ import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
-from ._internal import _to_offset
+from ._internal import _to_offset, _check_new_col
 
 
 def add_lagged_columns(
@@ -17,6 +17,7 @@ def add_lagged_columns(
     drop_na: bool = False,
     ff_adjustment: bool = False,
     date_col: str = "date",
+    data_options: dict | None = None,
 ) -> pd.DataFrame:
     """Append lagged versions of specified columns to a DataFrame using
     a join-based approach.
@@ -64,6 +65,9 @@ def add_lagged_columns(
         appended, each suffixed with _lag. Unmatched rows receive
         NaN in the lagged columns.
     """
+    if data_options is not None:
+        date_col = data_options.get("date", date_col)
+
     if isinstance(cols, str):
         cols = [cols]
     if isinstance(by, str):
@@ -111,6 +115,7 @@ def add_lagged_columns(
     result = data.copy()
 
     if not exact_lag:
+        _check_new_col(result, ["_upper", "_lower"])
         result["_upper"] = result[date_col] - lag_offset
         result["_lower"] = result[date_col] - max_lag_offset
 
@@ -157,11 +162,49 @@ def _window_lag_join(
     col: str,
     lag_col_name: str,
 ) -> pd.DataFrame:
-    """For each row in result (which carries _upper and
-    _lower bounds), find the most recent row in lagged whose
-    date falls in [_lower, _upper] and copy its col value into
-    a new lag_col_name column.
+    """Backward window join used by add_lagged_columns for non-exact lags.
+
+    For each row in result (which already carries _upper and _lower
+    bounds from the caller), finds the most recent row in lagged whose
+    date falls within the window [_lower, _upper] and copies its col
+    value into a new column named lag_col_name. The match is performed
+    by group when by_list is non-empty.
+
+    Internally uses pd.merge_asof with direction="backward" on _upper
+    to locate the closest source date at or before the upper bound,
+    then filters out rows whose source date falls below the lower
+    bound. The original row order of result is preserved.
+
+    Parameters
+    ----------
+    result : pd.DataFrame
+        Target frame. Must contain the columns in by_list plus
+        _upper and _lower (window bounds). Must not contain a
+        column named _orig_idx.
+    lagged : pd.DataFrame
+        Source frame. Must contain the columns in by_list plus
+        date_col and col. Must not contain a column named _src_date.
+    by_list : list of str
+        Grouping columns shared by both frames. Pass an empty list
+        for an ungrouped join.
+    date_col : str
+        Name of the date column in lagged.
+    col : str
+        Name of the source value column in lagged to copy.
+    lag_col_name : str
+        Name of the new column to add to result with the matched
+        source values. Unmatched rows receive NaN.
+
+    Returns
+    -------
+    pd.DataFrame
+        result with lag_col_name appended, in the original row order.
+        The helper columns _orig_idx and _src_date are removed before
+        return; the caller is responsible for dropping _upper and
+        _lower.
     """
+    _check_new_col(result, "_orig_idx")
+    _check_new_col(lagged, "_src_date")
     result = result.assign(_orig_idx=np.arange(len(result)))
     lagged = lagged.rename(
         columns={date_col: "_src_date", col: lag_col_name}
@@ -201,6 +244,7 @@ def join_lagged_values(
     max_lag,
     ff_adjustment: bool = False,
     date_col: str = "date",
+    data_options: dict | None = None,
 ) -> pd.DataFrame:
     """Join lagged values from new_data into original_data over
     a date range.
@@ -232,6 +276,9 @@ def join_lagged_values(
     pd.DataFrame
         original_data with new columns from new_data appended.
     """
+    if data_options is not None:
+        date_col = data_options.get("date", date_col)
+
     if isinstance(id_keys, str):
         id_keys = [id_keys]
     if not isinstance(id_keys, list) or not all(
@@ -290,6 +337,10 @@ def join_lagged_values(
         )
 
     new_data = new_data.copy()
+    helper_cols = ["_lower", "_upper"]
+    if ff_adjustment:
+        helper_cols.append("_year")
+    _check_new_col(new_data, helper_cols)
     new_data["_lower"] = new_data[date_col] + min_lag_offset
     new_data["_upper"] = new_data[date_col] + max_lag_offset
     if ff_adjustment:
@@ -312,6 +363,7 @@ def join_lagged_values(
         else:
             tmp = tmp.drop(columns=[date_col])
 
+        _check_new_col(result, "_orig_idx")
         result = result.assign(_orig_idx=np.arange(len(result)))
         sort_keys_left = id_keys + [date_col]
         sort_keys_right = id_keys + ["_lower"]
@@ -343,6 +395,31 @@ def join_lagged_values(
         result = merged
 
     return result
+
+
+def data_options(date: str = "date") -> dict:
+    """Construct a tidyfinance data options dict.
+
+    Extensible mechanism for specifying column name mappings used by
+    other tidyfinance functions (e.g. add_lagged_columns). Future
+    options can be added as kwargs without breaking existing callers.
+
+    Parameters
+    ----------
+    date : str, default "date"
+        Name of the date column.
+
+    Returns
+    -------
+    dict
+        Options dict with at least the "date" key.
+
+    Examples
+    --------
+    >>> opts = data_options(date="my_date")
+    >>> add_lagged_columns(df, cols="size", lag=1, data_options=opts)
+    """
+    return {"date": date}
 
 
 def assign_portfolio(
