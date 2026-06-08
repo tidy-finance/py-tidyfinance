@@ -11,20 +11,20 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 from tidyfinance.core import (
-    add_lag_columns,
+    add_lagged_columns,
+    join_lagged_values,
     breakpoint_options,
     compute_breakpoints,
-    # compute_long_short_returns,
     create_summary_statistics,
     estimate_betas,
     estimate_fama_macbeth,
 )
 
 
-# Helper function to create test data
+# %% Helper function to create test data
 def create_test_data():
     np.random.seed(42)  # For reproducibility
-    dates = pd.date_range(start="2023-01-01", periods=10, freq="ME")
+    dates = pd.date_range(start="2023-01-01", periods=10, freq="MS")
     data = {
         "permno": np.repeat([1, 2], 10),
         "date": np.tile(dates, 2),
@@ -34,15 +34,20 @@ def create_test_data():
     return pd.DataFrame(data)
 
 
-# Tests
+# %% Tests
 def test_add_lagged_columns():
     """Test that lagged columns are added correctly"""
     data = create_test_data()
-    result = add_lag_columns(data, cols=["bm", "size"], lag=3, by="permno")
+    result = add_lagged_columns(
+        data,
+        cols=["bm", "size"],
+        lag=pd.DateOffset(months=3),
+        by="permno",
+    )
 
     # Check if lagged columns exist
-    assert "bm_lag_3" in result.columns
-    assert "size_lag_3" in result.columns
+    assert "bm_lag" in result.columns
+    assert "size_lag" in result.columns
 
     # Check if the number of rows is preserved
     assert len(result) == len(data)
@@ -52,30 +57,44 @@ def test_negative_lag():
     """Test that negative lag raises error"""
     data = create_test_data()
     with pytest.raises(ValueError):
-        add_lag_columns(data, cols=["bm", "size"], lag=-1)
+        add_lagged_columns(data, cols=["bm", "size"], lag=-1)
 
 
 def test_invalid_max_lag():
     """Test that max_lag < lag raises error"""
     data = create_test_data()
     with pytest.raises(ValueError):
-        add_lag_columns(data, cols=["bm", "size"], lag=3, max_lag=1)
+        add_lagged_columns(
+            data,
+            cols=["bm", "size"],
+            lag=pd.DateOffset(months=3),
+            max_lag=pd.DateOffset(months=1),
+        )
 
 
 def test_without_grouping():
     """Test function works without grouping"""
-    data = create_test_data()
-    result = add_lag_columns(data, cols=["bm", "size"], lag=3)
+    data = (
+        create_test_data()
+        .query("permno == 1")
+        .drop(columns="permno")
+        .reset_index(drop=True)
+    )
+    result = add_lagged_columns(
+        data,
+        cols=["bm", "size"],
+        lag=pd.DateOffset(months=3),
+    )
 
-    assert "bm_lag_3" in result.columns
-    assert "size_lag_3" in result.columns
+    assert "bm_lag" in result.columns
+    assert "size_lag" in result.columns
     assert len(result) == len(data)
 
 
 def test_preserve_original_values():
     """Test that original column values are preserved"""
     data = create_test_data()
-    result = add_lag_columns(data, cols=["bm", "size"], lag=3, by="permno")
+    result = add_lagged_columns(data, cols=["bm", "size"], lag=3, by="permno")
 
     # Convert to lists for comparison
     assert result.get("bm").to_list() == data.get("bm").to_list()
@@ -85,40 +104,52 @@ def test_preserve_original_values():
 def test_lag_values_correctness():
     """Test that lag values are correct"""
     data = create_test_data()
-    result = add_lag_columns(data, cols=["bm"], lag=1, by="permno")
+    result = add_lagged_columns(
+        data,
+        cols=["bm"],
+        lag=pd.DateOffset(months=1),
+        by="permno",
+    )
 
     # For each permno group, check if lag values are correct
     for permno in [1, 2]:
         group_data = result.query("permno == @permno").sort_values("date")
-        orig_values = group_data.get("bm").to_list()
-        lag_values = group_data.get("bm_lag_1").to_list()
+        orig_values = group_data["bm"].to_list()
+        lag_values = group_data["bm_lag"].to_list()
 
-        # Check if lagged values match original values shifted by 1
+        # Lagged values equal originals shifted by 1 month
         assert lag_values[1:] == orig_values[:-1]
-        assert np.isnan(lag_values[0])  # First value should be NaN
+        assert np.isnan(lag_values[0])  # First value has no source
 
 
-def test_multiple_lags():
-    """Test that multiple lags work correctly"""
+def test_window_lag_produces_single_column():
+    """Test that window lag (lag != max_lag) produces a single column."""
     data = create_test_data()
-    result = add_lag_columns(data, cols=["bm"], lag=1, max_lag=3, by="permno")
+    result = add_lagged_columns(
+        data,
+        cols=["bm"],
+        lag=pd.DateOffset(months=1),
+        max_lag=pd.DateOffset(months=3),
+        by="permno",
+    )
 
-    # Check if all lag columns exist
-    assert all(f"bm_lag_{i}" in result.columns for i in range(1, 4))
+    # Window mode: one lag column per source col (no per-step columns)
+    assert "bm_lag" in result.columns
+    assert len(result) == len(data)
 
 
 def test_invalid_column():
     """Test that invalid column names raise error"""
     data = create_test_data()
     with pytest.raises(ValueError):
-        add_lag_columns(data, cols=["invalid_column"], lag=1)
+        add_lagged_columns(data, cols=["invalid_column"], lag=1)
 
 
 def test_invalid_date_column():
     """Test that invalid date column raises error"""
     data = create_test_data()
     with pytest.raises(ValueError):
-        add_lag_columns(data, cols=["bm"], lag=1, date_col="invalid_date")
+        add_lagged_columns(data, cols=["bm"], lag=1, date_col="invalid_date")
 
 
 @pytest.fixture

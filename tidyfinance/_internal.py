@@ -193,3 +193,33 @@ def _get_random_user_agent():
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_7_8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36 Edg/116.0.1938.69",
     ]
     return str(np.random.choice(user_agents))
+
+
+def _to_offset(x):
+    """Coerce int to pd.Timedelta; pass through pd.Timedelta/pd.DateOffset."""
+    if isinstance(x, int) and not isinstance(x, bool):
+        return pd.Timedelta(days=x)
+    if isinstance(x, (pd.Timedelta, pd.tseries.offsets.BaseOffset)):
+        return x
+    raise TypeError(
+        f"lag/max_lag must be int, pd.Timedelta, or pd.DateOffset; "
+        f"got {type(x).__name__}."
+    )
+
+
+def _check_new_col(data: pd.DataFrame, names) -> None:
+    """Raise ValueError if any names already exist in data.columns.
+
+    Mirrors R's check_new_col: prevents silent overwrite of user
+    columns when the function plans to introduce temporary helpers
+    like _upper / _lower / _src_date.
+    """
+    if isinstance(names, str):
+        names = [names]
+    existing = [n for n in names if n in data.columns]
+    if existing:
+        raise ValueError(
+            f"Cannot proceed: column(s) {existing} would be created by "
+            "this operation but already exist in the input. Rename or "
+            "drop them first."
+        )
