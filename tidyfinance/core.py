@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
+import warnings
 
 from ._internal import (
     _to_offset,
@@ -488,54 +489,99 @@ def assign_portfolio(
     sorting_variable: str,
     breakpoint_options: dict = None,
     breakpoint_function=None,
+    data_options: dict = None,
 ) -> pd.Series:
-    """
-    Assign portfolio labels based on a sorting variable and breakpoints.
+    """Assign data points to portfolios based on a sorting variable.
+
+    Users may pass a custom function to compute breakpoints. The
+    function must take 'data' and 'sorting_variable' as the first two
+    arguments, then 'breakpoint_options' and 'data_options'. The
+    function must return an ascending sequence of breakpoints.
+    Defaults to compute_breakpoints.
 
     Parameters
     ----------
-    data (pd.DataFrame): DataFrame containing the dataset for
-        portfolio assignment.
-    sorting_variable (str): Column name used for sorting and
-        portfolio assignment.
-    breakpoint_options (dict, optional): Named arguments passed
-        to the breakpoint function.
-    breakpoint_function (callable, optional): Function to compute breakpoints.
-        Must return an ascending vector of breakpoints.
+    data : pd.DataFrame
+        Dataset for portfolio assignment.
+    sorting_variable : str
+        Column in 'data' used for sorting and portfolio assignment.
+    breakpoint_options : dict, optional
+        Named arguments passed to 'breakpoint_function'. Typically
+        produced by breakpoint_options.
+    breakpoint_function : callable, optional
+        Function to compute breakpoints. Must return an ascending
+        sequence. Defaults to compute_breakpoints.
+    data_options : dict, optional
+        Column-name mapping (see data_options). Passed through to
+        'breakpoint_function'.
 
     Returns
     -------
-    pd.Series: A Series of portfolio assignments.
+    pd.Series
+        Portfolio assignments as a float series.
     """
+    if breakpoint_function is None:
+        breakpoint_function = compute_breakpoints
+
     if sorting_variable not in data.columns:
         raise ValueError(
             f"Sorting variable '{sorting_variable}' not found in data."
         )
 
-    if len(data[sorting_variable].unique()) == 1:
-        print(
-            "Warning: The sorting variable is constant, assigning all to portfolio 1."
+    x = data[sorting_variable]
+    n = len(x)
+
+    # Constant check: count of distinct non-NaN values.
+    non_na = x.dropna().values
+    if len(np.unique(non_na)) <= 1:
+        warnings.warn(
+            "The sorting variable is constant and only one portfolio "
+            "is returned.",
+            UserWarning,
+            stacklevel=2,
         )
-        return pd.Series(1, index=data.index, dtype=int)
+        return pd.Series([1.0] * n, index=data.index, dtype=float)
 
-    if breakpoint_function is None:
-        raise ValueError("A valid breakpoint function must be provided.")
-
-    # Compute breakpoints
     breakpoints = breakpoint_function(
-        data, sorting_variable, breakpoint_options
+        data, sorting_variable, breakpoint_options, data_options
     )
 
-    # Assign portfolios using pd.cut
-    assigned_portfolios = pd.cut(
-        data[sorting_variable],
-        bins=breakpoints,
-        labels=range(1, breakpoints.size),
-        include_lowest=True,
+    breakpoints = np.asarray(breakpoints, dtype=float)
+    if np.any(pd.isna(breakpoints)):
+        warnings.warn(
+            "No portfolios were assigned due to missing breakpoints.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pd.Series([np.nan] * n, index=data.index, dtype=float)
+
+    # Extend the outer breakpoint edges to +/- infinity so values
+    # outside the original range still fall into a boundary
+    # portfolio rather than NaN.
+    extended_bins = breakpoints.copy()
+    extended_bins[0] = -np.inf
+    extended_bins[-1] = np.inf
+
+    cut_result = pd.cut(
+        x,
+        bins=extended_bins,
+        labels=range(1, len(breakpoints)),
         right=False,
     )
+    result = cut_result.astype(float)
 
-    return assigned_portfolios.astype(int)
+    # Cluster warning: number of populated portfolios differs from
+    # the expected count (ties collapsed adjacent breakpoints).
+    n_expected = len(breakpoints) - 1
+    n_actual = result.dropna().nunique()
+    if n_actual != n_expected:
+        warnings.warn(
+            "The number of portfolios differs from the specified "
+            "parameter due to clusters in the sorting variable.",
+            UserWarning,
+            stacklevel=2,
+        )
+    return result
 
 
 def breakpoint_options(
@@ -639,26 +685,42 @@ def breakpoint_options(
 
 
 def compute_breakpoints(
-    data: pd.DataFrame, sorting_variable: str, breakpoint_options: dict
+    data: pd.DataFrame,
+    sorting_variable: str,
+    breakpoint_options: dict,
+    data_options: dict = None,
 ) -> np.ndarray:
     """
     Compute breakpoints based on a sorting variable for portfolios.
 
     Parameters
     ----------
-    data (pd.DataFrame): DataFrame with the dataset for breakpoint computation.
-    sorting_variable (str): Column name used to determine breakpoints.
-    breakpoint_options (dict): Dictionary containing breakpoint parameters,
-        including:
-        - "n_portfolios" (int, optional): Number of equally sized portfolios
-        - "percentiles" (list, optional): Custom percentiles for breakpoints
-        - "breakpoints_exchanges" (list, optional):
-                Exchanges to filter the data before computing breakpoints
-        - "smooth_bunching" (bool, optional): To smooth edge breakpoints or not
+    data : pd.DataFrame
+        DataFrame with the dataset for breakpoint computation.
+    sorting_variable : str
+        Column name used to determine breakpoints.
+    breakpoint_options : dict
+        Dictionary containing breakpoint parameters, including:
+
+        - 'n_portfolios' (int, optional): Number of equally sized portfolios.
+        - 'percentiles' (list, optional): Custom percentiles for breakpoints.
+        - 'breakpoints_exchanges' (list, optional): Exchanges to filter the
+          data before computing breakpoints.
+        - 'smooth_bunching' (bool, optional): Whether to smooth edge
+          breakpoints.
+        - 'breakpoints_min_size_threshold' (float, optional): Quantile below
+          which stocks are excluded from breakpoint computation.
+
+    data_options : dict, optional
+        Column-name mapping (see data_options). The 'exchange' key is used
+        when breakpoints_exchanges is set, and 'mktcap_lag' is used when
+        breakpoints_min_size_threshold is set. Defaults to data_options
+        defaults if None.
 
     Returns
     -------
-    np.ndarray: A sorted array of breakpoints.
+    np.ndarray
+        A sorted array of breakpoints.
     """
     if not isinstance(breakpoint_options, dict):
         raise ValueError("breakpoint_options must be a dictionary.")

@@ -418,7 +418,7 @@ def _download_data_factors_ff(
                     )
                 )
                 .apply(
-                    lambda x: x.replace([-99.99, -999], pd.NA)
+                    lambda x: x.replace([-99.99, -999], np.nan)
                     if x.name != "date"
                     else x
                 )
