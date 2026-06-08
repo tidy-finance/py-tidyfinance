@@ -84,7 +84,7 @@ def add_lagged_columns(
 
     if date_col not in data.columns:
         raise ValueError(
-            f"`data` must contain the date column `{date_col}`."
+            f"'data' must contain the date column '{date_col}'."
         )
 
     ref = pd.Timestamp("2020-01-01")
@@ -92,28 +92,28 @@ def add_lagged_columns(
     max_lag_end = ref + max_lag_offset
     if lag_end < ref or max_lag_end < lag_end:
         raise ValueError(
-            "`lag` and `max_lag` must be non-negative and `max_lag` "
-            "must be >= `lag`."
+            "'lag' and 'max_lag' must be non-negative and 'max_lag' "
+            "must be >= 'lag'."
         )
 
     missing_cols = [c for c in cols if c not in data.columns]
     if missing_cols:
         raise ValueError(
-            f"`data` is missing column(s): {missing_cols}."
+            f"'data' is missing column(s): {missing_cols}."
         )
 
     if by_list:
         missing_by = [c for c in by_list if c not in data.columns]
         if missing_by:
             raise ValueError(
-                f"`data` is missing grouping column(s): {missing_by}."
+                f"'data' is missing grouping column(s): {missing_by}."
             )
 
     join_cols = by_list + [date_col]
     if data[join_cols].duplicated().any():
         raise ValueError(
-            "The combination of `by` and date columns must be unique "
-            "in `data`."
+            "The combination of 'by' and date columns must be unique "
+            "in 'data'."
         )
 
     exact_lag = (lag_end == max_lag_end)
@@ -128,7 +128,7 @@ def add_lagged_columns(
         lag_col_name = f"{col}_lag"
         if lag_col_name in result.columns:
             raise ValueError(
-                f"Column `{lag_col_name}` already exists in `data`."
+                f"Column '{lag_col_name}' already exists in 'data'."
             )
 
         lagged = data[join_cols + [col]].copy()
@@ -252,7 +252,7 @@ def join_lagged_values(
     """Join lagged values from new_data into original_data over
     a date range.
 
-    Unlike :func:`add_lagged_columns`, this supports joining across
+    Unlike :func:'add_lagged_columns', this supports joining across
     DataFrames with different date grids (e.g. monthly source into
     quarterly target). All columns in new_data besides id_keys
     and the date column are lagged and joined under their original
@@ -287,18 +287,18 @@ def join_lagged_values(
     if not isinstance(id_keys, list) or not all(
         isinstance(k, str) for k in id_keys
     ):
-        raise ValueError("`id_keys` must be a string or list of strings.")
+        raise ValueError("'id_keys' must be a string or list of strings.")
 
     min_lag_offset = _to_offset(min_lag)
     max_lag_offset = _to_offset(max_lag)
 
     if date_col not in original_data.columns:
         raise ValueError(
-            f"`original_data` must contain the column `{date_col}`."
+            f"'original_data' must contain the column '{date_col}'."
         )
     if date_col not in new_data.columns:
         raise ValueError(
-            f"`new_data` must contain the column `{date_col}`."
+            f"'new_data' must contain the column '{date_col}'."
         )
 
     missing_original = [
@@ -306,14 +306,14 @@ def join_lagged_values(
     ]
     if missing_original:
         raise ValueError(
-            f"`original_data` is missing id column(s): "
+            f"'original_data' is missing id column(s): "
             f"{missing_original}."
         )
 
     missing_new = [k for k in id_keys if k not in new_data.columns]
     if missing_new:
         raise ValueError(
-            f"`new_data` is missing id column(s): {missing_new}."
+            f"'new_data' is missing id column(s): {missing_new}."
         )
 
     new_column_names = [
@@ -321,8 +321,8 @@ def join_lagged_values(
     ]
     if not new_column_names:
         raise ValueError(
-            f"`new_data` must contain columns besides {id_keys} and "
-            f"`{date_col}`."
+            f"'new_data' must contain columns besides {id_keys} and "
+            f"'{date_col}'."
         )
 
     original_non_key = [
@@ -334,8 +334,8 @@ def join_lagged_values(
     ]
     if duplicate_cols:
         raise ValueError(
-            f"Column(s) in `new_data` already exist in "
-            f"`original_data`: {duplicate_cols}. Remove or rename them "
+            f"Column(s) in 'new_data' already exist in "
+            f"'original_data': {duplicate_cols}. Remove or rename them "
             "before joining."
         )
 
