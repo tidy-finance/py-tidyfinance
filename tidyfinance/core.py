@@ -9,8 +9,9 @@ from ._internal import (
     _to_offset,
     _check_new_col,
     _validate_column_name,
+    _validate_flag,
+    _validate_optional_number,
 )
-
 
 def add_lagged_columns(
     data: pd.DataFrame,
@@ -540,8 +541,9 @@ def assign_portfolio(
 def breakpoint_options(
     n_portfolios: int = None,
     percentiles: list = None,
-    breakpoint_exchanges: str = None,
+    breakpoints_exchanges: str = None,
     smooth_bunching: bool = False,
+    breakpoints_min_size_threshold: float = None,
     **kwargs,
 ) -> dict:
     """
@@ -549,53 +551,91 @@ def breakpoint_options(
 
     Parameters
     ----------
-    n_portfolios (int, optional): Number of portfolios to create.
-        Must be a positive integer.
-    percentiles (list, optional): List of percentile thresholds
-        (values between 0 and 1).
-    breakpoint_exchanges (str, optional): Exchange for
-        which the breakpoints apply.
-    smooth_bunching (bool, optional): Whether smooth bunching
-        should be applied. Default is False.
-    **kwargs: Additional optional arguments.
+    n_portfolios : int, optional
+        Number of portfolios to create. Must be a positive integer.
+    percentiles : list, optional
+        Percentile thresholds for defining breakpoints. Each value
+        must be between 0 and 1.
+    breakpoints_exchanges : str, optional
+        A non-empty string specifying the exchange from which to
+        compute the breakpoints.
+    smooth_bunching : bool, default False
+        Whether smooth bunching should be applied.
+    breakpoints_min_size_threshold : float, optional
+        When set to a value between 0 and 1 (exclusive), stocks with
+        market capitalization below this quantile are excluded from
+        breakpoint computation.
+    **kwargs
+        Additional optional arguments, stored verbatim in the dict.
 
     Returns
     -------
-    dict: A dictionary containing breakpoint options.
+    dict
+        Dictionary containing breakpoint options.
     """
     # Validate n_portfolios
     if n_portfolios is not None:
-        if not isinstance(n_portfolios, int) or n_portfolios <= 0:
+        if (
+            isinstance(n_portfolios, bool)
+            or not isinstance(n_portfolios, (int, float))
+            or n_portfolios <= 0
+            or n_portfolios != int(n_portfolios)
+        ):
             raise ValueError("n_portfolios must be a positive integer.")
 
     # Validate percentiles
     if percentiles is not None:
-        if not all(
-            isinstance(p, (int, float)) and 0 <= p <= 1 for p in percentiles
-        ):
+        try:
+            valid = all(
+                not isinstance(p, bool)
+                and isinstance(p, (int, float))
+                and 0 <= p <= 1
+                for p in percentiles
+            )
+        except TypeError:
+            valid = False
+        if not valid:
             raise ValueError(
-                "percentiles must be a list of values between 0 and 1."
+                "percentiles must be a numeric vector with values "
+                "between 0 and 1."
             )
 
-    # Validate breakpoint_exchanges
-    if breakpoint_exchanges is not None:
-        if not isinstance(breakpoint_exchanges, str) or (
-            not breakpoint_exchanges
+    # Validate breakpoints_exchanges
+    if breakpoints_exchanges is not None:
+        if (
+            not isinstance(breakpoints_exchanges, str)
+            or not breakpoints_exchanges
         ):
-            raise ValueError("breakpoint_exchanges must be a non-empty string.")
+            raise ValueError(
+                "breakpoints_exchanges must be a non-empty character string."
+            )
 
     # Validate smooth_bunching
-    if not isinstance(smooth_bunching, bool):
-        raise ValueError("smooth_bunching must be a boolean value.")
+    _validate_flag(
+        smooth_bunching,
+        "smooth_bunching",
+        "smooth_bunching must be a single boolean value (True or False).",
+    )
 
-    options = {
+    # Validate breakpoints_min_size_threshold (None or number in (0, 1))
+    _validate_optional_number(
+        breakpoints_min_size_threshold,
+        "breakpoints_min_size_threshold must be None or a single "
+        "numeric value between 0 and 1 (exclusive).",
+        min=0,
+        max=1,
+        min_strict=True,
+        max_strict=True,
+    )
+
+    return {
         "n_portfolios": n_portfolios,
         "percentiles": percentiles,
-        "breakpoint_exchanges": breakpoint_exchanges,
+        "breakpoints_exchanges": breakpoints_exchanges,
         "smooth_bunching": smooth_bunching,
+        "breakpoints_min_size_threshold": breakpoints_min_size_threshold,
         **kwargs,
     }
-    return options
 
 
 def compute_breakpoints(
@@ -612,7 +652,7 @@ def compute_breakpoints(
         including:
         - "n_portfolios" (int, optional): Number of equally sized portfolios
         - "percentiles" (list, optional): Custom percentiles for breakpoints
-        - "breakpoint_exchanges" (list, optional):
+        - "breakpoints_exchanges" (list, optional):
                 Exchanges to filter the data before computing breakpoints
         - "smooth_bunching" (bool, optional): To smooth edge breakpoints or not
 
@@ -625,7 +665,7 @@ def compute_breakpoints(
 
     n_portfolios = breakpoint_options.get("n_portfolios")
     percentiles = breakpoint_options.get("percentiles")
-    exchanges = breakpoint_options.get("breakpoint_exchanges")
+    exchanges = breakpoint_options.get("breakpoints_exchanges")
     smooth_bunching = breakpoint_options.get("smooth_bunching", False)
 
     if n_portfolios is not None and percentiles is not None:
@@ -640,7 +680,7 @@ def compute_breakpoints(
     if exchanges is not None:
         if "exchange" not in data.columns:
             raise ValueError(
-                "Data must contain an 'exchange' column to use breakpoint_exchanges."
+                "Data must contain an 'exchange' column to use breakpoints_exchanges."
             )
         data = data.query(f"exchange in {exchanges}")
 
