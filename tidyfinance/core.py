@@ -5,7 +5,11 @@ import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 
-from ._internal import _to_offset, _check_new_col
+from ._internal import (
+    _to_offset,
+    _check_new_col,
+    _validate_column_name,
+)
 
 
 def add_lagged_columns(
@@ -395,29 +399,87 @@ def join_lagged_values(
     return result
 
 
-def data_options(date: str = "date") -> dict:
+def data_options(
+    id: str = "permno",
+    date: str = "date",
+    exchange: str = "exchange",
+    mktcap_lag: str = "mktcap_lag",
+    ret_excess: str = "ret_excess",
+    portfolio: str = "portfolio",
+    siccd: str = "siccd",
+    price: str = "prc_adj",
+    listing_age: str = "listing_age",
+    be: str = "be",
+    earnings: str = "ib",
+    **kwargs,
+) -> dict:
     """Construct a tidyfinance data options dict.
 
-    Extensible mechanism for specifying column name mappings used by
-    other tidyfinance functions (e.g. add_lagged_columns). Future
-    options can be added as kwargs without breaking existing callers.
+    Maps the Tidy Finance naming conventions to the actual column names.
 
     Parameters
     ----------
+    id : str, default "permno"
+        Entity identifier column.
     date : str, default "date"
-        Name of the date column.
+        Date column.
+    exchange : str, default "exchange"
+        Exchange column.
+    mktcap_lag : str, default "mktcap_lag"
+        Market capitalization lag column.
+    ret_excess : str, default "ret_excess"
+        Excess return column.
+    portfolio : str, default "portfolio"
+        Portfolio assignment column.
+    siccd : str, default "siccd"
+        SIC code column.
+    price : str, default "prc_adj"
+        Adjusted price column.
+    listing_age : str, default "listing_age"
+        Listing age column.
+    be : str, default "be"
+        Book equity column.
+    earnings : str, default "ib"
+        Earnings column (Compustat income before extraordinary items).
+    **kwargs
+        Any additional column mappings stored verbatim in the dict.
 
     Returns
     -------
     dict
-        Options dict with at least the "date" key.
-
-    Examples
-    --------
-    >>> opts = data_options(date="my_date")
-    >>> add_lagged_columns(df, cols="size", lag=1, data_options=opts)
+        Mapping with at least the 11 standard column-name keys plus
+        any extras provided via kwargs.
     """
-    return {"date": date}
+    _validate_column_name(id, "id", "entity")
+    _validate_column_name(date, "date", "date")
+    _validate_column_name(exchange, "exchange", "exchange")
+    _validate_column_name(
+        mktcap_lag, "mktcap_lag", "market capitalization lag"
+    )
+    _validate_column_name(ret_excess, "ret_excess", "excess return")
+    _validate_column_name(portfolio, "portfolio", "portfolio")
+    _validate_column_name(
+        siccd, "siccd", "Standard Industrial Classification code"
+    )
+    _validate_column_name(price, "price", "(adjusted) price")
+    _validate_column_name(listing_age, "listing_age", "listing age")
+    _validate_column_name(be, "be", "book equity")
+    _validate_column_name(earnings, "earnings", "earnings")
+
+    return {
+        "id": id,
+        "date": date,
+        "exchange": exchange,
+        "mktcap_lag": mktcap_lag,
+        "ret_excess": ret_excess,
+        "portfolio": portfolio,
+        "siccd": siccd,
+        "price": price,
+        "listing_age": listing_age,
+        "be": be,
+        "earnings": earnings,
+        **kwargs,
+    }
 
 
 def assign_portfolio(
