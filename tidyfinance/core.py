@@ -587,7 +587,7 @@ def assign_portfolio(
 def breakpoint_options(
     n_portfolios: int = None,
     percentiles: list = None,
-    breakpoints_exchanges: str = None,
+    breakpoints_exchanges=None,
     smooth_bunching: bool = False,
     breakpoints_min_size_threshold: float = None,
     **kwargs,
@@ -607,10 +607,10 @@ def breakpoint_options(
         compute the breakpoints.
     smooth_bunching : bool, default False
         Whether smooth bunching should be applied.
-    breakpoints_min_size_threshold : float, optional
-        When set to a value between 0 and 1 (exclusive), stocks with
-        market capitalization below this quantile are excluded from
-        breakpoint computation.
+    breakpoints_exchanges : str or list of str, optional
+        Exchange (or exchanges) from which to compute the breakpoints.
+        Accepts either a non-empty string or a non-empty list of
+        strings.
     **kwargs
         Additional optional arguments, stored verbatim in the dict.
 
@@ -648,12 +648,24 @@ def breakpoint_options(
 
     # Validate breakpoints_exchanges
     if breakpoints_exchanges is not None:
-        if (
-            not isinstance(breakpoints_exchanges, str)
-            or not breakpoints_exchanges
-        ):
+        if isinstance(breakpoints_exchanges, str):
+            if not breakpoints_exchanges:
+                raise ValueError(
+                    "breakpoints_exchanges must be a non-empty string "
+                    "or a non-empty list of strings."
+                )
+        elif isinstance(breakpoints_exchanges, (list, tuple)):
+            if len(breakpoints_exchanges) == 0 or not all(
+                isinstance(e, str) for e in breakpoints_exchanges
+            ):
+                raise ValueError(
+                    "breakpoints_exchanges must be a non-empty string "
+                    "or a non-empty list of strings."
+                )
+        else:
             raise ValueError(
-                "breakpoints_exchanges must be a non-empty character string."
+                "breakpoints_exchanges must be a non-empty string "
+                "or a non-empty list of strings."
             )
 
     # Validate smooth_bunching
@@ -704,8 +716,8 @@ def compute_breakpoints(
 
         - 'n_portfolios' (int, optional): Number of equally sized portfolios.
         - 'percentiles' (list, optional): Custom percentiles for breakpoints.
-        - 'breakpoints_exchanges' (list, optional): Exchanges to filter the
-          data before computing breakpoints.
+        - 'breakpoints_exchanges' (str or list, optional): Exchanges to
+          filter the data before computing breakpoints.
         - 'smooth_bunching' (bool, optional): Whether to smooth edge
           breakpoints.
         - 'breakpoints_min_size_threshold' (float, optional): Quantile below
@@ -714,8 +726,8 @@ def compute_breakpoints(
     data_options : dict, optional
         Column-name mapping (see data_options). The 'exchange' key is used
         when breakpoints_exchanges is set, and 'mktcap_lag' is used when
-        breakpoints_min_size_threshold is set. Defaults to data_options
-        defaults if None.
+        breakpoints_min_size_threshold is set. Defaults to a mapping with
+        'exchange' -> 'exchange' and 'mktcap_lag' -> 'mktcap_lag' if None.
 
     Returns
     -------
@@ -723,68 +735,161 @@ def compute_breakpoints(
         A sorted array of breakpoints.
     """
     if not isinstance(breakpoint_options, dict):
-        raise ValueError("breakpoint_options must be a dictionary.")
+        raise ValueError(
+            "Please provide a dictionary with breakpoint options."
+        )
 
     n_portfolios = breakpoint_options.get("n_portfolios")
     percentiles = breakpoint_options.get("percentiles")
-    exchanges = breakpoint_options.get("breakpoints_exchanges")
+    breakpoints_exchanges = breakpoint_options.get("breakpoints_exchanges")
     smooth_bunching = breakpoint_options.get("smooth_bunching", False)
+    breakpoints_min_size_threshold = breakpoint_options.get(
+        "breakpoints_min_size_threshold"
+    )
+
+    if data_options is None:
+        data_options = {"exchange": "exchange", "mktcap_lag": "mktcap_lag"}
 
     if n_portfolios is not None and percentiles is not None:
         raise ValueError(
-            "Provide either 'n_portfolios' or 'percentiles', not both."
+            "Please provide either 'n_portfolios' or 'percentiles', "
+            "not both."
         )
-    elif n_portfolios is None and percentiles is None:
+    if n_portfolios is None and percentiles is None:
         raise ValueError(
-            "Either 'n_portfolios' or 'percentiles' must be specified."
+            "You must provide either 'n_portfolios' or 'percentiles'."
         )
 
-    if exchanges is not None:
-        if "exchange" not in data.columns:
+    sorting_values = data[sorting_variable].values
+
+    keep_mask = None
+    if breakpoints_exchanges is not None:
+        exchange_col = data_options["exchange"]
+        if exchange_col not in data.columns:
             raise ValueError(
-                "Data must contain an 'exchange' column to use breakpoints_exchanges."
+                f"Please provide the column '{exchange_col}' when "
+                "filtering using 'breakpoints_exchanges'."
             )
-        data = data.query(f"exchange in {exchanges}")
+        exchanges_list = (
+            [breakpoints_exchanges]
+            if isinstance(breakpoints_exchanges, str)
+            else list(breakpoints_exchanges)
+        )
+        keep_mask = data[exchange_col].isin(exchanges_list).values
+        sorting_values = sorting_values[keep_mask]
+
+    if breakpoints_min_size_threshold is not None:
+        mktcap_col = data_options["mktcap_lag"]
+        if mktcap_col not in data.columns:
+            raise ValueError(
+                f"Column '{mktcap_col}' is required when using "
+                "'breakpoints_min_size_threshold'."
+            )
+        if keep_mask is not None:
+            mktcap_ref = data[mktcap_col].values[keep_mask]
+        else:
+            mktcap_ref = data[mktcap_col].values
+        mktcap_ref_clean = mktcap_ref[~pd.isna(mktcap_ref)]
+        size_cutoff = np.quantile(
+            mktcap_ref_clean, breakpoints_min_size_threshold
+        )
+        all_mktcap = data[mktcap_col].values
+        above_size = (~pd.isna(all_mktcap)) & (all_mktcap > size_cutoff)
+        combined_mask = (
+            keep_mask & above_size
+            if keep_mask is not None
+            else above_size
+        )
+        sorting_values = data[sorting_variable].values[combined_mask]
+
+    if len(sorting_values) == 0:
+        warnings.warn(
+            "No breakpoints were calculated, likely due to an "
+            "insufficient number of observations after filtering for "
+            "breakpoint exchanges.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return np.array([np.nan])
 
     if n_portfolios is not None:
         if n_portfolios <= 1:
-            raise ValueError("n_portfolios must be greater than 1.")
-        breakpoints = (
-            data.get(sorting_variable)
-            .quantile(
-                np.linspace(0, 1, num=n_portfolios + 1), interpolation="linear"
-            )
-            .drop_duplicates()
-        )
+            raise ValueError("'n_portfolios' must be larger than 1.")
+        probs = np.linspace(0, 1, n_portfolios + 1)
     else:
-        breakpoints = (
-            data.get(sorting_variable)
-            .quantile([0] + percentiles + [1], interpolation="linear")
-            .drop_duplicates()
-        )
-    try:
-        breakpoints.iloc[0] = -np.inf
-        breakpoints.iloc[-1] = np.inf
-    except AttributeError:
-        breakpoints.iloc[0] = -np.Inf
-        breakpoints.iloc[-1] = np.Inf
+        probs = np.concatenate([[0], np.asarray(percentiles), [1]])
+        n_portfolios = len(probs) - 1
+
+    sorting_values_clean = sorting_values[~pd.isna(sorting_values)]
+    breakpoints = np.quantile(sorting_values_clean, probs)
 
     if smooth_bunching:
-        if (breakpoints[0] == breakpoints[1]) and (
-            breakpoints[-2] == breakpoints[-1]
-        ):
-            print(
-                "Warning: Clustering at extreme breakpoints detected. "
-                "Adjusting non-edge portfolios."
-            )
-            new_values = data[sorting_variable][
-                (data[sorting_variable] > breakpoints[0])
-                & (data[sorting_variable] < breakpoints[-1])
-            ]
-            new_probs = np.linspace(0, 1, len(breakpoints) - 2)
-            breakpoints[1:-1] = np.quantile(new_values, new_probs)
+        both_edges = (
+            breakpoints[0] == breakpoints[1]
+            and breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
+        )
+        lower_edge = breakpoints[0] == breakpoints[1]
+        upper_edge = (
+            breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
+        )
 
-    breakpoints.loc[1:] += 1e-20  # Ensure proper binning
+        if both_edges:
+            if percentiles is not None:
+                warnings.warn(
+                    "'smooth_bunching' is True and equally-spaced "
+                    "portfolios are returned for non-edge portfolios.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            mask = (sorting_values_clean > breakpoints[0]) & (
+                sorting_values_clean < breakpoints[n_portfolios]
+            )
+            sorting_values_new = sorting_values_clean[mask]
+            probs_new = np.linspace(0, 1, n_portfolios - 1)
+            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new[-1] += 1e-15
+            breakpoints = np.concatenate(
+                [
+                    [breakpoints[0]],
+                    breakpoints_new,
+                    [breakpoints[n_portfolios]],
+                ]
+            )
+        elif lower_edge:
+            if percentiles is not None:
+                warnings.warn(
+                    "'smooth_bunching' is True and equally-spaced "
+                    "portfolios are returned for non-edge portfolios.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            sorting_values_new = sorting_values_clean[
+                sorting_values_clean > breakpoints[0]
+            ]
+            probs_new = np.linspace(0, 1, n_portfolios)
+            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints = np.concatenate(
+                [[breakpoints[0]], breakpoints_new]
+            )
+        elif upper_edge:
+            if percentiles is not None:
+                warnings.warn(
+                    "'smooth_bunching' is True and equally-spaced "
+                    "portfolios are returned for non-edge portfolios.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            sorting_values_new = sorting_values_clean[
+                sorting_values_clean < breakpoints[n_portfolios - 1]
+            ]
+            probs_new = np.linspace(0, 1, n_portfolios)
+            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new[-1] += 1e-15
+            breakpoints = np.concatenate(
+                [breakpoints_new, [breakpoints[n_portfolios]]]
+            )
+
+    breakpoints[1:] += 1e-20
     return breakpoints
 
 
