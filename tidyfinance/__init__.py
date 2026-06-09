@@ -1,11 +1,14 @@
 from .core import (
     add_lagged_columns,
     assign_portfolio,
+    compute_portfolio_returns,
     create_summary_statistics,
     data_options,
     estimate_betas,
     estimate_fama_macbeth,
+    filter_options,
     join_lagged_values,
+    portfolio_sort_options,
 )
 from .data_download import (
     _download_data_constituents,
@@ -52,7 +55,10 @@ __all__ = [
     "set_wrds_credentials",
     "create_summary_statistics",
     "add_lagged_columns",
+    "compute_portfolio_returns",
+    "portfolio_sort_options",
     "data_options",
+    "filter_options",
     "join_lagged_values",
     "get_wrds_connection",
     "list_supported_datasets",

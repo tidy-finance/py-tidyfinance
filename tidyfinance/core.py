@@ -1183,3 +1183,835 @@ def estimate_fama_macbeth(
     result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor").round(3)
 
     return result_df
+
+
+def filter_options(
+    exclude_financials: bool = False,
+    exclude_utilities: bool = False,
+    min_stock_price: float = None,
+    min_size_quantile: float = None,
+    min_listing_age: float = None,
+    exclude_negative_book_equity: bool = False,
+    exclude_negative_earnings: bool = False,
+    **kwargs,
+) -> dict:
+    """
+    Create a dictionary of filter options for sample construction.
+
+    These options control which observations are retained before
+    portfolio sorting.
+
+    Parameters
+    ----------
+    exclude_financials : bool, default False
+        Whether to exclude financial firms (SIC codes 6000 to 6799).
+    exclude_utilities : bool, default False
+        Whether to exclude utility firms (SIC codes 4900 to 4999).
+    min_stock_price : float, optional
+        Minimum stock price required to include an observation. Must
+        be strictly positive when provided. None disables the filter.
+    min_size_quantile : float, optional
+        Minimum cross-sectional size quantile (based on lagged market
+        cap) required to include an observation. Must be strictly
+        between 0 and 1 when provided. The cutoff is computed from
+        NYSE stocks only; this requires an 'exchange' column in the
+        data. None disables the filter.
+    min_listing_age : float, optional
+        Minimum number of months a stock must have been listed in
+        CRSP. Must be non-negative when provided. None disables the
+        filter.
+    exclude_negative_book_equity : bool, default False
+        Whether to exclude observations with non-positive book equity.
+    exclude_negative_earnings : bool, default False
+        Whether to exclude observations with non-positive earnings.
+    **kwargs
+        Additional optional arguments, stored verbatim in the dict.
+
+    Returns
+    -------
+    dict
+        Dictionary containing filter options.
+    """
+    _validate_flag(exclude_financials, "exclude_financials")
+    _validate_flag(exclude_utilities, "exclude_utilities")
+    _validate_flag(
+        exclude_negative_book_equity, "exclude_negative_book_equity"
+    )
+    _validate_flag(exclude_negative_earnings, "exclude_negative_earnings")
+
+    _validate_optional_number(
+        min_stock_price,
+        "min_stock_price must be a single positive numeric.",
+        min=0,
+        min_strict=True,
+    )
+    _validate_optional_number(
+        min_size_quantile,
+        "min_size_quantile must be a single numeric strictly between "
+        "0 and 1.",
+        min=0,
+        max=1,
+        min_strict=True,
+        max_strict=True,
+    )
+    _validate_optional_number(
+        min_listing_age,
+        "min_listing_age must be a single non-negative numeric.",
+        min=0,
+    )
+
+    return {
+        "exclude_financials": exclude_financials,
+        "exclude_utilities": exclude_utilities,
+        "min_stock_price": min_stock_price,
+        "min_size_quantile": min_size_quantile,
+        "min_listing_age": min_listing_age,
+        "exclude_negative_book_equity": exclude_negative_book_equity,
+        "exclude_negative_earnings": exclude_negative_earnings,
+        **kwargs,
+    }
+
+
+_FILTER_OPTIONS_KEYS = {
+    "exclude_financials",
+    "exclude_utilities",
+    "min_stock_price",
+    "min_size_quantile",
+    "min_listing_age",
+    "exclude_negative_book_equity",
+    "exclude_negative_earnings",
+}
+
+_BREAKPOINT_OPTIONS_KEYS = {
+    "n_portfolios",
+    "percentiles",
+    "breakpoints_exchanges",
+    "smooth_bunching",
+    "breakpoints_min_size_threshold",
+}
+
+
+def portfolio_sort_options(
+    filter_options: dict = None,
+    breakpoint_options_main: dict = None,
+    breakpoint_options_secondary: dict = None,
+    **kwargs,
+) -> dict:
+    """
+    Create a dictionary of portfolio sort options.
+
+    Bundles sample-construction filters and breakpoint specifications
+    for use with portfolio-sort workflows.
+
+    Parameters
+    ----------
+    filter_options : dict, optional
+        Filter options dict produced by filter_options(). None (the
+        default) applies no filters.
+    breakpoint_options_main : dict
+        Breakpoint options dict produced by breakpoint_options(),
+        specifying breakpoints for the primary sorting variable.
+        Required.
+    breakpoint_options_secondary : dict, optional
+        Breakpoint options dict produced by breakpoint_options() for
+        the secondary sorting variable. None (the default) selects a
+        univariate sort.
+    **kwargs
+        Additional optional arguments, stored verbatim in the dict.
+
+    Returns
+    -------
+    dict
+        Dictionary containing the bundled portfolio sort options.
+    """
+    if filter_options is not None and not (
+        isinstance(filter_options, dict)
+        and _FILTER_OPTIONS_KEYS.issubset(filter_options.keys())
+    ):
+        raise ValueError(
+            "filter_options must be None or a dict produced by "
+            "filter_options()."
+        )
+
+    if breakpoint_options_main is None:
+        raise ValueError("breakpoint_options_main must be provided.")
+
+    if not (
+        isinstance(breakpoint_options_main, dict)
+        and _BREAKPOINT_OPTIONS_KEYS.issubset(
+            breakpoint_options_main.keys()
+        )
+    ):
+        raise ValueError(
+            "breakpoint_options_main must be a dict produced by "
+            "breakpoint_options()."
+        )
+
+    if breakpoint_options_secondary is not None and not (
+        isinstance(breakpoint_options_secondary, dict)
+        and _BREAKPOINT_OPTIONS_KEYS.issubset(
+            breakpoint_options_secondary.keys()
+        )
+    ):
+        raise ValueError(
+            "breakpoint_options_secondary must be None or a dict "
+            "produced by breakpoint_options()."
+        )
+
+    return {
+        "filter_options": filter_options,
+        "breakpoint_options_main": breakpoint_options_main,
+        "breakpoint_options_secondary": breakpoint_options_secondary,
+        **kwargs,
+    }
+
+
+def _summarise_portfolio_returns(
+    data: pd.DataFrame,
+    group_cols: list,
+    ret_col: str,
+    w_col: str,
+    w_capped_col: str,
+    min_portfolio_size: int,
+) -> pd.DataFrame:
+    """Compute vw, ew, and vw_capped returns within groups.
+
+    Groups with fewer than min_portfolio_size observations get NaN
+    in all three return columns. Groups whose weight sum is zero get
+    NaN in the corresponding weighted return.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Stock-level panel with the return and weight columns.
+    group_cols : list
+        Columns to group by (typically the portfolio and date columns).
+    ret_col : str
+        Excess-return column name.
+    w_col : str
+        Market-cap weight column name.
+    w_capped_col : str
+        Capped market-cap weight column name.
+    min_portfolio_size : int
+        Minimum observations per group; groups below this size get NaN.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per group with columns from group_cols plus
+        ret_excess_vw, ret_excess_ew, and ret_excess_vw_capped.
+    """
+    work = data.copy()
+    work["_rw"] = work[ret_col] * work[w_col]
+    work["_rwc"] = work[ret_col] * work[w_capped_col]
+
+    sums = work.groupby(group_cols, as_index=False).agg(
+        _n=(ret_col, "size"),
+        _r_sum=(ret_col, "sum"),
+        _w_sum=(w_col, "sum"),
+        _wc_sum=(w_capped_col, "sum"),
+        _rw_sum=("_rw", "sum"),
+        _rwc_sum=("_rwc", "sum"),
+    )
+
+    sums["ret_excess_ew"] = sums["_r_sum"] / sums["_n"]
+    sums["ret_excess_vw"] = np.where(
+        sums["_w_sum"] == 0, np.nan, sums["_rw_sum"] / sums["_w_sum"]
+    )
+    sums["ret_excess_vw_capped"] = np.where(
+        sums["_wc_sum"] == 0,
+        np.nan,
+        sums["_rwc_sum"] / sums["_wc_sum"],
+    )
+
+    too_small = sums["_n"] < min_portfolio_size
+    sums.loc[
+        too_small,
+        ["ret_excess_vw", "ret_excess_ew", "ret_excess_vw_capped"],
+    ] = np.nan
+
+    return sums[
+        list(group_cols)
+        + ["ret_excess_vw", "ret_excess_ew", "ret_excess_vw_capped"]
+    ]
+
+
+def _aggregate_bivariate_returns(
+    portfolio_returns: pd.DataFrame,
+    date_col: str,
+    ret_col: str,
+    w_col: str,
+    w_capped_col: str,
+    min_portfolio_size: int,
+) -> pd.DataFrame:
+    """Aggregate bivariate-sort returns across the secondary dimension.
+
+    Computes cell-level returns over (portfolio_main,
+    portfolio_secondary, date) without an occupancy threshold, then
+    averages across the secondary buckets to obtain reported
+    (portfolio_main, date) returns. min_portfolio_size is applied to
+    the per-(portfolio_main, date) firm count.
+
+    Parameters
+    ----------
+    portfolio_returns : pd.DataFrame
+        Panel with columns portfolio_main, portfolio_secondary, the
+        date column, and per-stock returns/weights.
+    date_col, ret_col, w_col, w_capped_col : str
+        Column names.
+    min_portfolio_size : int
+        Minimum firms per reported (portfolio_main, date) cross-section.
+        Cross-sections below this size receive NaN.
+
+    Returns
+    -------
+    pd.DataFrame
+        Columns portfolio, the date column, and the three return columns.
+    """
+    n_per_main = (
+        portfolio_returns.dropna(
+            subset=["portfolio_main", "portfolio_secondary"]
+        )
+        .groupby(["portfolio_main", date_col], as_index=False)
+        .size()
+        .rename(columns={"size": "n_firms"})
+    )
+
+    cell_returns = _summarise_portfolio_returns(
+        portfolio_returns,
+        ["portfolio_main", "portfolio_secondary", date_col],
+        ret_col,
+        w_col,
+        w_capped_col,
+        min_portfolio_size=0,
+    )
+
+    avg_returns = (
+        cell_returns.groupby(
+            ["portfolio_main", date_col], as_index=False
+        )
+        .agg(
+            ret_excess_vw=("ret_excess_vw", "mean"),
+            ret_excess_ew=("ret_excess_ew", "mean"),
+            ret_excess_vw_capped=("ret_excess_vw_capped", "mean"),
+        )
+        .rename(columns={"portfolio_main": "portfolio"})
+    )
+
+    n_renamed = n_per_main.rename(
+        columns={"portfolio_main": "portfolio"}
+    )
+    result = avg_returns.merge(
+        n_renamed, on=["portfolio", date_col], how="left"
+    )
+
+    insufficient = result["n_firms"].isna() | (
+        result["n_firms"] < min_portfolio_size
+    )
+    for col in (
+        "ret_excess_vw",
+        "ret_excess_ew",
+        "ret_excess_vw_capped",
+    ):
+        result.loc[result[col].isna() | insufficient, col] = np.nan
+
+    return result.drop(columns="n_firms")
+
+
+def _join_rebalanced_portfolios(
+    data: pd.DataFrame,
+    portfolio_data: pd.DataFrame,
+    date_col: str,
+    id_col: str,
+    rebalancing_month: int,
+) -> pd.DataFrame:
+    """Join annual portfolio assignments to all dates in rebalancing window.
+
+    Each date in 'data' is matched to the most recent portfolio
+    assignment in 'portfolio_data' for the same id, using the
+    12-month window starting at the rebalancing month.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Full stock-level panel.
+    portfolio_data : pd.DataFrame
+        Portfolio assignments at rebalancing dates. Must contain
+        id_col, date_col, and one or more portfolio columns.
+    date_col, id_col : str
+        Date and stock-identifier column names.
+    rebalancing_month : int
+        The month (1-12) when portfolios are rebalanced annually.
+
+    Returns
+    -------
+    pd.DataFrame
+        'data' with the portfolio columns joined from 'portfolio_data'
+        (NaN where no rebalancing window matches).
+    """
+    def _window_year(d):
+        return d.year if d.month >= rebalancing_month else d.year - 1
+
+    data_w = data.copy()
+    data_w["_window_year"] = data_w[date_col].apply(_window_year)
+
+    pd_w = portfolio_data.copy()
+    pd_w["_window_year"] = pd_w[date_col].dt.year
+    pd_w = pd_w.drop(columns=date_col)
+
+    merged = data_w.merge(
+        pd_w, on=[id_col, "_window_year"], how="left"
+    )
+    return merged.drop(columns="_window_year")
+
+
+def compute_portfolio_returns(
+    data: pd.DataFrame,
+    sorting_variables,
+    sorting_method: str,
+    rebalancing_month: int = None,
+    breakpoint_options_main: dict = None,
+    breakpoint_options_secondary: dict = None,
+    breakpoint_function_main=None,
+    breakpoint_function_secondary=None,
+    min_portfolio_size: int = 1,
+    cap_weight: float = 0.8,
+    data_options: dict = None,
+    quiet: bool = False,
+) -> pd.DataFrame:
+    """Compute univariate or bivariate portfolio returns.
+
+    Sorts stocks into portfolios based on one or two sorting variables
+    and computes equal-weighted, value-weighted, and capped
+    value-weighted returns per portfolio-date cross-section. Supports
+    periodic (per-date) or annual (single rebalancing month per year)
+    rebalancing.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Stock-level panel. Must contain the id, date, and excess
+        return columns (configurable via data_options), the sorting
+        variable(s), and optionally a market-cap lag column.
+    sorting_variables : str or list of str
+        Column(s) to sort by. One for univariate, two for bivariate.
+    sorting_method : str
+        One of 'univariate', 'bivariate-dependent', or
+        'bivariate-independent'.
+    rebalancing_month : int, optional
+        Month (1-12) to use for annual rebalancing. None means
+        rebalance every period.
+    breakpoint_options_main : dict
+        Breakpoint options for the primary sorting variable (produced
+        by breakpoint_options()). Required.
+    breakpoint_options_secondary : dict, optional
+        Breakpoint options for the secondary sorting variable.
+        Required for bivariate sorts.
+    breakpoint_function_main : callable, optional
+        Function for computing primary breakpoints. Defaults to
+        compute_breakpoints.
+    breakpoint_function_secondary : callable, optional
+        Function for computing secondary breakpoints. Defaults to
+        compute_breakpoints.
+    min_portfolio_size : int, default 1
+        Minimum firms per (portfolio, date) cross-section.
+        Cross-sections below this size receive NaN.
+    cap_weight : float, default 0.8
+        Quantile of market cap at which to cap weights for the capped
+        value-weighted return. Must be in [0, 1].
+    data_options : dict, optional
+        Column-name mapping (see data_options). Defaults to
+        data_options() if None.
+    quiet : bool, default False
+        If True, suppress informational warnings about missing
+        observations.
+
+    Returns
+    -------
+    pd.DataFrame
+        Complete portfolio-date panel with columns: portfolio, date,
+        and the return columns. If a market-cap lag column is present
+        in the input, returns ret_excess_vw, ret_excess_ew, and
+        ret_excess_vw_capped. Otherwise only ret_excess_ew.
+    """
+    _validate_flag(quiet, "quiet")
+
+    if data_options is None:
+        data_options = {
+            "id": "permno",
+            "date": "date",
+            "ret_excess": "ret_excess",
+            "mktcap_lag": "mktcap_lag",
+        }
+
+    if breakpoint_function_main is None:
+        breakpoint_function_main = compute_breakpoints
+    if breakpoint_function_secondary is None:
+        breakpoint_function_secondary = compute_breakpoints
+
+    if isinstance(sorting_variables, str):
+        sorting_variables = [sorting_variables]
+    if not sorting_variables:
+        raise ValueError("You must provide at least one sorting variable.")
+
+    valid_methods = (
+        "univariate",
+        "bivariate-dependent",
+        "bivariate-independent",
+    )
+    if sorting_method not in valid_methods:
+        raise ValueError("Invalid sorting method.")
+
+    if (
+        sorting_method in ("bivariate-dependent", "bivariate-independent")
+        and breakpoint_options_secondary is None
+    ):
+        warnings.warn(
+            "No 'breakpoint_options_secondary' specified in bivariate "
+            "sort.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    if (
+        isinstance(cap_weight, bool)
+        or not isinstance(cap_weight, (int, float))
+        or pd.isna(cap_weight)
+        or cap_weight < 0
+        or cap_weight > 1
+    ):
+        raise ValueError(
+            "'cap_weight' must be a single numeric value in [0, 1]."
+        )
+
+    id_col = data_options["id"]
+    date_col = data_options["date"]
+    ret_col = data_options["ret_excess"]
+    w_col = data_options["mktcap_lag"]
+    w_capped_col = w_col + "_capped"
+
+    required_columns = list(sorting_variables) + [
+        id_col,
+        date_col,
+        ret_col,
+    ]
+    missing_columns = [
+        c for c in required_columns if c not in data.columns
+    ]
+    if missing_columns:
+        raise ValueError(
+            f"Missing columns: {', '.join(missing_columns)}."
+        )
+
+    mktcap_lag_missing = w_col not in data.columns
+    data = data.copy()
+    if mktcap_lag_missing:
+        data[w_col] = 1
+
+    all_dates = sorted(data[date_col].unique())
+
+    data = data.dropna(subset=list(sorting_variables))
+
+    _check_new_col(data, w_capped_col)
+    cap_quantile = data.groupby(date_col)[w_col].transform(
+        lambda x: x.quantile(cap_weight)
+    )
+    data[w_capped_col] = np.minimum(data[w_col], cap_quantile)
+
+    missing_mcap = data[w_col].isna()
+    data.loc[missing_mcap, w_col] = 0
+    data.loc[missing_mcap, w_capped_col] = 0
+
+    if len(data) == 0:
+        if not quiet:
+            warnings.warn(
+                "Returning an empty panel: all observations were "
+                "filtered out (insufficient observations on every date).",
+                UserWarning,
+                stacklevel=2,
+            )
+        cols = ["portfolio", date_col, "ret_excess_ew"]
+        if not mktcap_lag_missing:
+            cols = [
+                "portfolio",
+                date_col,
+                "ret_excess_vw",
+                "ret_excess_ew",
+                "ret_excess_vw_capped",
+            ]
+        return pd.DataFrame({c: [] for c in cols})
+
+    if rebalancing_month is not None and (
+        rebalancing_month < 1 or rebalancing_month > 12
+    ):
+        raise ValueError("Invalid rebalancing_month.")
+
+    if sorting_method == "univariate":
+        if len(sorting_variables) > 1:
+            raise ValueError(
+                "Only provide one sorting variable for univariate sorts."
+            )
+
+        sv = sorting_variables[0]
+
+        if rebalancing_month is None:
+            def _assigner(g):
+                return assign_portfolio(
+                    g,
+                    sorting_variable=sv,
+                    breakpoint_options=breakpoint_options_main,
+                    breakpoint_function=breakpoint_function_main,
+                    data_options=data_options,
+                )
+
+            data["portfolio"] = data.groupby(
+                date_col, group_keys=False
+            ).apply(_assigner, include_groups=False)
+            portfolio_returns = data
+        else:
+            filtered_data = data[
+                data[date_col].dt.month == rebalancing_month
+            ]
+            if len(filtered_data) == 0:
+                raise ValueError(
+                    f"No observations match 'rebalancing_month' = "
+                    f"{rebalancing_month}. Check that the data contains "
+                    "dates in the specified rebalancing month."
+                )
+
+            def _assigner(g):
+                return assign_portfolio(
+                    g,
+                    sorting_variable=sv,
+                    breakpoint_options=breakpoint_options_main,
+                    breakpoint_function=breakpoint_function_main,
+                    data_options=data_options,
+                )
+
+            portfolio_data = filtered_data.copy()
+            portfolio_data["portfolio"] = portfolio_data.groupby(
+                date_col, group_keys=False
+            ).apply(_assigner, include_groups=False)
+            portfolio_data = portfolio_data[
+                [id_col, date_col, "portfolio"]
+            ]
+            portfolio_returns = _join_rebalanced_portfolios(
+                data,
+                portfolio_data,
+                date_col,
+                id_col,
+                rebalancing_month,
+            )
+
+        portfolio_returns = _summarise_portfolio_returns(
+            portfolio_returns,
+            ["portfolio", date_col],
+            ret_col,
+            w_col,
+            w_capped_col,
+            min_portfolio_size,
+        )
+
+    elif sorting_method == "bivariate-dependent":
+        if len(sorting_variables) != 2:
+            raise ValueError(
+                "Provide two sorting variables for bivariate sorts."
+            )
+        sv_main, sv_sec = sorting_variables[0], sorting_variables[1]
+
+        def _assign_main(g):
+            return assign_portfolio(
+                g,
+                sorting_variable=sv_main,
+                breakpoint_options=breakpoint_options_main,
+                breakpoint_function=breakpoint_function_main,
+                data_options=data_options,
+            )
+
+        def _assign_sec(g):
+            return assign_portfolio(
+                g,
+                sorting_variable=sv_sec,
+                breakpoint_options=breakpoint_options_secondary,
+                breakpoint_function=breakpoint_function_secondary,
+                data_options=data_options,
+            )
+
+        if rebalancing_month is None:
+            data["portfolio_secondary"] = data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_sec, include_groups=False)
+            data["portfolio_main"] = data.groupby(
+                [date_col, "portfolio_secondary"], group_keys=False
+            ).apply(_assign_main, include_groups=False)
+            portfolio_returns = data
+        else:
+            filtered_data = data[
+                data[date_col].dt.month == rebalancing_month
+            ]
+            if len(filtered_data) == 0:
+                raise ValueError(
+                    f"No observations match 'rebalancing_month' = "
+                    f"{rebalancing_month}."
+                )
+            portfolio_data = filtered_data.copy()
+            portfolio_data["portfolio_secondary"] = (
+                portfolio_data.groupby(date_col, group_keys=False).apply(
+                    _assign_sec, include_groups=False
+                )
+            )
+            portfolio_data["portfolio_main"] = portfolio_data.groupby(
+                [date_col, "portfolio_secondary"], group_keys=False
+            ).apply(_assign_main, include_groups=False)
+            portfolio_data = portfolio_data[
+                [
+                    id_col,
+                    date_col,
+                    "portfolio_main",
+                    "portfolio_secondary",
+                ]
+            ]
+            portfolio_returns = _join_rebalanced_portfolios(
+                data,
+                portfolio_data,
+                date_col,
+                id_col,
+                rebalancing_month,
+            )
+
+        portfolio_returns = _aggregate_bivariate_returns(
+            portfolio_returns,
+            date_col,
+            ret_col,
+            w_col,
+            w_capped_col,
+            min_portfolio_size,
+        )
+
+    else:  # bivariate-independent
+        if len(sorting_variables) != 2:
+            raise ValueError(
+                "Provide two sorting variables for bivariate sorts."
+            )
+        sv_main, sv_sec = sorting_variables[0], sorting_variables[1]
+
+        def _assign_main(g):
+            return assign_portfolio(
+                g,
+                sorting_variable=sv_main,
+                breakpoint_options=breakpoint_options_main,
+                breakpoint_function=breakpoint_function_main,
+                data_options=data_options,
+            )
+
+        def _assign_sec(g):
+            return assign_portfolio(
+                g,
+                sorting_variable=sv_sec,
+                breakpoint_options=breakpoint_options_secondary,
+                breakpoint_function=breakpoint_function_secondary,
+                data_options=data_options,
+            )
+
+        if rebalancing_month is None:
+            data["portfolio_secondary"] = data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_sec, include_groups=False)
+            data["portfolio_main"] = data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_main, include_groups=False)
+            portfolio_returns = data
+        else:
+            filtered_data = data[
+                data[date_col].dt.month == rebalancing_month
+            ]
+            if len(filtered_data) == 0:
+                raise ValueError(
+                    f"No observations match 'rebalancing_month' = "
+                    f"{rebalancing_month}."
+                )
+            portfolio_data = filtered_data.copy()
+            portfolio_data["portfolio_secondary"] = (
+                portfolio_data.groupby(date_col, group_keys=False).apply(
+                    _assign_sec, include_groups=False
+                )
+            )
+            portfolio_data["portfolio_main"] = portfolio_data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_main, include_groups=False)
+            portfolio_data = portfolio_data[
+                [
+                    id_col,
+                    date_col,
+                    "portfolio_main",
+                    "portfolio_secondary",
+                ]
+            ]
+            portfolio_returns = _join_rebalanced_portfolios(
+                data,
+                portfolio_data,
+                date_col,
+                id_col,
+                rebalancing_month,
+            )
+
+        portfolio_returns = _aggregate_bivariate_returns(
+            portfolio_returns,
+            date_col,
+            ret_col,
+            w_col,
+            w_capped_col,
+            min_portfolio_size,
+        )
+
+    portfolio_returns = portfolio_returns[
+        portfolio_returns["portfolio"].notna()
+    ]
+
+    if rebalancing_month is not None:
+        matching_dates = [
+            d
+            for d in all_dates
+            if pd.Timestamp(d).month == rebalancing_month
+        ]
+        if not matching_dates:
+            raise ValueError(
+                f"No dates in data match for rebalancing month = "
+                f"{rebalancing_month}."
+            )
+        first_rebalancing_date = min(matching_dates)
+        all_dates = [d for d in all_dates if d >= first_rebalancing_date]
+
+    all_portfolios = (
+        portfolio_returns["portfolio"].dropna().unique().tolist()
+    )
+    complete_panel = pd.MultiIndex.from_product(
+        [all_portfolios, all_dates], names=["portfolio", date_col]
+    ).to_frame(index=False)
+
+    return_cols = (
+        ["ret_excess_ew"]
+        if mktcap_lag_missing
+        else [
+            "ret_excess_vw",
+            "ret_excess_ew",
+            "ret_excess_vw_capped",
+        ]
+    )
+
+    portfolio_returns = complete_panel.merge(
+        portfolio_returns, on=["portfolio", date_col], how="left"
+    )[["portfolio", date_col] + return_cols]
+
+    n_missing = portfolio_returns["ret_excess_ew"].isna().sum()
+    if not quiet and n_missing > 0:
+        warnings.warn(
+            f"Returning a complete panel with {n_missing} missing "
+            "values in factor returns due to insufficient observations "
+            f"(fewer than {min_portfolio_size} firms per "
+            "(portfolio, date) cross-section).",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    return portfolio_returns
