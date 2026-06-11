@@ -1196,11 +1196,14 @@ def _download_data_risk_free(
 
     try:
         risk_free_data = pd.read_parquet(url)
+
     except Exception as e:
         raise RuntimeError(
             "Failed to download risk-free rate data from HuggingFace. "
             f"URL attempted: {url}"
         ) from e
+
+    risk_free_data["date"] = pd.to_datetime(risk_free_data["date"])
 
     if start_date is not None:
         risk_free_data = risk_free_data[
