@@ -8,12 +8,12 @@ import tempfile
 import time
 import warnings
 import zipfile
+from datetime import date
 
 import numpy as np
 import pandas as pd
 from curl_cffi import requests
 from sqlalchemy import text
-from datetime import date
 
 from ._internal import (
     _assign_exchange,
@@ -23,30 +23,29 @@ from ._internal import (
     _transfrom_to_snake_case,
     _validate_dates,
 )
+from ._pseudo import _simulate_pseudo_data
+from .supported_datasets import (
+    _check_supported_dataset_ff,
+    _check_supported_dataset_q,
+    _check_supported_dataset_wrds,
+    _check_supported_dataset_wrds_crsp,
+    _check_supported_domain,
+    _determine_frequency_ff,
+    _determine_frequency_q,
+    _is_breakpoints_ff,
+    _is_legacy_type,
+    _is_legacy_type_ff,
+    _is_legacy_type_q,
+    _is_legacy_type_wrds,
+    _parse_type_to_domain_dataset,
+)
 from .utilities import (
+    _process_additional_columns,
     disconnect_connection,
     get_wrds_connection,
     list_supported_indexes,
     process_trace_data,
-    _process_additional_columns
 )
-from .supported_datasets import (
-    _check_supported_domain,
-    _is_legacy_type,
-    _is_legacy_type_wrds,
-    _check_supported_dataset_wrds,
-    _check_supported_dataset_wrds_crsp,
-    _is_legacy_type_ff,
-    _is_legacy_type_q,
-    _determine_frequency_ff,
-    _determine_frequency_q,
-    _is_breakpoints_ff,
-    _check_supported_dataset_ff,
-    _check_supported_dataset_q,
-    _parse_type_to_domain_dataset,
-)
-
-from ._pseudo import _simulate_pseudo_data
 
 # %% constant
 
@@ -114,7 +113,7 @@ def get_available_famafrench_datasets():
         and dataset_i.endswith(ff_url_suffix)
     ]
     datasets_list = list(
-        map(lambda x: x[len(ff_url_prefix): -len(ff_url_suffix)], datasets)
+        map(lambda x: x[len(ff_url_prefix) : -len(ff_url_suffix)], datasets)
     )
     return datasets_list
 
@@ -219,8 +218,10 @@ def download_data(
             )
         else:
             processed_data = _download_data_huggingface(
-                dataset=dataset, start_date=start_date, end_date=end_date,
-                **kwargs
+                dataset=dataset,
+                start_date=start_date,
+                end_date=end_date,
+                **kwargs,
             )
     elif domain == "pseudo":
         processed_data = _simulate_pseudo_data(
@@ -262,9 +263,9 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
     # naming logic by stripping the ftp/ prefix and _CSV.zip suffix.
     stem = file_url
     if stem.startswith("ftp/"):
-        stem = stem[len("ftp/"):]
+        stem = stem[len("ftp/") :]
     if stem.endswith("_CSV.zip"):
-        stem = stem[:-len("_CSV.zip")]
+        stem = stem[: -len("_CSV.zip")]
 
     # Breakpoint dataset cases
     params = {"index_col": 0}
@@ -406,8 +407,7 @@ def _download_data_factors_ff(
             if not _is_breakpoints_ff(dataset):
                 raw_downloaded = raw_downloaded.div(100)
             raw_data = (
-                raw_downloaded
-                .reset_index()
+                raw_downloaded.reset_index()
                 .rename(
                     columns=lambda x: (
                         x.lower()
@@ -418,14 +418,15 @@ def _download_data_factors_ff(
                     )
                 )
                 .apply(
-                    lambda x: x.replace([-99.99, -999], pd.NA)
-                    if x.name != "date"
-                    else x
+                    lambda x: (
+                        x.replace([-99.99, -999], pd.NA)
+                        if x.name != "date"
+                        else x
+                    )
                 )
             )
             raw_data = raw_data[
-                ["date"]
-                + [col for col in raw_data.columns if col != "date"]
+                ["date"] + [col for col in raw_data.columns if col != "date"]
             ].reset_index(drop=True)
             return raw_data
     except Exception as e:
@@ -513,9 +514,9 @@ def _download_data_factors_q(
         )
     try:
         raw_data = (
-            pd.read_csv(f"{url}{dataset}.csv", engine="python",
-                        on_bad_lines="skip"
-                        )
+            pd.read_csv(
+                f"{url}{dataset}.csv", engine="python", on_bad_lines="skip"
+            )
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
@@ -545,9 +546,9 @@ def _download_data_factors_q(
             date=lambda x: pd.to_datetime(x["year"].astype(str) + "-01-01")
         ).drop(columns=["year"])
 
-    raw_data = raw_data.assign(
-        date=lambda x: pd.to_datetime(x["date"])
-    ).apply(lambda x: x.div(100) if x.name != "date" else x)
+    raw_data = raw_data.assign(date=lambda x: pd.to_datetime(x["date"])).apply(
+        lambda x: x.div(100) if x.name != "date" else x
+    )
 
     if start_date and end_date:
         raw_data = raw_data.query("@start_date <= date <= @end_date")
@@ -658,22 +659,25 @@ def _download_data_macro_predictors(
         ).drop(columns=["yyyy"])
 
     raw_data = raw_data.apply(
-        lambda x: pd.to_numeric(
-            x.astype(str).str.replace(",", ""), errors="coerce"
+        lambda x: (
+            pd.to_numeric(x.astype(str).str.replace(",", ""), errors="coerce")
+            if x.dtype == "object" or pd.api.types.is_string_dtype(x)
+            else x
         )
-        if x.dtype == "object" or pd.api.types.is_string_dtype(x)
-        else x
     )
-    raw_data = raw_data.apply(lambda x: pd.to_numeric(
-        x.astype(str).str.replace(",", ""), errors="coerce"
+    raw_data = raw_data.apply(
+        lambda x: (
+            pd.to_numeric(x.astype(str).str.replace(",", ""), errors="coerce")
+            if pd.api.types.is_string_dtype(x) or x.dtype == "object"
+            else x
         )
-        if pd.api.types.is_string_dtype(x) or x.dtype == "object"
-        else x
     ).assign(
         IndexDiv=lambda df: df["Index"] + df["D12"],
-        logret=lambda df: df["IndexDiv"]
-        .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
-        .diff(),
+        logret=lambda df: (
+            df["IndexDiv"]
+            .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+            .diff()
+        ),
         rp_div=lambda df: df["logret"].shift(-1) - df["Rfree"],
         log_d12=lambda df: df["D12"].apply(
             lambda x: np.nan if pd.isna(x) else np.log(x)
@@ -681,14 +685,20 @@ def _download_data_macro_predictors(
         log_e12=lambda df: df["E12"].apply(
             lambda x: np.nan if pd.isna(x) else np.log(x)
         ),
-        dp=lambda df: df["log_d12"]
-        - df["Index"].apply(lambda x: np.nan if pd.isna(x) else np.log(x)),
-        dy=lambda df: df["log_d12"]
-        - df["Index"]
-        .shift(1)
-        .apply(lambda x: np.nan if pd.isna(x) else np.log(x)),
-        ep=lambda df: df["log_e12"]
-        - df["Index"].apply(lambda x: np.nan if pd.isna(x) else np.log(x)),
+        dp=lambda df: (
+            df["log_d12"]
+            - df["Index"].apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+        ),
+        dy=lambda df: (
+            df["log_d12"]
+            - df["Index"]
+            .shift(1)
+            .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+        ),
+        ep=lambda df: (
+            df["log_e12"]
+            - df["Index"].apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+        ),
         de=lambda df: df["log_d12"] - df["log_e12"],
         tms=lambda df: df["lty"] - df["tbl"],
         dfy=lambda df: df["BAA"] - df["AAA"],
@@ -799,9 +809,7 @@ def _download_data_constituents(
     df = df[~df["name"].str.contains(index, case=False, na=False)]
     df = df[~df["name"].str.contains("CASH", case=False, na=False)]
     index_no_space = re.sub(r"\s+", "", index).lower()
-    df = df[
-        ~df["name"].str.lower().str.contains(index_no_space, na=False)
-    ]
+    df = df[~df["name"].str.lower().str.contains(index_no_space, na=False)]
 
     df.loc[df["name"] == "NATIONAL BANK OF CANADA", "symbol"] = "NA"
     df["symbol"] = df["symbol"].str.replace(" ", "-").str.replace("/", "-")
@@ -933,8 +941,11 @@ def _download_data_fred(
                                 x[x.columns[x.columns.str.contains("date")][0]]
                             ),
                             value=lambda x: pd.to_numeric(
-                                x[x.columns[
-                                    ~x.columns.str.contains("date")][0]],
+                                x[
+                                    x.columns[~x.columns.str.contains("date")][
+                                        0
+                                    ]
+                                ],
                                 errors="coerce",
                             ),
                             series=s,
@@ -956,9 +967,7 @@ def _download_data_fred(
                 UserWarning,
                 stacklevel=2,
             )
-            fred_data.append(
-                pd.DataFrame(columns=["date", "series", "value"])
-            )
+            fred_data.append(pd.DataFrame(columns=["date", "series", "value"]))
 
     fred_data = pd.concat(fred_data, ignore_index=True)
     if start_date and end_date:
@@ -1045,20 +1054,17 @@ def _download_data_stock_prices(
                 "adjclose"
             ]
 
-            df_symbol = (
-                pd.DataFrame()
-                .assign(
-                    date=pd.to_datetime(
-                        pd.to_datetime(timestamps, utc=True, unit="s").date
-                    ),
-                    symbol=symbol,
-                    volume=indicators.get("volume"),
-                    open=indicators.get("open"),
-                    low=indicators.get("low"),
-                    high=indicators.get("high"),
-                    close=indicators.get("close"),
-                    adjusted_close=adjusted_close,
-                )
+            df_symbol = pd.DataFrame().assign(
+                date=pd.to_datetime(
+                    pd.to_datetime(timestamps, utc=True, unit="s").date
+                ),
+                symbol=symbol,
+                volume=indicators.get("volume"),
+                open=indicators.get("open"),
+                low=indicators.get("low"),
+                high=indicators.get("high"),
+                close=indicators.get("close"),
+                adjusted_close=adjusted_close,
             )
 
             # Ensure symbol and date are the first columns
@@ -1261,9 +1267,7 @@ def _download_data_wrds(
     _check_supported_dataset_wrds(dataset)
 
     if dataset.startswith("crsp"):
-        return _download_data_wrds_crsp(
-            dataset, start_date, end_date, **kwargs
-        )
+        return _download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
     elif dataset.startswith("compustat"):
         return _download_data_wrds_compustat(
             dataset, start_date, end_date, **kwargs
@@ -1390,7 +1394,9 @@ def _download_data_wrds_crsp(
     try:
         if "crsp_monthly" in dataset:
             if version == "v1":
-                raise NotImplementedError("version='v1' is not yet implemented.")
+                raise NotImplementedError(
+                    "version='v1' is not yet implemented."
+                )
             if version == "v2":
                 crsp_query = f"""
                     SELECT msf.permno,
@@ -1435,16 +1441,19 @@ def _download_data_wrds_crsp(
                         },
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    .assign(mktcap=lambda x: x["shrout"] * x["prc"]/1000000)
+                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
                     .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
                     .assign(
                         listing_age=lambda df: (
-                            (df["date"].dt.year
-                             - df["first_crsp_date"].dt.year) * 12
-                            + (df["date"].dt.month
-                               - df["first_crsp_date"].dt.month)
-                            - (df["date"].dt.day
-                               < df["first_crsp_date"].dt.day).astype(int)
+                            (df["date"].dt.year - df["first_crsp_date"].dt.year)
+                            * 12
+                            + (
+                                df["date"].dt.month
+                                - df["first_crsp_date"].dt.month
+                            )
+                            - (
+                                df["date"].dt.day < df["first_crsp_date"].dt.day
+                            ).astype(int)
                         ).clip(lower=0)
                     )
                     .drop(columns=["first_crsp_date"])
@@ -1466,8 +1475,7 @@ def _download_data_wrds_crsp(
                     end_date=end_date,
                 )
                 crsp_monthly = (
-                    crsp_monthly.merge(risk_free_monthly, how="left",
-                                       on="date")
+                    crsp_monthly.merge(risk_free_monthly, how="left", on="date")
                     .assign(ret_excess=lambda x: x["ret"] - x["risk_free"])
                     .drop(columns=["risk_free"])
                     .dropna(subset=["ret_excess", "mktcap"])
@@ -1475,7 +1483,9 @@ def _download_data_wrds_crsp(
                 processed_data = crsp_monthly
         elif "crsp_daily" in dataset:
             if version == "v1":
-                raise NotImplementedError("version='v1' is not yet implemented.")
+                raise NotImplementedError(
+                    "version='v1' is not yet implemented."
+                )
             if version == "v2":
                 permnos = pd.read_sql(
                     sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
@@ -1493,7 +1503,9 @@ def _download_data_wrds_crsp(
 
                 for j in range(1, batches + 1):
                     permno_batch = permnos[
-                        ((j - 1) * batch_size) : (min(j * batch_size, len(permnos)))
+                        ((j - 1) * batch_size) : (
+                            min(j * batch_size, len(permnos))
+                        )
                     ]
                     permno_batch_formatted = ", ".join(
                         f"'{permno}'" for permno in permno_batch
@@ -1553,8 +1565,7 @@ def _download_data_wrds_crsp(
                     gr_date_3 = pd.Timestamp("2004-01-01")
 
                     crsp_data = (
-                        crsp_data
-                        .sort_values(["permno", "date"])
+                        crsp_data.sort_values(["permno", "date"])
                         .assign(
                             cfacpr=lambda df: df.groupby("permno")[
                                 "dlyfacprc"
@@ -1606,11 +1617,9 @@ def _download_data_wrds_crsp(
         merged = processed_data[["permno", "date"]].merge(
             ccm_links, on="permno", how="inner"
         )
-        valid_links = (
-            merged
-            .query("gvkey.notna() and linkdt <= date <= linkenddt")
-            [["permno", "gvkey", "date"]]
-        )
+        valid_links = merged.query(
+            "gvkey.notna() and linkdt <= date <= linkenddt"
+        )[["permno", "gvkey", "date"]]
         processed_data = processed_data.merge(
             valid_links, on=["permno", "date"], how="left"
         )
@@ -1650,9 +1659,7 @@ def _download_data_wrds_ccm_links(
 
     ccm_links = pd.read_sql(query, conn)
 
-    ccm_links["linkenddt"] = (ccm_links["linkenddt"]
-                              .fillna(pd.Timestamp.today())
-                              )
+    ccm_links["linkenddt"] = ccm_links["linkenddt"].fillna(pd.Timestamp.today())
 
     disconnect_connection(conn)
 
@@ -1741,15 +1748,9 @@ def _download_data_wrds_compustat(
         )
 
     wrds_connection = get_wrds_connection()
-    extra_annual = [
-        c for c in (additional_columns or []) if c != "curcd"
-    ]
-    extra_quarterly = [
-        c for c in (additional_columns or []) if c != "curcdq"
-    ]
-    additional_columns_annual = (
-        ", ".join(extra_annual) if extra_annual else ""
-    )
+    extra_annual = [c for c in (additional_columns or []) if c != "curcd"]
+    extra_quarterly = [c for c in (additional_columns or []) if c != "curcdq"]
+    additional_columns_annual = ", ".join(extra_annual) if extra_annual else ""
     additional_columns_quarterly = (
         ", ".join(extra_quarterly) if extra_quarterly else ""
     )
@@ -1771,33 +1772,29 @@ def _download_data_wrds_compustat(
         # Compute Book Equity (be)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", FutureWarning)
-            compustat = (
-                compustat.assign(
-                    be=lambda x: (
-                        x["seq"]
-                        .combine_first(x["ceq"] + x["pstk"])
-                        .combine_first(x["at"] - x["lt"])
-                        + x["txditc"]
-                        .combine_first(x["txdb"] + x["itcb"])
-                        .fillna(0)
-                        - x["pstkrv"]
-                        .combine_first(x["pstkl"])
-                        .combine_first(x["pstk"])
-                        .fillna(0)
-                    )
+            compustat = compustat.assign(
+                be=lambda x: (
+                    x["seq"]
+                    .combine_first(x["ceq"] + x["pstk"])
+                    .combine_first(x["at"] - x["lt"])
+                    + x["txditc"].combine_first(x["txdb"] + x["itcb"]).fillna(0)
+                    - x["pstkrv"]
+                    .combine_first(x["pstkl"])
+                    .combine_first(x["pstk"])
+                    .fillna(0)
                 )
-                .assign(
-                    be=lambda x: x["be"].apply(
-                        lambda y: np.nan if y <= 0 else y
-                    )
-                )
+            ).assign(
+                be=lambda x: x["be"].apply(lambda y: np.nan if y <= 0 else y)
             )
         # Compute Operating Profitability (op)
         compustat = compustat.assign(
             op=lambda df: (
-                df["sale"] - df[["cogs", "xsga", "xint"]].fillna(0).sum(axis=1)
+                (
+                    df["sale"]
+                    - df[["cogs", "xsga", "xint"]].fillna(0).sum(axis=1)
+                )
+                / df["be"]
             )
-            / df["be"]
         )
         # Keep the latest report per company per year
         compustat = (
@@ -1825,15 +1822,11 @@ def _download_data_wrds_compustat(
         if only_usd:
             compustat = compustat[compustat["curcd"] == "USD"]
 
-        processed_data = (
-            compustat
-            .assign(
-                date=lambda df: pd.to_datetime(df["datadate"])
-                .dt.to_period("M")
-                .dt.start_time
+        processed_data = compustat.assign(
+            date=lambda df: (
+                pd.to_datetime(df["datadate"]).dt.to_period("M").dt.start_time
             )
-            .drop(columns=["year", "at_lag", "curcd"])
-        )
+        ).drop(columns=["year", "at_lag", "curcd"])
 
     elif "compustat_quarterly" in dataset:
         query = text(f"""
@@ -1851,14 +1844,14 @@ def _download_data_wrds_compustat(
         compustat = (
             compustat.dropna(subset=["gvkey", "datadate", "fyearq", "fqtr"])
             .assign(
-                date=lambda df: pd.to_datetime(df["datadate"])
-                .dt.to_period("M")
-                .dt.start_time
+                date=lambda df: (
+                    pd.to_datetime(df["datadate"])
+                    .dt.to_period("M")
+                    .dt.start_time
+                )
             )
             .sort_values("datadate", ascending=False, kind="stable")
-            .drop_duplicates(
-                subset=["gvkey", "fyearq", "fqtr"], keep="first"
-            )
+            .drop_duplicates(subset=["gvkey", "fyearq", "fqtr"], keep="first")
             .sort_values(
                 ["gvkey", "date", "rdq"], na_position="last", kind="stable"
             )
@@ -1870,8 +1863,7 @@ def _download_data_wrds_compustat(
             compustat = compustat[compustat["curcdq"] == "USD"]
 
         processed_data = compustat.get(
-            ["gvkey", "date", "datadate", "atq", "ceqq"]
-            + extra_quarterly
+            ["gvkey", "date", "datadate", "atq", "ceqq"] + extra_quarterly
         )
 
     return processed_data
@@ -1896,8 +1888,9 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
     wrds_connection = get_wrds_connection()
 
     if additional_columns:
-        if not all(re.match(r'^[a-z_][a-z0-9_]*$', col)
-                   for col in additional_columns):
+        if not all(
+            re.match(r"^[a-z_][a-z0-9_]*$", col) for col in additional_columns
+        ):
             raise ValueError("Column names must be valid SQL identifiers.")
 
     additional_columns_str = _process_additional_columns(additional_columns)
@@ -2032,6 +2025,7 @@ def _download_data_wrds_trace_enhanced(
 
     return trace_enhanced
 
+
 # %% hugging face functions for tidy finance data
 
 
@@ -2057,9 +2051,10 @@ def _get_available_huggingface_files(
     pd.DataFrame
         DataFrame with columns 'path' (str) and 'size' (int).
     """
-    api_url = (f"https://huggingface.co/api/datasets/{organization}/{dataset}"
-               "/tree/main?recursive=1"
-               )
+    api_url = (
+        f"https://huggingface.co/api/datasets/{organization}/{dataset}"
+        "/tree/main?recursive=1"
+    )
     rows = []
     next_url = api_url
 
@@ -2104,15 +2099,14 @@ def _download_factor_library_grid() -> pd.DataFrame:
             "'tidy-finance/factor-library-grid'."
         )
     grid_path = available["path"].iloc[0]
-    grid_url = ("https://huggingface.co/datasets/tidy-finance"
-                f"/factor-library-grid/resolve/main/{grid_path}"
-                )
+    grid_url = (
+        "https://huggingface.co/datasets/tidy-finance"
+        f"/factor-library-grid/resolve/main/{grid_path}"
+    )
     return pd.read_parquet(grid_url)
 
 
-def _filter_factor_library_grid(
-    fill_all: bool = False, **filters
-) -> list:
+def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
     """
     Filter the factor-library grid and return matching portfolio IDs.
 
@@ -2165,9 +2159,7 @@ def _filter_factor_library_grid(
         )
 
     if "sorting_variable" not in filters:
-        raise ValueError(
-            "'sorting_variable' is required in filters."
-        )
+        raise ValueError("'sorting_variable' is required in filters.")
 
     if filters.get("sorting_method", "univariate") != "univariate":
         if filters.get("n_portfolios_secondary") is None:
@@ -2194,9 +2186,7 @@ def _filter_factor_library_grid(
     return grid["id"].tolist()
 
 
-def _download_factor_library_ids(
-    ids: list
-) -> pd.DataFrame:
+def _download_factor_library_ids(ids: list) -> pd.DataFrame:
     """
     Download factor-library returns for a list of portfolio IDs.
 
@@ -2236,7 +2226,7 @@ def _download_factor_library_ids(
     )
     available_files = _get_available_huggingface_files(
         organization, dataset_name
-        )
+    )
 
     def _extract_keys(path: str) -> tuple:
         m = path_pattern.search(path)
@@ -2246,8 +2236,8 @@ def _download_factor_library_ids(
         pd.DataFrame(
             available_files["path"].apply(_extract_keys).tolist(),
             index=available_files.index,
-            )
         )
+    )
 
     grid = _download_factor_library_grid().assign(
         sorting_variable=lambda x: x["sorting_variable"].str.replace(
@@ -2263,10 +2253,10 @@ def _download_factor_library_ids(
 
     missing = id_grid.loc[id_grid["path"].isna()]
     if not missing.empty:
-        missing_keys = [f"id={row.id} ({row.sorting_variable} / "
-                        f"{row.sorting_variable_lag})"
-                        for row in missing.itertuples()
-                        ]
+        missing_keys = [
+            f"id={row.id} ({row.sorting_variable} / {row.sorting_variable_lag})"
+            for row in missing.itertuples()
+        ]
         raise ValueError(
             f"No parquet file found for {len(missing_keys)} portfolio ID(s): "
             f"{missing_keys}. Check that the sorting_variable and "
@@ -2337,16 +2327,12 @@ def _download_data_huggingface_factor_library(
         If both ids and filter arguments are supplied.
     """
     if ids is not None and filters:
-        raise ValueError(
-            "'ids' cannot be combined with filter arguments."
-        )
+        raise ValueError("'ids' cannot be combined with filter arguments.")
 
     if ids is not None:
         result = _download_factor_library_ids(ids)
     else:
-        resolved_ids = _filter_factor_library_grid(
-            fill_all=fill_all, **filters
-        )
+        resolved_ids = _filter_factor_library_grid(fill_all=fill_all, **filters)
         result = _download_factor_library_ids(resolved_ids)
 
     if start_date is not None:
@@ -2424,7 +2410,7 @@ def _download_data_huggingface(
             DeprecationWarning,
             stacklevel=2,
         )
-        dataset = type[len("hf_"):] if type.startswith("hf_") else type
+        dataset = type[len("hf_") :] if type.startswith("hf_") else type
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -2437,7 +2423,7 @@ def _download_data_huggingface(
             DeprecationWarning,
             stacklevel=2,
         )
-        dataset = dataset[len("hf_"):]
+        dataset = dataset[len("hf_") :]
 
     if dataset not in _SUPPORTED_DATASETS_HF:
         raise ValueError(
@@ -2452,16 +2438,16 @@ def _download_data_huggingface(
         date_pattern = re.compile(r"date=(\d{4}-\d{2}-\d{2})")
         available_files = _get_available_huggingface_files(
             organization, dataset_name
-            )
+        )
         available_files["date"] = pd.to_datetime(
             available_files["path"].str.extract(date_pattern, expand=False),
             format="%Y-%m-%d",
         ).dt.date
 
         requested_dates = set(
-            pd.date_range(start=str(start_date),
-                          end=str(end_date), freq="D"
-                          ).date
+            pd.date_range(
+                start=str(start_date), end=str(end_date), freq="D"
+            ).date
         )
         files_to_download = available_files.loc[
             available_files["date"].isin(requested_dates)
