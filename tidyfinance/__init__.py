@@ -14,6 +14,7 @@ from .core import (
     filter_options,
     join_lagged_values,
     filter_sorting_data,
+    implement_portfolio_sort,
 )
 from .data_download import (
     _download_data_constituents,
@@ -72,4 +73,5 @@ __all__ = [
     "get_wrds_connection",
     "list_supported_datasets",
     "filter_sorting_data",
+    "implement_portfolio_sort",
 ]

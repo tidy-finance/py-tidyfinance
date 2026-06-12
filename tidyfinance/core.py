@@ -2399,3 +2399,128 @@ def filter_sorting_data(
         )
 
     return data
+
+
+def implement_portfolio_sort(
+    data: pd.DataFrame,
+    sorting_variables,
+    sorting_method: str,
+    portfolio_sort_options: dict,
+    rebalancing_month: int = None,
+    breakpoint_function_main=None,
+    breakpoint_function_secondary=None,
+    min_portfolio_size: int = 1,
+    cap_weight: float = 0.8,
+    data_options: dict = None,
+    quiet: bool = False,
+) -> pd.DataFrame:
+    """
+    Convenience wrapper that filters a panel and computes portfolio returns.
+
+    Equivalent to calling filter_sorting_data() followed by
+    compute_portfolio_returns() with the filter and breakpoint
+    specifications bundled in 'portfolio_sort_options'.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Stock-level panel.
+    sorting_variables : str or list of str
+        Column(s) to sort on.
+    sorting_method : str
+        'univariate', 'bivariate-dependent', or 'bivariate-independent'.
+    portfolio_sort_options : dict
+        Dict produced by portfolio_sort_options(). Bundles filter and
+        breakpoint specifications.
+    rebalancing_month : int, optional
+        Month (1-12) for annual rebalancing. None means rebalance
+        every period.
+    breakpoint_function_main : callable, optional
+        Function for primary breakpoints. Defaults to compute_breakpoints.
+    breakpoint_function_secondary : callable, optional
+        Function for secondary breakpoints. Defaults to
+        compute_breakpoints.
+    min_portfolio_size : int, default 1
+        Minimum firms per reported cross-section.
+    cap_weight : float, default 0.8
+        Quantile for capping value weights.
+    data_options : dict, optional
+        Column-name mapping. Uses defaults if None.
+    quiet : bool, default False
+        If True, suppress informational warnings.
+
+    Returns
+    -------
+    pd.DataFrame
+        Portfolio returns panel as produced by compute_portfolio_returns().
+    """
+    if not isinstance(quiet, bool):
+        raise ValueError("'quiet' must be a single boolean.")
+
+    _data_options_keys = {
+        "id",
+        "date",
+        "exchange",
+        "mktcap_lag",
+        "ret_excess",
+        "portfolio",
+        "siccd",
+        "price",
+        "listing_age",
+        "be",
+        "earnings",
+    }
+    if data_options is not None and not (
+        isinstance(data_options, dict)
+        and _data_options_keys.issubset(data_options.keys())
+    ):
+        raise ValueError(
+            "'data_options' must be None or a dict produced by "
+            "data_options()."
+        )
+
+    _portfolio_sort_options_keys = {
+        "filter_options",
+        "breakpoint_options_main",
+        "breakpoint_options_secondary",
+    }
+    if not (
+        isinstance(portfolio_sort_options, dict)
+        and _portfolio_sort_options_keys.issubset(
+            portfolio_sort_options.keys()
+        )
+    ):
+        raise ValueError(
+            "'portfolio_sort_options' must be a dict produced by "
+            "portfolio_sort_options()."
+        )
+
+    filter_opts = portfolio_sort_options["filter_options"]
+    breakpoint_options_main = portfolio_sort_options[
+        "breakpoint_options_main"
+    ]
+    breakpoint_options_secondary = portfolio_sort_options[
+        "breakpoint_options_secondary"
+    ]
+
+    data = filter_sorting_data(
+        data,
+        filter_options=filter_opts,
+        data_options=data_options,
+        quiet=quiet,
+    )
+
+    return compute_portfolio_returns(
+        data,
+        sorting_variables=sorting_variables,
+        sorting_method=sorting_method,
+        rebalancing_month=rebalancing_month,
+        breakpoint_options_main=breakpoint_options_main,
+        breakpoint_options_secondary=breakpoint_options_secondary,
+        breakpoint_function_main=breakpoint_function_main,
+        breakpoint_function_secondary=breakpoint_function_secondary,
+        min_portfolio_size=min_portfolio_size,
+        cap_weight=cap_weight,
+        data_options=data_options,
+        quiet=quiet,
+    )
