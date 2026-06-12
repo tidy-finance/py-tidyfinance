@@ -13,6 +13,7 @@ from .core import (
     estimate_fama_macbeth,
     filter_options,
     join_lagged_values,
+    filter_sorting_data,
 )
 from .data_download import (
     _download_data_constituents,
@@ -70,4 +71,5 @@ __all__ = [
     "join_lagged_values",
     "get_wrds_connection",
     "list_supported_datasets",
+    "filter_sorting_data",
 ]

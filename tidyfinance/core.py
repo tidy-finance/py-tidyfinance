@@ -2190,3 +2190,212 @@ def compute_rolling_value(
             result[i] = f(window_data)
 
     return result
+
+
+def _require_column(data: pd.DataFrame, col: str, arg: str, info: str = None
+) -> None:
+    """Raise ValueError if col is not in data.columns."""
+    if col not in data.columns:
+        if info is None:
+            info = f"Set {arg} to the correct column name."
+        raise ValueError(
+            f"Column '{col}' not found in 'data'. {info}"
+        )
+
+
+def _filter_with_log(
+    data: pd.DataFrame, condition, label: str, quiet: bool
+) -> pd.DataFrame:
+    """Apply a boolean filter and optionally warn about dropped rows."""
+    n_before = len(data)
+    data = data[condition]
+    n_dropped = n_before - len(data)
+    if not quiet and n_dropped > 0:
+        warnings.warn(
+            f"Filter '{label}': removed {n_dropped} observation(s).",
+            UserWarning,
+            stacklevel=2,
+        )
+    return data
+
+
+def filter_sorting_data(
+    data: pd.DataFrame,
+    filter_options: dict = None,
+    data_options: dict = None,
+    quiet: bool = False,
+) -> pd.DataFrame:
+    """
+    Apply sample-construction filters to a stock-level panel.
+
+    Filters are applied in a fixed order: financials exclusion,
+    utilities exclusion, minimum stock price, minimum size quantile,
+    minimum listing age, positive book equity, positive earnings.
+    An informational warning is emitted for each filter that removes
+    at least one row, unless 'quiet' is True.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Stock-level panel to filter.
+    filter_options : dict, optional
+        Filter options dict produced by filter_options(). None
+        applies no filters (uses the filter_options() defaults).
+    data_options : dict, optional
+        Column-name mapping (see data_options). Uses the
+        data_options() defaults if None.
+    quiet : bool, default False
+        If True, suppress per-filter warnings.
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered data with the same columns as input.
+    """
+    if not isinstance(quiet, bool):
+        raise ValueError("'quiet' must be a single boolean.")
+
+    if filter_options is None:
+        filter_options = {
+            "exclude_financials": False,
+            "exclude_utilities": False,
+            "min_stock_price": None,
+            "min_size_quantile": None,
+            "min_listing_age": None,
+            "exclude_negative_book_equity": False,
+            "exclude_negative_earnings": False,
+        }
+
+    if data_options is None:
+        data_options = {
+            "id": "permno",
+            "date": "date",
+            "exchange": "exchange",
+            "mktcap_lag": "mktcap_lag",
+            "ret_excess": "ret_excess",
+            "portfolio": "portfolio",
+            "siccd": "siccd",
+            "price": "prc_adj",
+            "listing_age": "listing_age",
+            "be": "be",
+            "earnings": "ib",
+        }
+
+    # exclude_financials / exclude_utilities (share the SIC column)
+    if filter_options.get("exclude_financials") or filter_options.get(
+        "exclude_utilities"
+    ):
+        col_siccd = data_options["siccd"]
+        _require_column(data, col_siccd, "data_options['siccd']")
+
+        if filter_options.get("exclude_financials"):
+            keep = data[col_siccd].isna() | ~(
+                (data[col_siccd] >= 6000) & (data[col_siccd] <= 6799)
+            )
+            data = _filter_with_log(
+                data, keep, "exclude_financials", quiet
+            )
+
+        if filter_options.get("exclude_utilities"):
+            keep = data[col_siccd].isna() | ~(
+                (data[col_siccd] >= 4900) & (data[col_siccd] <= 4999)
+            )
+            data = _filter_with_log(
+                data, keep, "exclude_utilities", quiet
+            )
+
+    # min_stock_price
+    if filter_options.get("min_stock_price") is not None:
+        col_price = data_options["price"]
+        _require_column(data, col_price, "data_options['price']")
+        keep = data[col_price].notna() & (
+            data[col_price] >= filter_options["min_stock_price"]
+        )
+        data = _filter_with_log(data, keep, "min_stock_price", quiet)
+
+    # min_size_quantile
+    if filter_options.get("min_size_quantile") is not None:
+        col_mktcap_lag = data_options["mktcap_lag"]
+        col_date = data_options["date"]
+        col_exchange = data_options["exchange"]
+        _require_column(
+            data, col_mktcap_lag, "data_options['mktcap_lag']"
+        )
+        _require_column(data, col_date, "data_options['date']")
+        _require_column(
+            data,
+            col_exchange,
+            "data_options['exchange']",
+            info=(
+                "The size quantile cutoff is computed from NYSE stocks. "
+                "Set data_options['exchange'] to the correct column name."
+            ),
+        )
+
+        n_before = len(data)
+        size_threshold = filter_options["min_size_quantile"]
+        nyse_data = data[data[col_exchange] == "NYSE"]
+        size_cutoffs = (
+            nyse_data.groupby(col_date)[col_mktcap_lag]
+            .quantile(size_threshold)
+            .reset_index(name="_size_cutoff")
+        )
+
+        dates_in_data = set(data[col_date].unique())
+        dates_with_cutoff = set(size_cutoffs[col_date].unique())
+        dates_missing_cutoff = dates_in_data - dates_with_cutoff
+        if dates_missing_cutoff:
+            warnings.warn(
+                f"Filter 'min_size_quantile': "
+                f"{len(dates_missing_cutoff)} date(s) dropped because "
+                "no NYSE stocks are available to compute the size "
+                "quantile cutoff.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        data = data.merge(size_cutoffs, on=col_date, how="inner")
+        data = data[
+            data[col_mktcap_lag].notna()
+            & (data[col_mktcap_lag] >= data["_size_cutoff"])
+        ]
+        data = data.drop(columns="_size_cutoff")
+        n_dropped = n_before - len(data)
+        if not quiet and n_dropped > 0:
+            warnings.warn(
+                f"Filter 'min_size_quantile': removed {n_dropped} "
+                "observation(s).",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    # min_listing_age
+    if filter_options.get("min_listing_age") is not None:
+        col_listing_age = data_options["listing_age"]
+        _require_column(
+            data, col_listing_age, "data_options['listing_age']"
+        )
+        keep = data[col_listing_age].notna() & (
+            data[col_listing_age] >= filter_options["min_listing_age"]
+        )
+        data = _filter_with_log(data, keep, "min_listing_age", quiet)
+
+    # exclude_negative_book_equity
+    if filter_options.get("exclude_negative_book_equity"):
+        col_be = data_options["be"]
+        _require_column(data, col_be, "data_options['be']")
+        keep = data[col_be].notna() & (data[col_be] > 0)
+        data = _filter_with_log(
+            data, keep, "exclude_negative_book_equity", quiet
+        )
+
+    # exclude_negative_earnings
+    if filter_options.get("exclude_negative_earnings"):
+        col_earn = data_options["earnings"]
+        _require_column(data, col_earn, "data_options['earnings']")
+        keep = data[col_earn].notna() & (data[col_earn] > 0)
+        data = _filter_with_log(
+            data, keep, "exclude_negative_earnings", quiet
+        )
+
+    return data
