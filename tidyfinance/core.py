@@ -2015,3 +2015,178 @@ def compute_portfolio_returns(
         )
 
     return portfolio_returns
+
+
+def compute_long_short_returns(
+    data: pd.DataFrame,
+    direction: str = "top_minus_bottom",
+    data_options: dict = None,
+) -> pd.DataFrame:
+    """
+    Compute long-short returns from a portfolio-return panel.
+
+    For each date, identifies the lowest-numbered ('bottom') and
+    highest-numbered ('top') portfolios and computes the long-short
+    return as (top - bottom) or (bottom - top) depending on
+    'direction'. Dates with only one portfolio receive NaN.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Portfolio-return panel. Must contain the date, portfolio,
+        and one or more return columns whose names contain the
+        excess-return key from data_options.
+    direction : str, default 'top_minus_bottom'
+        Either 'top_minus_bottom' (long top, short bottom) or
+        'bottom_minus_top' (long bottom, short top).
+    data_options : dict, optional
+        Column-name mapping (see data_options). Uses defaults
+        {'date': 'date', 'ret_excess': 'ret_excess',
+        'portfolio': 'portfolio'} when None.
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per date with one column per return measurement
+        holding the long-short return.
+    """
+    if data_options is None:
+        data_options = {
+            "date": "date",
+            "ret_excess": "ret_excess",
+            "portfolio": "portfolio",
+        }
+
+    date_col = data_options["date"]
+    ret_excess_col = data_options["ret_excess"]
+    portfolio_col = data_options["portfolio"]
+
+    ret_cols = [c for c in data.columns if ret_excess_col in c]
+
+    work = data.copy()
+    work["_min_p"] = work.groupby(date_col)[portfolio_col].transform("min")
+    work["_max_p"] = work.groupby(date_col)[portfolio_col].transform("max")
+
+    single_portfolio = work["_min_p"] == work["_max_p"]
+    is_bottom = work[portfolio_col] == work["_min_p"]
+    is_top = work[portfolio_col] == work["_max_p"]
+    work["_leg"] = pd.Series(index=work.index, dtype="object")
+    work.loc[is_bottom & ~single_portfolio, "_leg"] = "bottom"
+    work.loc[is_top & ~single_portfolio, "_leg"] = "top"
+
+    legs_only = work[work["_leg"].isin(["bottom", "top"])].copy()
+
+    all_dates = (
+        pd.Series(data[date_col].unique(), name=date_col)
+        .sort_values()
+        .reset_index(drop=True)
+    )
+    result = pd.DataFrame({date_col: all_dates})
+
+    for ret_col in ret_cols:
+        pivoted = legs_only.pivot_table(
+            index=date_col,
+            columns="_leg",
+            values=ret_col,
+            aggfunc="first",
+        )
+        for leg in ("bottom", "top"):
+            if leg not in pivoted.columns:
+                pivoted[leg] = np.nan
+
+        if direction == "bottom_minus_top":
+            ls = pivoted["bottom"] - pivoted["top"]
+        else:
+            ls = pivoted["top"] - pivoted["bottom"]
+
+        ls_df = ls.rename(ret_col).reset_index()
+        result = result.merge(ls_df, on=date_col, how="left")
+
+    return result
+
+
+def compute_rolling_value(
+    data: pd.DataFrame,
+    f,
+    period: str = "month",
+    periods: int = 12,
+    min_obs: int = None,
+    data_options: dict = None,
+) -> np.ndarray:
+    """Apply a summary function over rolling calendar-period windows.
+
+    For each row at date d, takes the window of all rows whose date
+    falls in the same or one of the previous (periods - 1) calendar
+    periods. Drops NaN rows; if fewer than min_obs rows remain, the
+    result is NaN, otherwise applies f to the window data.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Input data with a datetime column named per data_options.
+    f : callable
+        Function applied to each window. Receives a DataFrame slice
+        (complete cases) and must return a single scalar.
+    period : str, default 'month'
+        Calendar period unit: 'month', 'quarter', or 'year'.
+    periods : int, default 12
+        Number of periods in the rolling window.
+    min_obs : int, optional
+        Minimum non-missing rows required per window. Defaults to
+        periods.
+    data_options : dict, optional
+        Column-name mapping (see data_options). Uses {'date': 'date'}
+        if None.
+
+    Returns
+    -------
+    np.ndarray
+        Numeric vector aligned with the rows of data.
+    """
+    if data_options is None:
+        data_options = {"date": "date"}
+    if min_obs is None:
+        min_obs = periods
+
+    date_col = data_options.get("date")
+
+    if not isinstance(date_col, str):
+        raise ValueError(
+            "'date' in data_options must be a single non-missing string."
+        )
+
+    if date_col not in data.columns:
+        raise ValueError(
+            f"'data' must contain a '{date_col}' column."
+        )
+
+    if not pd.api.types.is_datetime64_any_dtype(data[date_col]):
+        raise ValueError(
+            f"The '{date_col}' column must be of datetime dtype."
+        )
+
+    if not isinstance(period, str):
+        raise ValueError("'period' must be a single string.")
+
+    period_freq_map = {"month": "M", "quarter": "Q", "year": "Y"}
+    if period not in period_freq_map:
+        raise ValueError(
+            "'period' must be one of 'month', 'quarter', 'year'."
+        )
+
+    buckets = data[date_col].dt.to_period(period_freq_map[period])
+
+    n = len(data)
+    result = np.full(n, np.nan)
+
+    for i in range(n):
+        anchor_bucket = buckets.iloc[i]
+        start_bucket = anchor_bucket - (periods - 1)
+        in_window = (buckets >= start_bucket) & (
+            buckets <= anchor_bucket
+        )
+        window_data = data[in_window].dropna()
+        if len(window_data) >= min_obs:
+            result[i] = f(window_data)
+
+    return result
