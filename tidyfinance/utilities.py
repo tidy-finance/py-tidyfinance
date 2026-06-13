@@ -8,16 +8,15 @@ import numpy as np
 import pandas as pd
 import yaml
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, URL
 
 
 def get_wrds_connection(config_path: str = "config.yaml") -> object:
     """
-    Establish a connection to Wharton Research Data Services (WRDS) database.
+    Establish a connection to Wharton Research Data Services (WRDS).
 
-    The function retrieves WRDS credentials from environment variables or
-    a config.yaml file  and connects to the WRDS PostgreSQL database using
-    SQLAlchemy.
+    Retrieves WRDS credentials from environment variables or a config.yaml
+    file and connects to the WRDS PostgreSQL database using SQLAlchemy.
 
     Parameters
     ----------
@@ -29,13 +28,18 @@ def get_wrds_connection(config_path: str = "config.yaml") -> object:
         object: A connection object to interact with the WRDS database.
     """
     wrds_user, wrds_password = load_wrds_credentials(config_path)
-
+    url = URL.create(
+        drivername="postgresql+psycopg2",
+        username=wrds_user,
+        password=wrds_password,
+        host="wrds-pgdata.wharton.upenn.edu",
+        port=9737,
+        database="wrds",
+    )
     engine = create_engine(
-        (
-            f"postgresql+psycopg2://{wrds_user}:{wrds_password}"
-            "@wrds-pgdata.wharton.upenn.edu:9737/wrds"
-        ),
+        url,
         connect_args={"sslmode": "require"},
+        pool_pre_ping=True,
     )
     return engine.connect()
 

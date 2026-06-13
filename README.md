@@ -36,7 +36,7 @@ The function always requires a `domain` argument and depending on the domain typ
 ```python
 tf.download_data(
   domain="factors_ff",
-  dataset="F-F_Research_Data_5_Factors_2x3_daily",
+  dataset="Fama/French 5 Factors (2x3) [Daily]",
   start_date="2000-01-01",
   end_date="2020-12-31"
 )
