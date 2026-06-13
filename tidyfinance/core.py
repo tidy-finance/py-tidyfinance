@@ -5,6 +5,7 @@ import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
 import warnings
+import re
 
 from ._internal import (
     _to_offset,
@@ -2524,3 +2525,135 @@ def implement_portfolio_sort(
         data_options=data_options,
         quiet=quiet,
     )
+
+
+def estimate_model(
+    data: pd.DataFrame,
+    model: str,
+    min_obs: int = 1,
+    output="coefficients",
+):
+    """Estimate a linear model from a formula string.
+
+    Parses the formula, validates that independent variables exist in
+    the data, fits an OLS regression on the complete-case subset, and
+    returns the requested output(s).
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Data frame containing the dependent variable and one or more
+        independent variables referenced in the formula.
+    model : str
+        Formula string like 'y ~ x1 + x2 + x3' or 'y ~ x1 - 1' for
+        no-intercept models.
+    min_obs : int, default 1
+        Minimum number of complete-case observations required to fit
+        the model. Cross-sections below this threshold return NaN.
+    output : str or list of str, default 'coefficients'
+        One or more of 'coefficients', 'tstats', 'residuals'. If a
+        single string is given, the corresponding object is returned
+        directly. If a list is given, a dict is returned.
+
+    Returns
+    -------
+    pd.DataFrame, np.ndarray, or dict
+        Coefficients or tstats as a 1-row DataFrame with model term
+        names as columns. Residuals as a numeric vector aligned with
+        input rows (NaN for rows with missing data or insufficient
+        observations). If multiple outputs requested, a dict.
+    """
+    if isinstance(output, str):
+        output_list = [output]
+        return_multiple = False
+    else:
+        output_list = list(output)
+        return_multiple = len(output_list) > 1
+
+    valid_outputs = ("coefficients", "tstats", "residuals")
+    invalid = [o for o in output_list if o not in valid_outputs]
+    if invalid:
+        raise ValueError(
+            f"'output' must contain one or more of "
+            f"{list(valid_outputs)}, not {invalid}."
+        )
+
+    if "~" not in model:
+        raise ValueError("'model' must contain '~'.")
+    parts = model.split("~", 1)
+    dep_var = parts[0].strip()
+    rhs = parts[1].strip()
+    tokens = re.split(r"[\s+]+", rhs)
+    independent_vars = [
+        t for t in tokens if t and t not in ("-", "1")
+    ]
+
+    if "intercept" in independent_vars:
+        raise ValueError(
+            "None of the columns in 'model' may be called 'intercept'. "
+            "Please rename the column and try again."
+        )
+
+    missing_vars = [
+        v for v in independent_vars if v not in data.columns
+    ]
+    if missing_vars:
+        raise ValueError(
+            "The following independent variables are missing in the "
+            f"data: {', '.join(missing_vars)}."
+        )
+
+    model_vars = [dep_var] + independent_vars
+    complete = data[model_vars].notna().all(axis=1)
+    n_complete = int(complete.sum())
+
+    insufficient = (n_complete < min_obs) or (
+        n_complete <= len(independent_vars)
+    )
+
+    fit = None
+    if not insufficient:
+        try:
+            fit = smf.ols(model, data=data[complete]).fit()
+        except Exception:
+            insufficient = True
+
+    def to_df(series):
+        renamed = series.rename({"Intercept": "intercept"})
+        return pd.DataFrame(
+            [renamed.values], columns=list(renamed.index)
+        )
+
+    def na_df():
+        if len(independent_vars) == 0:
+            return np.nan
+        return pd.DataFrame(
+            [[np.nan] * len(independent_vars)],
+            columns=independent_vars,
+        )
+
+    result = {}
+
+    if "coefficients" in output_list:
+        if insufficient:
+            result["coefficients"] = na_df()
+        else:
+            result["coefficients"] = to_df(fit.params)
+
+    if "tstats" in output_list:
+        if insufficient:
+            result["tstats"] = na_df()
+        else:
+            result["tstats"] = to_df(fit.tvalues)
+
+    if "residuals" in output_list:
+        if insufficient:
+            result["residuals"] = np.full(len(data), np.nan)
+        else:
+            resid = np.full(len(data), np.nan)
+            resid[complete.values] = fit.resid.values
+            result["residuals"] = resid
+
+    if return_multiple:
+        return result
+    return result[output_list[0]]
