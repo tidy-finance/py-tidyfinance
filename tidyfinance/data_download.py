@@ -1373,6 +1373,15 @@ def _download_data_wrds_crsp(
     if version not in ["v1", "v2"]:
         raise ValueError("version must be 'v1' or 'v2'.")
 
+    if version == "v1" and pd.Timestamp(end_date) > pd.Timestamp(
+        "2024-12-31"
+    ):
+        raise ValueError(
+            "end_date must not be later than December 2024 for "
+            "version='v1'. CRSP discontinued the legacy version at the "
+            "end of 2024. Use version='v2' for more recent data."
+        )
+
     additional_columns_list = additional_columns or []
 
     if adjust_volume and dataset != "crsp_daily":

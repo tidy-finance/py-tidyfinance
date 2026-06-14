@@ -489,6 +489,70 @@ def test_daily_crsp_v1_handles_empty_batches():
     assert len(out) == 0
 
 
+def test_crsp_v1_end_date_past_2024_raises():
+    """v1 with end_date > 2024-12-31 must raise."""
+    with pytest.raises(ValueError, match="end_date"):
+        _download_data_wrds_crsp(
+            dataset="crsp_monthly",
+            end_date="2025-01-01",
+            version="v1",
+        )
+
+
+def test_crsp_v1_end_date_boundary_2024_12_31_is_allowed():
+    """v1 with end_date == 2024-12-31 must not raise the boundary error."""
+    # Mocks so the function runs to completion without WRDS access.
+    msf = pd.DataFrame(
+        {
+            "permno": [1],
+            "date": pd.to_datetime(["2024-12-31"]),
+            "ret": [0.01],
+            "shrout": [10],
+            "altprc": [5.0],
+            "cfacpr": [1.0],
+            "exchcd": [1],
+            "siccd": [5100],
+        }
+    )
+    msedelist = pd.DataFrame(
+        {
+            "permno": pd.Series([], dtype=int),
+            "dlstdt": pd.Series([], dtype="datetime64[ns]"),
+            "dlret": pd.Series([], dtype=float),
+            "dlstcd": pd.Series([], dtype=float),
+        }
+    )
+    first_crsp = pd.DataFrame(
+        {
+            "permno": [1],
+            "first_crsp_date": pd.to_datetime(["2000-01-15"]),
+        }
+    )
+    sql_results = iter([msf, msedelist, first_crsp])
+
+    def fake_read_sql_query(sql, con, **kw):
+        return next(sql_results)
+
+    with patch(
+        "tidyfinance.data_download.get_wrds_connection", return_value="con"
+    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
+        "tidyfinance.data_download.pd.read_sql_query",
+        side_effect=fake_read_sql_query,
+    ), patch(
+        "tidyfinance.data_download._download_data_risk_free",
+        return_value=_mock_risk_free_monthly(),
+    ):
+        # Should not raise the boundary error
+        out = _download_data_wrds_crsp(
+            dataset="crsp_monthly",
+            start_date="2020-01-01",
+            end_date="2024-12-31",
+            version="v1",
+        )
+
+    assert isinstance(out, pd.DataFrame)
+
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])
