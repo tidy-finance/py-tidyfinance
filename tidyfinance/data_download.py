@@ -1379,11 +1379,16 @@ def _download_data_wrds_crsp(
         raise ValueError("adjust_volume is only supported for 'crsp_daily'.")
 
     if adjust_volume:
-        required = {"dlyprc", "dlyvol", "dlyfacprc", "primaryexch"}
+        if version == "v1":
+            required = {"prc", "vol", "cfacpr", "exchcd"}
+            cols_str = "prc, vol, cfacpr, and exchcd"
+        else:
+            required = {"dlyprc", "dlyvol", "dlyfacprc", "primaryexch"}
+            cols_str = "dlyprc, dlyvol, primaryexch, and dlyfacprc"
         if not required.issubset(set(additional_columns_list)):
             raise ValueError(
-                "dlyprc, dlyvol, primaryexch, and dlyfacprc must be contained "
-                "in additional_columns for adjust_volume=True."
+                f"{cols_str} must be contained in additional_columns "
+                "for adjust_volume=True."
             )
 
     wrds_connection = get_wrds_connection()
@@ -1395,10 +1400,180 @@ def _download_data_wrds_crsp(
     try:
         if "crsp_monthly" in dataset:
             if version == "v1":
-                raise NotImplementedError(
-                    "version='v1' is not yet implemented."
+                # Query 1: msf joined with msenames (shrcd 10/11)
+                additional_cols_select = (
+                    ", " + ", ".join(
+                        f"msf.{c}" for c in additional_columns_list
+                    )
+                    if additional_columns_list
+                    else ""
                 )
-            if version == "v2":
+                msf_query = text(f"""
+                    SELECT msf.permno, msf.date, msf.ret, msf.shrout,
+                           msf.altprc, msf.cfacpr,
+                           msn.exchcd, msn.siccd
+                           {additional_cols_select}
+                    FROM crsp.msf AS msf
+                    INNER JOIN crsp.msenames AS msn
+                      ON msf.permno = msn.permno
+                      AND msf.date BETWEEN msn.namedt AND msn.nameendt
+                      AND msn.shrcd IN (10, 11)
+                    WHERE msf.date BETWEEN '{start_date}'
+                          AND '{end_date}'
+                """)
+                msf_data = pd.read_sql_query(
+                    msf_query,
+                    con=wrds_connection,
+                    parse_dates={"date"},
+                )
+
+                # Query 2: msedelist (delisting events)
+                msedelist_query = text(
+                    "SELECT permno, dlstdt, dlret, dlstcd "
+                    "FROM crsp.msedelist"
+                )
+                msedelist = pd.read_sql_query(
+                    msedelist_query,
+                    con=wrds_connection,
+                    parse_dates={"dlstdt"},
+                )
+
+                # Query 3: first_crsp_date per permno
+                first_date_query = text(
+                    "SELECT permno, MIN(namedt) AS first_crsp_date "
+                    "FROM crsp.msenames GROUP BY permno"
+                )
+                first_crsp_date = pd.read_sql_query(
+                    first_date_query,
+                    con=wrds_connection,
+                    parse_dates={"first_crsp_date"},
+                )
+
+                disconnect_connection(wrds_connection)
+
+                # calculation_date + month-floored date
+                crsp_monthly = msf_data.assign(
+                    calculation_date=lambda x: pd.to_datetime(x["date"]),
+                    date=lambda x: pd.to_datetime(x["date"])
+                    .dt.to_period("M")
+                    .dt.start_time,
+                    shrout=lambda x: x["shrout"] * 1000,
+                )
+
+                # Join delisting on (permno, month-floored dlstdt)
+                if len(msedelist) > 0:
+                    msedelist = msedelist.assign(
+                        date=lambda x: pd.to_datetime(x["dlstdt"])
+                        .dt.to_period("M")
+                        .dt.start_time
+                    )[["permno", "date", "dlret", "dlstcd"]]
+                    crsp_monthly = crsp_monthly.merge(
+                        msedelist, on=["permno", "date"], how="left"
+                    )
+                else:
+                    crsp_monthly["dlret"] = np.nan
+                    crsp_monthly["dlstcd"] = np.nan
+
+                # listing_age (months elapsed, clipped at 0)
+                crsp_monthly = crsp_monthly.merge(
+                    first_crsp_date, on="permno", how="left"
+                ).assign(
+                    listing_age=lambda df: (
+                        (df["date"].dt.year - df["first_crsp_date"].dt.year)
+                        * 12
+                        + (df["date"].dt.month - df["first_crsp_date"].dt.month)
+                        - (
+                            df["date"].dt.day
+                            < df["first_crsp_date"].dt.day
+                        ).astype(int)
+                    ).clip(lower=0)
+                ).drop(columns="first_crsp_date")
+
+                # mktcap (millions); zero -> NaN
+                crsp_monthly["mktcap"] = (
+                    (crsp_monthly["shrout"] * crsp_monthly["altprc"]).abs()
+                    / 1e6
+                )
+                crsp_monthly.loc[
+                    crsp_monthly["mktcap"] == 0, "mktcap"
+                ] = np.nan
+
+                # mktcap_lag via self-join shifted by 1 month
+                mktcap_lag_df = crsp_monthly.assign(
+                    date=lambda x: x["date"] + pd.DateOffset(months=1)
+                )[["permno", "date", "mktcap"]].rename(
+                    columns={"mktcap": "mktcap_lag"}
+                )
+                crsp_monthly = crsp_monthly.merge(
+                    mktcap_lag_df, on=["permno", "date"], how="left"
+                )
+
+                # exchange via exchcd (numeric, v1 codes)
+                exchange_map = {
+                    1: "NYSE", 31: "NYSE",
+                    2: "AMEX", 32: "AMEX",
+                    3: "NASDAQ", 33: "NASDAQ",
+                }
+                crsp_monthly["exchange"] = (
+                    crsp_monthly["exchcd"]
+                    .map(exchange_map)
+                    .fillna("Other")
+                )
+
+                # industry from SIC code
+                crsp_monthly["industry"] = (
+                    crsp_monthly["siccd"]
+                    .fillna(-1)
+                    .astype(int)
+                    .apply(_assign_industry)
+                )
+
+                # ret_adj from delisting code (Shumway-style)
+                def _compute_ret_adj_v1(row):
+                    if pd.isna(row["dlstcd"]):
+                        return row["ret"]
+                    if not pd.isna(row["dlret"]):
+                        return row["dlret"]
+                    code = row["dlstcd"]
+                    if code in (500, 520, 580, 584) or (
+                        551 <= code <= 574
+                    ):
+                        return -0.30
+                    if code == 100:
+                        return row["ret"]
+                    return -1.0
+
+                crsp_monthly["ret_adj"] = crsp_monthly.apply(
+                    _compute_ret_adj_v1, axis=1
+                )
+                crsp_monthly = crsp_monthly.drop(
+                    columns=["dlret", "dlstcd"]
+                )
+
+                # prc_adj = |altprc nullified-at-zero| / cfacpr
+                prc_zeroed = crsp_monthly["altprc"].replace(0, np.nan)
+                crsp_monthly["prc_adj"] = (
+                    prc_zeroed.abs() / crsp_monthly["cfacpr"]
+                ).replace([np.inf, -np.inf], np.nan)
+
+                # Merge risk-free and compute excess return
+                risk_free_monthly = _download_data_risk_free(
+                    start_date=start_date, end_date=end_date
+                )
+                crsp_monthly = (
+                    crsp_monthly.merge(
+                        risk_free_monthly, how="left", on="date"
+                    )
+                    .assign(
+                        ret_excess=lambda x: x["ret_adj"]
+                        - x["risk_free"]
+                    )
+                    .drop(columns="risk_free")
+                    .dropna(subset=["ret_excess", "mktcap"])
+                )
+
+                processed_data = crsp_monthly
+            elif version == "v2":
                 crsp_query = f"""
                     SELECT msf.permno,
                         date_trunc('month', msf.mthcaldt)::date AS date,
@@ -1484,10 +1659,218 @@ def _download_data_wrds_crsp(
                 processed_data = crsp_monthly
         elif "crsp_daily" in dataset:
             if version == "v1":
-                raise NotImplementedError(
-                    "version='v1' is not yet implemented."
+                # Distinct permnos from dsf within the date range
+                permnos_query = text(
+                    f"SELECT DISTINCT permno FROM crsp.dsf "
+                    f"WHERE date BETWEEN '{start_date}' "
+                    f"AND '{end_date}'"
                 )
-            if version == "v2":
+                permnos = pd.read_sql(
+                    permnos_query,
+                    con=wrds_connection,
+                    dtype={"permno": int},
+                )
+                permnos = list(permnos["permno"].astype(str))
+
+                if len(permnos) > 0:
+                    batches = int(
+                        np.ceil(len(permnos) / batch_size)
+                    )
+                    risk_free_daily = _download_data_risk_free(
+                        start_date=start_date,
+                        end_date=end_date,
+                        frequency="daily",
+                    )
+
+                    for j in range(1, batches + 1):
+                        permno_batch = permnos[
+                            ((j - 1) * batch_size):(
+                                min(j * batch_size, len(permnos))
+                            )
+                        ]
+                        permno_batch_str = ", ".join(
+                            f"'{p}'" for p in permno_batch
+                        )
+                        permno_in = f"({permno_batch_str})"
+
+                        dsf_query = text(f"""
+                            SELECT dsf.permno, dsf.date, dsf.ret
+                                {", " + additional_columns_sql if additional_columns_sql else ""}
+                            FROM crsp.dsf AS dsf
+                            INNER JOIN crsp.msenames AS msn
+                              ON dsf.permno = msn.permno
+                              AND dsf.date BETWEEN msn.namedt
+                                  AND msn.nameendt
+                              AND msn.shrcd IN (10, 11)
+                            WHERE dsf.permno IN {permno_in}
+                            AND dsf.date BETWEEN '{start_date}'
+                                AND '{end_date}'
+                        """)
+                        crsp_daily_sub = pd.read_sql_query(
+                            dsf_query,
+                            con=wrds_connection,
+                            parse_dates={"date"},
+                        ).dropna(subset=["permno", "date", "ret"])
+
+                        if crsp_daily_sub.empty:
+                            continue
+
+                        # Per-batch msedelist
+                        msedelist_query = text(
+                            "SELECT permno, dlstdt, dlret "
+                            "FROM crsp.msedelist "
+                            f"WHERE permno IN {permno_in}"
+                        )
+                        msedelist_sub = pd.read_sql_query(
+                            msedelist_query,
+                            con=wrds_connection,
+                            parse_dates={"dlstdt"},
+                        ).dropna()
+
+                        # Merge dsf with msedelist on (permno, date=dlstdt)
+                        if not msedelist_sub.empty:
+                            crsp_daily_sub = crsp_daily_sub.merge(
+                                msedelist_sub.rename(
+                                    columns={"dlstdt": "date"}
+                                ),
+                                on=["permno", "date"],
+                                how="left",
+                            )
+
+                            # Bind delisting-only rows that don't
+                            # match any dsf date
+                            matched_dates = crsp_daily_sub[
+                                crsp_daily_sub["dlret"].notna()
+                            ][["permno", "date"]].drop_duplicates()
+                            unmatched = msedelist_sub.merge(
+                                matched_dates.rename(
+                                    columns={"date": "dlstdt"}
+                                ),
+                                on=["permno", "dlstdt"],
+                                how="left",
+                                indicator=True,
+                            ).query("_merge == 'left_only'").drop(
+                                columns="_merge"
+                            )
+                            if not unmatched.empty:
+                                unmatched = unmatched.rename(
+                                    columns={"dlstdt": "date"}
+                                )
+                                for col in crsp_daily_sub.columns:
+                                    if col not in unmatched.columns:
+                                        unmatched[col] = np.nan
+                                unmatched = unmatched[
+                                    crsp_daily_sub.columns
+                                ]
+                                crsp_daily_sub = pd.concat(
+                                    [crsp_daily_sub, unmatched],
+                                    ignore_index=True,
+                                )
+
+                            # ret = dlret if not NaN
+                            crsp_daily_sub["ret"] = np.where(
+                                crsp_daily_sub["dlret"].notna(),
+                                crsp_daily_sub["dlret"],
+                                crsp_daily_sub["ret"],
+                            )
+                            crsp_daily_sub = crsp_daily_sub.drop(
+                                columns="dlret"
+                            )
+
+                            # Filter date <= permno's last delisting
+                            # date (or end_date if no delisting)
+                            permno_dlstdt = (
+                                msedelist_sub.groupby("permno")[
+                                    "dlstdt"
+                                ]
+                                .max()
+                                .reset_index()
+                                .rename(
+                                    columns={
+                                        "dlstdt": "_permno_dlstdt"
+                                    }
+                                )
+                            )
+                            crsp_daily_sub = crsp_daily_sub.merge(
+                                permno_dlstdt,
+                                on="permno",
+                                how="left",
+                            )
+                            crsp_daily_sub["_permno_dlstdt"] = (
+                                crsp_daily_sub["_permno_dlstdt"]
+                                .fillna(pd.Timestamp(end_date))
+                            )
+                            crsp_daily_sub = crsp_daily_sub[
+                                crsp_daily_sub["date"]
+                                <= crsp_daily_sub["_permno_dlstdt"]
+                            ].drop(columns="_permno_dlstdt")
+
+                        # Merge risk_free, compute ret_excess
+                        crsp_daily_sub = (
+                            crsp_daily_sub.merge(
+                                risk_free_daily,
+                                on="date",
+                                how="left",
+                            )
+                            .assign(
+                                ret_excess=lambda x: x["ret"]
+                                - x["risk_free"]
+                            )
+                            .drop(columns="risk_free")
+                        )
+
+                        crsp_data = pd.concat(
+                            [crsp_data, crsp_daily_sub]
+                        )
+
+                # Gao-Ritter volume adjustment for NASDAQ (v1: exchcd==3)
+                if adjust_volume and not crsp_data.empty:
+                    gr_date_1 = pd.Timestamp("2001-02-01")
+                    gr_date_2 = pd.Timestamp("2002-01-01")
+                    gr_date_3 = pd.Timestamp("2004-01-01")
+
+                    crsp_data = (
+                        crsp_data.sort_values(["permno", "date"])
+                        .assign(
+                            vol=lambda df: df["vol"].replace(
+                                -99, np.nan
+                            ),
+                            prc=lambda df: df["prc"].replace(
+                                0, np.nan
+                            ),
+                        )
+                        .assign(
+                            prc_adj=lambda df: (
+                                df["prc"].abs() / df["cfacpr"]
+                            ).replace([np.inf, -np.inf], np.nan)
+                        )
+                        .assign(
+                            vol_adj=lambda df: np.select(
+                                [
+                                    (df["exchcd"] == 3)
+                                    & (df["date"] < gr_date_1),
+                                    (df["exchcd"] == 3)
+                                    & (df["date"] >= gr_date_1)
+                                    & (df["date"] < gr_date_2),
+                                    (df["exchcd"] == 3)
+                                    & (df["date"] >= gr_date_2)
+                                    & (df["date"] < gr_date_3),
+                                    (df["exchcd"] == 3)
+                                    & (df["date"] >= gr_date_3),
+                                ],
+                                [
+                                    df["vol"] / 2.0,
+                                    df["vol"] / 1.8,
+                                    df["vol"] / 1.6,
+                                    df["vol"] / 1.0,
+                                ],
+                                default=df["vol"],
+                            )
+                        )
+                    )
+
+                processed_data = crsp_data
+            elif version == "v2":
                 permnos = pd.read_sql(
                     sql="SELECT DISTINCT permno FROM crsp.stksecurityinfohist",
                     con=wrds_connection,

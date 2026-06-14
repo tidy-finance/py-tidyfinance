@@ -67,6 +67,7 @@ def test_deprecated_type_inputs_are_translated_to_dataset():
                 _download_data_wrds_crsp(dataset="wrds_bad")
         assert seen["dataset"] == "bad"
 
+
 def _mock_monthly_query_result():
     return pd.DataFrame(
         {
@@ -279,6 +280,213 @@ def test_ccm_links_are_added_when_requested():
         )
 
     assert "gvkey" in out.columns
+
+
+def _mock_monthly_v1_msf():
+    """Mock crsp.msf + msenames join for v1."""
+    return pd.DataFrame(
+        {
+            "permno": [1, 1],
+            "date": pd.to_datetime(["2020-01-15", "2020-02-15"]),
+            "ret": [0.10, 0.20],
+            "shrout": [10, 10],
+            "altprc": [5.0, 5.5],
+            "cfacpr": [1.0, 1.0],
+            "exchcd": [1, 1],  # NYSE
+            "siccd": [5100, 5100],  # Wholesale
+        }
+    )
+
+
+def _mock_monthly_v1_msedelist():
+    """Mock crsp.msedelist — empty (no delistings)."""
+    return pd.DataFrame(
+        {
+            "permno": pd.Series([], dtype=int),
+            "dlstdt": pd.Series([], dtype="datetime64[ns]"),
+            "dlret": pd.Series([], dtype=float),
+            "dlstcd": pd.Series([], dtype=float),
+        }
+    )
+
+
+def _mock_monthly_v1_first_crsp_date():
+    """Mock first_crsp_date per permno."""
+    return pd.DataFrame(
+        {
+            "permno": [1],
+            "first_crsp_date": pd.to_datetime(["2000-01-15"]),
+        }
+    )
+
+
+def test_monthly_crsp_v1_is_processed():
+    """Test monthly CRSP v1 is processed."""
+    msf_data = _mock_monthly_v1_msf()
+    msedelist = _mock_monthly_v1_msedelist()
+    first_crsp_date = _mock_monthly_v1_first_crsp_date()
+
+    # Each call to pd.read_sql_query returns the next mock in sequence:
+    # 1) msf+msenames query, 2) msedelist, 3) first_crsp_date
+    sql_results = iter([msf_data, msedelist, first_crsp_date])
+
+    def fake_read_sql_query(sql, con, **kwargs):
+        return next(sql_results)
+
+    with patch(
+        "tidyfinance.data_download.get_wrds_connection", return_value="con"
+    ), patch(
+        "tidyfinance.data_download.disconnect_connection"
+    ), patch(
+        "tidyfinance.data_download.pd.read_sql_query",
+        side_effect=fake_read_sql_query,
+    ), patch(
+        "tidyfinance.data_download._download_data_risk_free",
+        return_value=_mock_risk_free_monthly(),
+    ):
+        out = _download_data_wrds_crsp(
+            dataset="crsp_monthly",
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+            version="v1",
+        )
+
+    assert isinstance(out, pd.DataFrame)
+    assert len(out) > 0
+    # Expected v1-specific columns
+    assert "mktcap" in out.columns
+    assert "exchange" in out.columns
+    assert "industry" in out.columns
+    assert "ret_adj" in out.columns
+    assert "prc_adj" in out.columns
+    assert "listing_age" in out.columns
+    assert "ret_excess" in out.columns
+    # Exchange mapping from exchcd=1 -> NYSE
+    assert (out["exchange"] == "NYSE").all()
+    # Industry from siccd=5100 -> Wholesale
+    assert (out["industry"] == "Wholesale").all()
+    # mktcap = |shrout * 1000 * altprc| / 1e6 = |10 * 1000 * 5| / 1e6 = 0.05
+    assert abs(out["mktcap"].iloc[0] - 0.05) < 1e-12
+
+
+def _mock_daily_v1_dsf():
+    """Mock crsp.dsf + msenames join for v1."""
+    return pd.DataFrame(
+        {
+            "permno": [1, 1, 1, 1, 2],
+            "date": pd.to_datetime(
+                [
+                    "2001-01-15",
+                    "2001-06-15",
+                    "2002-06-15",
+                    "2004-06-15",
+                    "2020-01-02",
+                ]
+            ),
+            "ret": [0.10, 0.20, 0.30, 0.40, 0.50],
+            "prc": [10.0, 12.0, 15.0, 20.0, 25.0],
+            "vol": [100, 200, 300, -99, 500],
+            "cfacpr": [1.0, 1.0, 1.0, 1.0, 1.0],
+            "exchcd": [3, 3, 3, 3, 1],  # NASDAQ, NASDAQ, NASDAQ, NASDAQ, NYSE
+        }
+    )
+
+
+def _mock_daily_v1_msedelist():
+    return pd.DataFrame(
+        {
+            "permno": pd.Series([], dtype=int),
+            "dlstdt": pd.Series([], dtype="datetime64[ns]"),
+            "dlret": pd.Series([], dtype=float),
+        }
+    )
+
+
+def _mock_daily_v1_permnos():
+    return pd.DataFrame({"permno": [1, 2]})
+
+
+def test_daily_crsp_v1_validates_and_adjusts_volume():
+    """Test daily CRSP v1 validates and adjusts volume."""
+    permnos = _mock_daily_v1_permnos()
+    dsf = _mock_daily_v1_dsf()
+    msedelist = _mock_daily_v1_msedelist()
+
+    sql_query_results = iter([dsf, msedelist])
+
+    def fake_read_sql_query(sql, con, **kw):
+        return next(sql_query_results)
+
+    with patch(
+        "tidyfinance.data_download.get_wrds_connection", return_value="con"
+    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
+        "tidyfinance.data_download.pd.read_sql", return_value=permnos
+    ), patch(
+        "tidyfinance.data_download.pd.read_sql_query",
+        side_effect=fake_read_sql_query,
+    ), patch(
+        "tidyfinance.data_download._download_data_risk_free",
+        return_value=_mock_risk_free_daily(),
+    ):
+        # Wrong adjust_volume columns -> error
+        with pytest.raises(ValueError, match="prc"):
+            _download_data_wrds_crsp(
+                dataset="crsp_daily",
+                start_date="2001-01-01",
+                end_date="2020-12-31",
+                version="v1",
+                adjust_volume=True,
+                additional_columns=["prc"],
+            )
+
+    # Reset iterators for the successful call
+    sql_query_results = iter([dsf, msedelist])
+
+    with patch(
+        "tidyfinance.data_download.get_wrds_connection", return_value="con"
+    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
+        "tidyfinance.data_download.pd.read_sql", return_value=permnos
+    ), patch(
+        "tidyfinance.data_download.pd.read_sql_query",
+        side_effect=fake_read_sql_query,
+    ), patch(
+        "tidyfinance.data_download._download_data_risk_free",
+        return_value=_mock_risk_free_daily(),
+    ):
+        out = _download_data_wrds_crsp(
+            dataset="crsp_daily",
+            start_date="2001-01-01",
+            end_date="2020-12-31",
+            version="v1",
+            adjust_volume=True,
+            additional_columns=["prc", "vol", "cfacpr", "exchcd"],
+            batch_size=500,
+        )
+
+    assert isinstance(out, pd.DataFrame)
+    assert "vol_adj" in out.columns
+    assert "prc_adj" in out.columns
+
+
+def test_daily_crsp_v1_handles_empty_batches():
+    """Test daily CRSP v1 handles empty batches."""
+    # No permnos -> processed_data stays empty
+    with patch(
+        "tidyfinance.data_download.get_wrds_connection", return_value="con"
+    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
+        "tidyfinance.data_download.pd.read_sql",
+        return_value=pd.DataFrame({"permno": []}),
+    ):
+        out = _download_data_wrds_crsp(
+            dataset="crsp_daily",
+            start_date="2001-01-01",
+            end_date="2020-12-31",
+            version="v1",
+            batch_size=1,
+        )
+
+    assert isinstance(out, pd.DataFrame)
+    assert len(out) == 0
 
 
 if __name__ == "__main__":
