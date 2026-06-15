@@ -370,14 +370,11 @@ def join_lagged_values(
 
         _check_new_col(result, "_orig_idx")
         result = result.assign(_orig_idx=np.arange(len(result)))
-        sort_keys_left = id_keys + [date_col]
-        sort_keys_right = id_keys + ["_lower"]
-        left_sorted = result.sort_values(
-            sort_keys_left, kind="mergesort"
-        )
-        right_sorted = tmp.sort_values(
-            sort_keys_right, kind="mergesort"
-        )
+        # pd.merge_asof requires the merge key (date) sorted globally
+        # in ascending order. The by= argument handles the grouping
+        # itself, so we only sort by the merge key.
+        left_sorted = result.sort_values(date_col, kind="mergesort")
+        right_sorted = tmp.sort_values("_lower", kind="mergesort")
 
         merged = pd.merge_asof(
             left_sorted,
