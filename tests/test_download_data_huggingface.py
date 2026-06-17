@@ -380,8 +380,11 @@ def test_downloads_returns_and_joins_grid_metadata():
         "tidyfinance.data_download._get_available_huggingface_files",
         return_value=available,
     ), patch(
-        "tidyfinance.data_download.pd.read_parquet",
-        side_effect=fake_read_parquet,
+        "tidyfinance.data_download._download_factor_library_grid",
+        return_value=grid,
+    ), patch(
+        "tidyfinance.data_download._fetch_parquet_url",
+        return_value=mock_returns,
     ):
         result = _download_factor_library_ids([1])
 

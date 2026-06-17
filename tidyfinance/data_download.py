@@ -77,6 +77,8 @@ _FACTOR_LIBRARY_SUPPORTED_FILTERS = (
     *_FACTOR_LIBRARY_DEFAULTS.keys(),
 )
 
+_hf_session = requests.Session()
+
 # %% functions
 
 
@@ -2593,6 +2595,27 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
     return grid["id"].tolist()
 
 
+def _fetch_parquet_url(url, retries=5, backoff=2.0):
+    """Fetch a parquet file via a reused curl_cffi session with retry."""
+    headers = {}
+    token = os.getenv("HF_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    last_err = None
+    for attempt in range(retries):
+        try:
+            r = _hf_session.get(url, headers=headers, timeout=120)
+            r.raise_for_status()
+            return pd.read_parquet(io.BytesIO(r.content))
+        except Exception as e:
+            last_err = e
+            if attempt < retries - 1:
+                time.sleep(backoff * (2 ** attempt))
+    raise ConnectionError(
+        f"Failed to download {url} after {retries} attempts: {last_err}"
+    ) from last_err
+
+
 def _download_factor_library_ids(ids: list) -> pd.DataFrame:
     """
     Download factor-library returns for a list of portfolio IDs.
@@ -2673,7 +2696,7 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
     unique_paths = id_grid["path"].dropna().unique()
     returns = pd.concat(
         [
-            pd.read_parquet(
+            _fetch_parquet_url(
                 f"https://huggingface.co/datasets/{organization}"
                 f"/{dataset_name}/resolve/main/{path}"
             )
