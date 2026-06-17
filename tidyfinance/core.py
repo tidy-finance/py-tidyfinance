@@ -220,6 +220,14 @@ def _window_lag_join(
     left_sorted = result.sort_values("_upper", kind="mergesort")
     right_sorted = lagged.sort_values("_src_date", kind="mergesort")
 
+    # Align datetime precision (e.g. ms vs us) for merge_asof.
+    left_sorted["_upper"] = pd.to_datetime(left_sorted["_upper"]).astype(
+        "datetime64[ns]"
+    )
+    right_sorted["_src_date"] = pd.to_datetime(
+        right_sorted["_src_date"]
+    ).astype("datetime64[ns]")
+
     merged = pd.merge_asof(
         left_sorted,
         right_sorted,
@@ -375,6 +383,14 @@ def join_lagged_values(
         # itself, so we only sort by the merge key.
         left_sorted = result.sort_values(date_col, kind="mergesort")
         right_sorted = tmp.sort_values("_lower", kind="mergesort")
+
+        # Align datetime precision (e.g. ms vs us) for merge_asof.
+        left_sorted[date_col] = pd.to_datetime(left_sorted[date_col]).astype(
+            "datetime64[ns]"
+        )
+        right_sorted["_lower"] = pd.to_datetime(right_sorted["_lower"]).astype(
+            "datetime64[ns]"
+        )
 
         merged = pd.merge_asof(
             left_sorted,
