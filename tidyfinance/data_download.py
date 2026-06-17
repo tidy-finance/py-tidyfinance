@@ -2141,8 +2141,22 @@ def _download_data_wrds_compustat(
         )
 
     wrds_connection = get_wrds_connection()
-    extra_annual = [c for c in (additional_columns or []) if c != "curcd"]
-    extra_quarterly = [c for c in (additional_columns or []) if c != "curcdq"]
+    _base_annual_cols = {
+        "gvkey", "datadate", "seq", "ceq", "at", "lt", "txditc", "txdb",
+        "itcb", "pstkrv", "pstkl", "pstk", "capx", "oancf", "sale",
+        "cogs", "xint", "xsga", "ib", "curcd",
+    }
+    _base_quarterly_cols = {
+        "gvkey", "datadate", "rdq", "fqtr", "fyearq", "atq", "ceqq", "curcdq",
+    }
+    extra_annual = [
+        c for c in (additional_columns or [])
+        if c != "curcd" and c not in _base_annual_cols
+    ]
+    extra_quarterly = [
+        c for c in (additional_columns or [])
+        if c != "curcdq" and c not in _base_quarterly_cols
+    ]
     additional_columns_annual = ", ".join(extra_annual) if extra_annual else ""
     additional_columns_quarterly = (
         ", ".join(extra_quarterly) if extra_quarterly else ""
