@@ -974,7 +974,7 @@ def create_summary_statistics(
             .rename(columns={"index": "variable"})
         )
 
-    return summary_df.round(3)
+    return summary_df
 
 
 def estimate_betas(
@@ -1104,7 +1104,7 @@ def estimate_fama_macbeth(
         .rename(columns={0: "t_statistic"})
     )
 
-    result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor").round(3)
+    result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor")
 
     return result_df
 
