@@ -2742,10 +2742,25 @@ def _download_data_huggingface_factor_library(
         resolved_ids = _filter_factor_library_grid(fill_all=fill_all, **filters)
         result = _download_factor_library_ids(resolved_ids)
 
+    # Normalize the date column to proper datetime64 so comparisons
+    # work regardless of whether the parquet stored dates as
+    # datetime.date, pd.Timestamp, or tz-aware datetime.
+    if start_date is not None or end_date is not None:
+        result = result.copy()
+        result["date"] = pd.to_datetime(result["date"])
+        if getattr(result["date"].dt, "tz", None) is not None:
+            result["date"] = result["date"].dt.tz_localize(None)
+
     if start_date is not None:
-        result = result[result["date"] >= pd.to_datetime(start_date)]
+        start_ts = pd.to_datetime(start_date)
+        if getattr(start_ts, "tz", None) is not None:
+            start_ts = start_ts.tz_localize(None)
+        result = result[result["date"] >= start_ts]
     if end_date is not None:
-        result = result[result["date"] <= pd.to_datetime(end_date)]
+        end_ts = pd.to_datetime(end_date)
+        if getattr(end_ts, "tz", None) is not None:
+            end_ts = end_ts.tz_localize(None)
+        result = result[result["date"] <= end_ts]
     if start_date is not None or end_date is not None:
         result = result.reset_index(drop=True)
 
