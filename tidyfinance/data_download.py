@@ -9,6 +9,7 @@ import time
 import warnings
 import zipfile
 from datetime import date
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pandas as pd
@@ -2694,16 +2695,19 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
         )
 
     unique_paths = id_grid["path"].dropna().unique()
-    returns = pd.concat(
-        [
-            _fetch_parquet_url(
-                f"https://huggingface.co/datasets/{organization}"
-                f"/{dataset_name}/resolve/main/{path}"
-            )
-            for path in unique_paths
-        ],
-        ignore_index=True,
-    )
+
+    def _make_url(p):
+        return (
+            f"https://huggingface.co/datasets/{organization}"
+            f"/{dataset_name}/resolve/main/{p}"
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        frames = list(ex.map(_fetch_parquet_url,
+                             [_make_url(p) for p in unique_paths])
+                      )
+
+    returns = pd.concat(frames, ignore_index=True)
 
     meta_cols = [c for c in id_grid.columns if c not in ("path", "size")]
     return returns.merge(
