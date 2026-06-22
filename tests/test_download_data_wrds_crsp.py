@@ -173,6 +173,16 @@ def test_monthly_crsp_v2_is_processed():
     assert isinstance(out, pd.DataFrame)
     assert "mthvol" in out.columns
     assert "mktcap" in out.columns
+    # Column order must match r-tidyfinance's download_data_wrds_crsp (v2):
+    # ..., siccd, <additional_columns>, listing_age, mktcap, mktcap_lag, ...
+    # In particular listing_age precedes mktcap (regression test for the
+    # swapped columns 9-10 reported in issue #36).
+    assert list(out.columns) == [
+        "permno", "date", "calculation_date", "ret", "shrout", "prc",
+        "primaryexch", "siccd", "mthvol", "listing_age", "mktcap",
+        "mktcap_lag", "exchange", "industry", "ret_excess",
+    ]
+    assert out.columns.get_loc("listing_age") < out.columns.get_loc("mktcap")
 
 
 def test_daily_crsp_v2_validates_and_adjusts_volume():
