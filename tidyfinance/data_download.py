@@ -1629,8 +1629,9 @@ def _download_data_wrds_crsp(
                         },
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
-                    .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                    # listing_age is assigned before mktcap so the output
+                    # column order matches r-tidyfinance (..., siccd,
+                    # listing_age, mktcap, mktcap_lag, ...).
                     .assign(
                         listing_age=lambda df: (
                             (df["date"].dt.year - df["first_crsp_date"].dt.year)
@@ -1644,6 +1645,8 @@ def _download_data_wrds_crsp(
                             ).astype(int)
                         ).clip(lower=0)
                     )
+                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
+                    .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
                     .drop(columns=["first_crsp_date"])
                 )
 
