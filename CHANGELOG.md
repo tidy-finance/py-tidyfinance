@@ -34,3 +34,7 @@
 ## v0.2.6 (2026-04-02)
 
 - Added support for Hugging Face datasets via `domain="tidyfinance"`, including `high_frequency_sp500` and `factor_library`
+
+## Unreleased
+
+- **Breaking (CRSP):** the monthly CRSP price column returned by `download_data(domain="wrds", dataset="crsp_monthly")` is now named `prc` (was `altprc`), aligning with r-tidyfinance and both book editions. The value is unchanged — it is `mthprc` from the CRSP v2 monthly stock file; `altprc` was the legacy (v1) column name and was semantically stale for v2 downloads. Update any downstream code that referenced `altprc` (including the dependent `mktcap` computation).
