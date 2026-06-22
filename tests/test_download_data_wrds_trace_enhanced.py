@@ -14,6 +14,7 @@ sys.path.insert(
 from tidyfinance.data_download import (  # noqa: E402
     _download_data_wrds_trace_enhanced,
 )
+from tidyfinance.utilities import process_trace_data  # noqa: E402
 
 
 def test_download_data_wrds_trace_enhanced_validates_cusips():
@@ -101,6 +102,57 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
     assert expected_vols.issubset(actual_vols) or actual_vols.issubset(
         expected_vols
     )
+
+
+def test_process_trace_data_uses_2012_02_06_regime_cutoff():
+    """Trades reported in the Feb 6 - Jun 2, 2012 window are cleaned under
+    the post-2012 regime.
+
+    The Dick-Nielsen (2014) regime cutoff is 2012-02-06. A transposed cutoff
+    (2012-06-02) would misclassify the entire Feb 6 - Jun 2, 2012 window as
+    pre-2012, where the post-2012 cancellation logic (trc_st == 'X') is not
+    applied. This is a regression test for that transposition.
+    """
+    d = pd.Timestamp("2012-04-01")  # inside [2012-02-06, 2012-06-02)
+
+    def row(msg, vol, status):
+        return {
+            "cusip_id": "00101JAH9",
+            "msg_seq_nb": msg,
+            "orig_msg_seq_nb": None,
+            "entrd_vol_qt": vol,
+            "rptd_pr": 99,
+            "yld_pt": 4,
+            "rpt_side_cd": "S",
+            "cntra_mp_id": "C",
+            "trd_exctn_dt": d,
+            "trd_exctn_tm": "10:00:00",
+            "trd_rpt_dt": d,
+            "trd_rpt_tm": "10:01:00",
+            "trc_st": status,
+            "asof_cd": "",
+            "wis_fl": "N",
+            "days_to_sttl_ct": 1,
+            "stlmnt_dt": d + pd.Timedelta(days=1),
+            "spcl_trd_fl": "",
+        }
+
+    trace = pd.DataFrame(
+        [
+            row(10, 100, "T"),  # trade, cancelled by the X below (post regime)
+            row(10, 100, "X"),  # post-2012 cancellation of msg 10
+            row(11, 200, "T"),  # untouched control trade
+        ]
+    )
+
+    out = process_trace_data(trace)
+    vols = set(out["entrd_vol_qt"].tolist())
+
+    # Post-2012 regime: the X cancels the trade -> 100 removed, 200 kept.
+    # With the transposed cutoff this window was treated as pre-2012, the
+    # X cancellation was ignored, and volume 100 survived.
+    assert 200 in vols
+    assert 100 not in vols
 
 
 if __name__ == "__main__":

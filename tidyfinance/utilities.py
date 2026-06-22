@@ -288,17 +288,25 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
         pd.DataFrame: The cleaned and processed TRACE data.
+
+    Notes
+    -----
+    Trades are cleaned under two regimes split by the date the enhanced
+    TRACE message-status format changed (``2012-02-06``; see Dick-Nielsen,
+    2014). Trades reported on or after this date use the post-2012 logic and
+    earlier trades the pre-2012 logic. This matches the cutoff used by the
+    R edition (``download_data_wrds_trace_enhanced`` in r-tidyfinance).
     """
-    # Post 2012-06-02
+    # Post 2012-02-06
     ## Trades (trc_st = T) and correction (trc_st = R)
     trace_post_TR = trace_all.query("trc_st in ['T', 'R']").query(
-        "trd_rpt_dt >= '2012-06-02'"
+        "trd_rpt_dt >= '2012-02-06'"
     )
 
     # Cancellations (trc_st = X) and correction cancellations (trc_st = C)
     trace_post_XC = (
         trace_all.query("trc_st in ['X', 'C']")
-        .query("trd_rpt_dt >= '2012-06-02'")
+        .query("trd_rpt_dt >= '2012-02-06'")
         .get(
             [
                 "cusip_id",
@@ -324,7 +332,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     # Reversals (trc_st = Y)
     trace_post_Y = (
         trace_all.query("trc_st == 'Y'")
-        .query("trd_rpt_dt >= '2012-06-02'")
+        .query("trd_rpt_dt >= '2012-02-06'")
         .get(
             [
                 "cusip_id",
@@ -349,15 +357,15 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         .drop(columns="drop")
     )
 
-    # Enhanced TRACE: Pre 06-02-2012
-    # Pre 06-02-12
+    # Enhanced TRACE: Pre 2012-02-06
+    # Pre 2012-02-06
     ## Trades (trc_st = T)
-    trace_pre_T = trace_all.query("trd_rpt_dt < '2012-06-02'")
+    trace_pre_T = trace_all.query("trd_rpt_dt < '2012-02-06'")
 
     # Cancellations (trc_st = C)
     trace_pre_C = (
         trace_all.query("trc_st == 'C'")
-        .query("trd_rpt_dt < '2012-06-02'")
+        .query("trd_rpt_dt < '2012-02-06'")
         .get(
             [
                 "cusip_id",
@@ -384,7 +392,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
     # Corrections (trc_st = W)
     trace_pre_W = trace_all.query("trc_st == 'W'").query(
-        "trd_rpt_dt < '2012-06-02'"
+        "trd_rpt_dt < '2012-02-06'"
     )
 
     # Implement corrections in a loop
