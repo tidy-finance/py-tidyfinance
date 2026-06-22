@@ -293,11 +293,13 @@ def test_estimate_fama_macbeth_newey_west_matches_r() -> None:
     )
     t = out.set_index("factor")["t_statistic"].to_dict()
     rp = out.set_index("factor")["risk_premium"].to_dict()
-    assert t["Intercept"] == pytest.approx(-0.792, abs=1e-9)
-    assert t["beta"] == pytest.approx(2.301, abs=1e-9)
-    assert t["bm"] == pytest.approx(1.005, abs=1e-9)
-    assert t["size"] == pytest.approx(0.887, abs=1e-9)
-    assert rp["beta"] == pytest.approx(0.007, abs=1e-9)
+    # Reference values are rounded to 3 decimals, so compare within half a
+    # unit in the last place (abs=5e-4).
+    assert t["Intercept"] == pytest.approx(-0.792, abs=5e-4)
+    assert t["beta"] == pytest.approx(2.301, abs=5e-4)
+    assert t["bm"] == pytest.approx(1.005, abs=5e-4)
+    assert t["size"] == pytest.approx(0.887, abs=5e-4)
+    assert rp["beta"] == pytest.approx(0.007, abs=5e-4)
 
 
 def test_estimate_fama_macbeth_maxlags_deprecated() -> None:
