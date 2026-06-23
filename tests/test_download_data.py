@@ -40,7 +40,7 @@ def test_download_data_column_ordering():
 
 
 def test_download_data_requires_domain():
-    """Raise when neither `domain` nor legacy `type` is supplied."""
+    """Raise when neither 'domain' nor legacy 'type' is supplied."""
     with pytest.raises(ValueError, match="'domain' is required"):
         download_data()
 
@@ -52,7 +52,7 @@ def test_download_data_rejects_unsupported_domain():
 
 
 def test_download_data_legacy_type_kwarg_warns():
-    """Emit DeprecationWarning when `type=` is used and translate it."""
+    """Emit DeprecationWarning when 'type=' is used and translate it."""
     with patch(
         "tidyfinance.data_download._download_data_factors_ff",
         return_value="sentinel",
@@ -63,7 +63,7 @@ def test_download_data_legacy_type_kwarg_warns():
 
 
 def test_download_data_legacy_type_as_domain_warns():
-    """Emit DeprecationWarning when a legacy type is passed as `domain`."""
+    """Emit DeprecationWarning when a legacy type is passed as 'domain'."""
     with patch(
         "tidyfinance.data_download._download_data_factors_ff",
         return_value="sentinel",

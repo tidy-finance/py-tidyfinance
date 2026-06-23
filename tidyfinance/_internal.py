@@ -223,3 +223,41 @@ def _check_new_col(data: pd.DataFrame, names) -> None:
             "this operation but already exist in the input. Rename or "
             "drop them first."
         )
+
+
+def _validate_column_name(value, arg: str, description: str) -> None:
+    """Raise ValueError if value is not a single non-empty string."""
+    if not isinstance(value, str):
+        raise ValueError(
+            f"'{arg}' must be a string indicating the column name "
+            f"for the {description} variable."
+        )
+
+
+def _validate_flag(value, arg: str, message: str | None = None) -> None:
+    """Raise ValueError if value is not a single bool."""
+    if not isinstance(value, bool):
+        if message is None:
+            message = f"'{arg}' must be a single boolean."
+        raise ValueError(message)
+
+
+def _validate_optional_number(
+    value,
+    message: str,
+    min: float = float("-inf"),
+    max: float = float("inf"),
+    min_strict: bool = False,
+    max_strict: bool = False,
+) -> None:
+    """Raise ValueError unless value is None or a single number in bounds."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(message)
+    if value != value:  # NaN check
+        raise ValueError(message)
+    lower_ok = (value > min) if min_strict else (value >= min)
+    upper_ok = (value < max) if max_strict else (value <= max)
+    if not (lower_ok and upper_ok):
+        raise ValueError(message)

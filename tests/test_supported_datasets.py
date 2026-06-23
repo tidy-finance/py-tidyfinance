@@ -1,4 +1,4 @@
-"""Tests for ``tidyfinance.supported_datasets``."""
+"""Tests for ''tidyfinance.supported_datasets''."""
 
 from __future__ import annotations
 
@@ -207,7 +207,7 @@ def test_is_legacy_type_true_for_wrds_type():
 
 
 def test_is_legacy_type_false_for_tidyfinance_other_type():
-    # `risk_free` is in OTHER with domain == "tidyfinance" and must NOT be
+    # 'risk_free' is in OTHER with domain == "tidyfinance" and must NOT be
     # treated as a legacy type.
     assert _is_legacy_type("risk_free") is False
 
