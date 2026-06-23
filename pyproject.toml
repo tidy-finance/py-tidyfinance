@@ -16,7 +16,6 @@ dependencies = [
     "pandas>=2.2.0",
     "numpy>=1.26.0",
     "sqlalchemy>=2.0.21",
-    "pyyaml>=6.0.2",
     "statsmodels>=0.14.0",
     "requests>=2.32.4",
     "pyarrow>=19.0.1",
