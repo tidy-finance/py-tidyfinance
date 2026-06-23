@@ -130,36 +130,85 @@ def download_data(
     **kwargs,
 ) -> pd.DataFrame:
     """
-    Download and process data based on the specified domain and dataset.
+    Download and process data based on domain and dataset.
+
+    Downloads and processes data based on the specified domain (e.g.,
+    Fama-French factors, Global Q factors, or macro predictors), dataset,
+    and date range. The function checks whether the specified domain is
+    supported and then delegates to the appropriate function for
+    downloading and processing the data.
 
     Parameters
     ----------
     domain : str
-        The domain of the dataset to download (e.g., "famafrench",
-        "globalq", "macro_predictors", "wrds", "constituents", "fred",
-        "stock_prices", "osap").
+        The domain of the dataset to download. Supported values are
+        'famafrench', 'globalq', 'macro_predictors', 'wrds', 'pseudo',
+        'constituents', 'fred', 'stock_prices', 'osap', and
+        'tidyfinance'. Use 'pseudo' to obtain pseudo data with the same
+        schema as 'wrds' for testing or rendering without a WRDS
+        subscription.
     dataset : str, optional
-        The specific dataset within the domain to download.
+        The specific dataset to download within the domain.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        or a subset is returned, depending on the dataset type.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        or a subset is returned, depending on the dataset type.
     type : str, optional
-        Deprecated. Use domain and dataset instead. If provided, a
+        Deprecated. Use 'domain' and 'dataset' instead. If provided, a
         DeprecationWarning is emitted and the legacy type is
-        translated to a (domain, dataset) pair via
-        list_supported_datasets().
+        translated to a ('domain', 'dataset') pair via
+        'list_supported_datasets'.
     **kwargs
-        Additional arguments passed to the domain-specific download
-        function.
+        Additional arguments passed to specific download functions
+        depending on 'domain'. For instance, if 'domain' is
+        'constituents', arguments are passed to
+        '_download_data_constituents'. If 'domain' is 'tidyfinance' and
+        'dataset' is 'factor_library', arguments are either filter
+        inputs (e.g., 'sorting_variable', 'rebalancing', 'fill_all') or
+        an explicit 'ids' vector that bypasses the grid filter and
+        downloads the specified portfolios directly via
+        '_download_factor_library_ids'; see
+        '_download_data_huggingface' for details.
 
     Returns
     -------
     pd.DataFrame
-        A data frame with processed data, including dates and relevant
-        financial metrics, filtered by the specified date range.
+        A data frame with processed data, including dates and the
+        relevant financial metrics, filtered by the specified date
+        range.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data
+    >>> download_data(
+    ...     'famafrench',
+    ...     'Fama/French 5 Factors (2x3) [Daily]',
+    ...     '2000-01-01',
+    ...     '2020-12-31',
+    ... )
+    >>> download_data('macro_predictors', 'monthly', '2000-01-01', '2020-12-31')
+    >>> download_data('constituents', index='DAX')
+    >>> download_data('fred', series=['GDP', 'CPIAUCNS'])
+    >>> download_data('stock_prices', symbols=['AAPL', 'MSFT'])
+    >>> download_data('tidyfinance', 'risk_free', '2020-01-01', '2020-12-31')
+    >>> download_data(
+    ...     'tidyfinance',
+    ...     'high_frequency_sp500',
+    ...     '2007-07-26',
+    ...     '2007-07-27',
+    ... )
+    >>> download_data(
+    ...     'tidyfinance',
+    ...     'factor_library',
+    ...     sorting_variable='52w',
+    ...     rebalancing='annual',
+    ... )
+    >>> download_data('tidyfinance', 'factor_library', ids=[1, 2, 3])
+    >>> download_data('tidyfinance', 'factor_library_grid')
     """
     if type is not None:
         warnings.warn(
@@ -343,25 +392,34 @@ def _download_data_factors_ff(
     Download and process Fama-French factor data.
 
     Downloads and processes Fama-French factor data based on the
-    specified dataset name and date range. It processes the raw data
-    into a structured format, including date conversion, scaling factor
+    specified dataset name and date range. The data is downloaded
+    directly from Kenneth French's data library and processed into a
+    structured format, including date conversion, scaling of factor
     values, and filtering by the specified date range.
+
+    If there are multiple tables in the raw Fama-French data (e.g.,
+    value-weighted and equal-weighted returns), the function only
+    returns the first table because these are the most popular. Download
+    the source ZIP archive directly if you need less commonly used
+    tables.
 
     Parameters
     ----------
     dataset : str
-        The name of the Fama-French dataset to download
-        (e.g., "Fama/French 3 Factors").
+        The name of the Fama-French dataset to download (e.g.,
+        'Fama/French 3 Factors').
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
     type : str, optional
         Deprecated. Use 'dataset' instead. If supplied, the value is
-        translated to a dataset_name via list_supported_datasets and a
-        DeprecationWarning is emitted.
+        translated to a dataset name via 'list_supported_datasets' and
+        a DeprecationWarning is emitted.
 
     Returns
     -------
@@ -369,6 +427,30 @@ def _download_data_factors_ff(
         A data frame with processed factor data, including the date,
         risk-free rate, market excess return, and other factors,
         filtered by the specified date range.
+
+    References
+    ----------
+    Fama, E. F., and French, K. R. (1993). Common risk factors in the
+    returns on stocks and bonds. Journal of Financial Economics,
+    33(1), 3-56. https://doi.org/10.1016/0304-405X(93)90023-5
+
+    Fama, E. F., and French, K. R. (2015). A five-factor asset pricing
+    model. Journal of Financial Economics, 116(1), 1-22.
+    https://doi.org/10.1016/j.jfineco.2014.10.010
+
+    Carhart, M. M. (1997). On persistence in mutual fund performance.
+    Journal of Finance, 52(1), 57-82.
+    https://doi.org/10.1111/j.1540-6261.1997.tb03808.x
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_factors_ff
+    >>> download_data_factors_ff(
+    ...     'Fama/French 3 Factors', '2000-01-01', '2020-12-31'
+    ... )
+    >>> download_data_factors_ff(
+    ...     '10 Industry Portfolios', '2000-01-01', '2020-12-31'
+    ... )
     """
     if type is not None:
         warnings.warn(
@@ -449,21 +531,30 @@ def _download_data_factors_q(
     """
     Download and process Global Q factor data.
 
+    Downloads and processes Global Q factor data based on the specified
+    dataset, date range, and source URL. The processing includes date
+    conversion, renaming variables to a standardized format, scaling
+    factor values, and filtering by the specified date range.
+
     Parameters
     ----------
     dataset : str
-        The name of the dataset to download (e.g., "q5_factors_daily",
-        "q5_factors_monthly"). The year suffix is added automatically.
+        The name of the dataset to download (e.g.,
+        'q5_factors_daily_2023', 'q5_factors_monthly_2023'). When the
+        year suffix is omitted the most recent vintage is appended
+        automatically.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
     type : str, optional
         Deprecated. Use 'dataset' instead. If supplied, the value is
-        translated to a dataset_name via list_supported_datasets and a
-        DeprecationWarning is emitted.
+        translated to a dataset name via 'list_supported_datasets' and
+        a DeprecationWarning is emitted.
     url : str, optional
         The base URL from which to download the dataset files.
 
@@ -473,6 +564,14 @@ def _download_data_factors_q(
         A data frame with processed factor data, including the date,
         risk-free rate, market excess return, and other factors,
         filtered by the specified date range.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_factors_q
+    >>> download_data_factors_q(
+    ...     'q5_factors_daily_2024', '2020-01-01', '2020-12-31'
+    ... )
+    >>> download_data_factors_q('q5_factors_annual_2024')
     """
     if type is not None:
         warnings.warn(
@@ -568,32 +667,57 @@ def _download_data_macro_predictors(
     sheet_id: str = "1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG",
 ) -> pd.DataFrame:
     """
-    Download and process macroeconomic predictor data.
+    Download and process macro predictor data.
+
+    Downloads and processes macroeconomic predictor data based on the
+    specified dataset (monthly, quarterly, or annual), date range, and
+    source URL. The function downloads the data from a Google Sheets
+    export link and processes the raw data into a structured format,
+    calculating additional financial metrics and filtering by the
+    specified date range.
 
     Parameters
     ----------
     dataset : str
-        The dataset to download. Accepts "monthly", "quarterly", or
-        "annual".
+        The dataset to download. Accepts 'monthly', 'quarterly', or
+        'annual'.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
     type : str, optional
         Deprecated. Use 'dataset' instead. If supplied, a leading
         'macro_predictors_' prefix is stripped (e.g.,
         'macro_predictors_monthly' becomes 'monthly') and a
         DeprecationWarning is emitted.
     sheet_id : str, optional
-        The Google Sheets ID from which to download the dataset.
+        The Google Sheets ID from which to download the dataset, with
+        the default '1bM7vCWd3WOt95Sf9qjLPZjoiafgF_8EG'.
 
     Returns
     -------
     pd.DataFrame
-        A data frame with processed data, including financial metrics,
-        filtered by the specified date range.
+        A data frame with processed data, filtered by the specified
+        date range and including financial metrics.
+
+    References
+    ----------
+    Welch, I., and Goyal, A. (2008). A comprehensive look at the
+    empirical performance of equity premium prediction. Review of
+    Financial Studies, 21(4), 1455-1508.
+    https://doi.org/10.1093/rfs/hhm014
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_macro_predictors
+    >>> download_data_macro_predictors('monthly')
+    >>> download_data_macro_predictors(
+    ...     'quarterly', '2000-01-01', '2020-12-31'
+    ... )
     """
     if type is not None:
         warnings.warn(
@@ -740,16 +864,45 @@ def _download_data_constituents(
     """
     Download constituent data for a given stock index.
 
+    Downloads and processes the constituent data for a specified
+    financial index. The data is fetched from a remote CSV file,
+    filtered, and cleaned to provide relevant information about
+    constituents. The function retrieves the URL of the CSV file for
+    the specified index from ETF sites, sends an HTTP GET request to
+    download the file, and processes the CSV to extract equity
+    constituents.
+
     Parameters
     ----------
     index : str
-        The name of the stock index to download data for. Must match
-        a supported index from list_supported_indexes().
+        A character string specifying the name of the financial index
+        for which to download constituent data. The index must be one
+        of the supported indexes listed by 'list_supported_indexes'.
+    dataset : str, optional
+        Convenience alias accepted from the unified 'download_data'
+        dispatcher. Forwarded to 'index' with a UserWarning when
+        'index' is not supplied directly.
 
     Returns
     -------
     pd.DataFrame
-        A data frame containing the processed constituent data.
+        A data frame with five columns:
+
+        - 'symbol': the ticker symbol of the equity constituent.
+        - 'name': the name of the equity constituent.
+        - 'location': the location where the company is based.
+        - 'exchange': the exchange where the equity is traded.
+        - 'currency': the currency in which the equity is traded,
+          derived from the exchange.
+
+        The data frame is filtered to exclude non-equity entries,
+        blacklisted symbols, empty names, and any entries containing
+        the index name or 'CASH'.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_constituents
+    >>> download_data_constituents('DAX')
     """
     if dataset is not None and index is None:
         warnings.warn(
@@ -885,23 +1038,45 @@ def _download_data_fred(
     start_date: str = None,
     end_date: str = None,
 ) -> pd.DataFrame:
-    """Download data from FRED (Federal Reserve Economic Data).
+    """
+    Download and process data from FRED.
+
+    Downloads a specified data series from the Federal Reserve
+    Economic Data (FRED) website, processes the data, and returns it
+    as a data frame. The function constructs the URL based on the
+    provided FRED series ID, performs an HTTP GET request to download
+    the data in CSV format, and processes it to a tidy data frame
+    format. The resulting data frame includes the date, value, and the
+    series ID.
 
     Parameters
     ----------
     series : str or list of str
-        The FRED series ID(s) to download (e.g., "GDP",
-        ["GDP", "UNRATE"]).
+        A character vector specifying the FRED series ID(s) to
+        download (e.g., 'GDP', ['GDP', 'UNRATE']).
     start_date : str, optional
-        The start date for filtering data in YYYY-MM-DD format.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        is returned.
     end_date : str, optional
-        The end date for filtering data in YYYY-MM-DD format.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
 
     Returns
     -------
     pd.DataFrame
-        A data frame with columns date, series, and value containing
-        the requested FRED series data.
+        A data frame containing the processed data with three columns:
+
+        - 'date': the date corresponding to the data point.
+        - 'series': the FRED series ID corresponding to the data.
+        - 'value': the value of the data series at that date.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_fred
+    >>> download_data_fred('CPIAUCNS')
+    >>> download_data_fred(['GDP', 'CPIAUCNS'], '2010-01-01', '2010-12-31')
     """
     if isinstance(series, str):
         series = [series]
@@ -984,25 +1159,37 @@ def _download_data_stock_prices(
     end_date: str = None,
 ) -> pd.DataFrame:
     """
-    Download historical stock data from Yahoo Finance.
+    Download stock data from Yahoo Finance.
+
+    Downloads historical stock data from Yahoo Finance for the given
+    symbols and date range.
 
     Parameters
     ----------
-    symbols : str or list
-        A string or list of stock ticker symbols to download data for.
-        At least one symbol must be provided.
+    symbols : str or list of str
+        A character vector of stock symbols to download data for. At
+        least one symbol must be provided.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, a one-year subset
+        of the dataset is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, a one-year subset
+        of the dataset is returned.
 
     Returns
     -------
     pd.DataFrame
-        A data frame containing columns: symbol, date, volume, open,
-        low, high, close, adjusted_close.
+        A data frame containing the downloaded stock data with columns
+        'symbol', 'date', 'volume', 'open', 'low', 'high', 'close', and
+        'adjusted_close'.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_stock_prices
+    >>> download_data_stock_prices(['AAPL', 'MSFT'])
+    >>> download_data_stock_prices('GOOGL', '2021-01-01', '2022-01-01')
     """
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -1100,24 +1287,43 @@ def _download_data_osap(
     sheet_id: str = "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY",
 ) -> pd.DataFrame:
     """
-    Download and process Open Source Asset Pricing (OSAP) data.
+    Download and process Open Source Asset Pricing data.
+
+    Downloads the data from the Open Source Asset Pricing project at
+    https://www.openassetpricing.com/data/ from Google Sheets using a
+    specified sheet ID, processes the data by converting column names
+    to snake_case, and optionally filters the data based on a provided
+    date range.
 
     Parameters
     ----------
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
     sheet_id : str, optional
-        The Google Sheets ID from which to download the dataset.
+        A character string representing the Google Sheet ID from which
+        to download the data. Default is
+        '1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY'.
 
     Returns
     -------
     pd.DataFrame
-        A data frame with snake_case column names, filtered by the
-        specified date range.
+        A data frame containing the processed data. The column names
+        are converted to snake_case, and the data is filtered by the
+        specified date range if 'start_date' and 'end_date' are
+        provided.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_osap
+    >>> osap = download_data_osap(
+    ...     start_date='2020-01-01', end_date='2020-06-30'
+    ... )
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -1161,29 +1367,71 @@ def _download_data_risk_free(
     frequency: str = "monthly",
 ) -> pd.DataFrame:
     """
-    Download risk-free rate data from the tidy-finance/risk-free
-    HuggingFace dataset.
+    Download risk-free rate data.
 
-    The dataset splices the 3-Month Treasury Bill Secondary Market Rate
-    (pre-2001) with the 4-Week Treasury Bill Secondary Market Rate
-    (from 2001 onwards), both sourced from FRED. Monthly data starts
-    1934-01-01 (TB3MS). Daily data starts 1954-01-04 (DTB3).
+    Downloads pre-processed risk-free rate data from the
+    'tidy-finance/risk-free' dataset on Hugging Face. The dataset is
+    updated monthly via a scheduled GitHub Actions workflow that
+    splices the 3-Month Treasury Bill Secondary Market Rate (pre-2001)
+    with the 4-Week Treasury Bill Secondary Market Rate (from 2001
+    onwards) sourced from FRED. For monthly data, the monthly TB3MS
+    series is spliced with the daily DTB4WK series aggregated to
+    month-end. For daily data, the daily DTB3 series is spliced with
+    the daily DTB4WK series, both at the business-day frequency
+    provided by FRED.
+
+    Both series are quoted as annualised bank discount rates on a
+    360-day basis. Given an annualised discount rate 'd' and a T-bill
+    with 'n' days to maturity, the holding-period return is
+    'HPR = d * n / 360 / (1 - d * n / 360)', which is then converted
+    to the target period length via '(1 + HPR) ** (target / source) - 1'.
+
+    The series are spliced at 2001-07-01. Pre-2001, TB3MS (monthly) or
+    DTB3 (daily) is used (3-month T-bill, n = 90). Monthly conversion
+    uses exponent '1 / 3'; daily conversion uses exponent '1 / 63'
+    (approximate trading days per quarter). From 2001 onwards, DTB4WK
+    (4-week T-bill, n = 28) is used. For monthly data, the last
+    non-missing observation per calendar month is taken and the
+    exponent is '365 / (28 * 12)'. For daily data, observations are
+    used as-is and the exponent is '1 / 20' (approximate trading days
+    per 4-week period).
+
+    Business-day gaps in the daily series (e.g. holidays) are handled
+    by forward-filling the most recent available rate. Monthly data
+    starts in 1934-01-01 (TB3MS). Daily data starts in 1954-01-04
+    because of the availability of DTB3.
 
     Parameters
     ----------
     start_date : str, optional
-        A string in "YYYY-MM-DD" format. If not provided, the full
-        dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full dataset
+        is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format. If not provided, the full
-        dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
     frequency : str, optional
-        Either "monthly" (default) or "daily".
+        A character string, either 'monthly' (default) or 'daily',
+        specifying the frequency of the returned data. Daily data
+        starts in 1954-01-04 because of availability of DTB3, while
+        monthly data starts in 1934-01-01.
 
     Returns
     -------
     pd.DataFrame
-        Two columns: date and risk_free.
+        A data frame with two columns:
+
+        - 'date': the date of the observation.
+        - 'risk_free': the risk-free rate for the period.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_risk_free
+    >>> download_data_risk_free('2020-01-01', '2020-12-31')
+    >>> download_data_risk_free(
+    ...     '2020-01-01', '2020-12-31', frequency='daily'
+    ... )
     """
     if frequency not in ("monthly", "daily"):
         raise ValueError("frequency must be 'monthly' or 'daily'.")
@@ -1223,30 +1471,56 @@ def _download_data_wrds(
     **kwargs,
 ) -> pd.DataFrame:
     """
-    Download data from WRDS based on the specified dataset.
+    Download data from WRDS.
+
+    Acts as a wrapper to download data from various WRDS datasets
+    including CRSP, Compustat, and CCM links based on the specified
+    dataset. It is designed to handle different datasets by
+    redirecting to the appropriate specific data download function.
 
     Parameters
     ----------
     dataset : str
-        The dataset to download. Accepts "crsp_monthly", "crsp_daily",
-        "compustat_annual", "compustat_quarterly", "ccm_links", "fisd",
-        or "trace_enhanced".
+        A string specifying the dataset to download. Supported values
+        are 'crsp_monthly' and 'crsp_daily' for CRSP data,
+        'compustat_annual' and 'compustat_quarterly' for Compustat
+        data, 'ccm_links' for CCM links data, 'fisd' for FISD data, or
+        'trace_enhanced' for TRACE data.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, a subset of the dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, a subset of the
+        dataset is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, a subset of the dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, a subset of the
+        dataset is returned.
     type : str, optional
         Deprecated. Use 'dataset' instead. If supplied, a leading
         'wrds_' prefix is stripped and a DeprecationWarning is emitted.
     **kwargs
-        Additional parameters passed to the dataset-specific function.
+        Additional arguments passed to specific download functions
+        depending on the 'dataset'.
 
     Returns
     -------
     pd.DataFrame
-        A data frame containing the requested information.
+        A data frame containing the requested data, with the structure
+        and contents depending on the specified 'dataset'.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_wrds
+    >>> crsp_monthly = download_data_wrds(
+    ...     'crsp_monthly', '2020-01-01', '2020-12-31'
+    ... )
+    >>> compustat_annual = download_data_wrds(
+    ...     'compustat_annual', '2020-01-01', '2020-12-31'
+    ... )
+    >>> ccm_links = download_data_wrds('ccm_links')
+    >>> fisd = download_data_wrds('fisd')
+    >>> trace_enhanced = download_data_wrds(
+    ...     'trace_enhanced', cusips=['00101JAH9']
+    ... )
     """
     if type is not None:
         warnings.warn(
@@ -1300,50 +1574,81 @@ def _download_data_wrds_crsp(
     adjust_volume: bool = False,
 ) -> pd.DataFrame:
     """
-    Download stock return data from WRDS CRSP.
+    Download data from WRDS CRSP.
+
+    Downloads and processes stock return data from the CRSP database
+    for a specified period. Users can choose between monthly and daily
+    datasets. The function also adjusts returns for delisting and
+    calculates market capitalization and excess returns over the
+    risk-free rate.
 
     Parameters
     ----------
     dataset : str
         A string specifying the CRSP dataset to download:
-        "crsp_monthly" or "crsp_daily".
+        'crsp_monthly' or 'crsp_daily'.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, a subset of the dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, a subset of the
+        dataset is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, a subset of the dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, a subset of the
+        dataset is returned.
     type : str, optional
         Deprecated. Use 'dataset' instead. If supplied, a leading
         'wrds_' prefix is stripped and a DeprecationWarning is emitted.
     batch_size : int, optional
+        An optional integer specifying the batch size for processing
+        daily data, with a default of 500.
     version : str, optional
-        A string specifying which CRSP version to use. "v2" (the
-        default) uses the updated second version of CRSP, and "v1"
-        downloads the legacy version of CRSP.
-    additional_columns : list, optional
+        An optional character specifying which CRSP version to use.
+        'v2' (the default) uses the updated second version of CRSP,
+        and 'v1' downloads the legacy version of CRSP.
+    additional_columns : list of str, optional
         Additional columns from the CRSP monthly or daily data as a
         list of strings.
     add_ccm_links : bool, optional
         A boolean indicating whether CRSP-Compustat links should be
-        added automatically using _download_data_wrds_ccm_links().
+        added automatically using '_download_data_wrds_ccm_links'.
         Defaults to False.
     adjust_volume : bool, optional
         A boolean indicating whether daily CRSP trading volume data
-        should be adjusted according to Gao & Ritter (2010).
-        Defaults to False. Note: cumulative price adjustment factors are
-        computed from the data in memory; results may be incorrect if
-        start_date excludes early observations for some permnos.
+        should be adjusted according to Gao and Ritter (2010).
+        Defaults to False. Note that cumulative price adjustment
+        factors are computed from the data in memory; results may be
+        incorrect if 'start_date' excludes early observations for some
+        permnos.
 
     Returns
     -------
     pd.DataFrame
         A data frame containing CRSP stock returns, adjusted for
         delistings, along with calculated market capitalization and
-        excess returns over the risk-free rate. The daily dataset
-        includes all requested additional_columns plus ret_excess.
-        The structure of the returned data frame depends on the
-        selected dataset.
+        excess returns over the risk-free rate. The structure of the
+        returned data frame depends on the selected dataset.
+
+    References
+    ----------
+    Gao, X., and Ritter, J. R. (2010). The marketing of seasoned
+    equity offerings. Journal of Financial Economics, 97(1), 33-52.
+    https://doi.org/10.1016/j.jfineco.2010.03.007
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_wrds_crsp
+    >>> crsp_monthly = download_data_wrds_crsp(
+    ...     'crsp_monthly', '2020-11-01', '2020-12-31'
+    ... )
+    >>> crsp_daily = download_data_wrds_crsp(
+    ...     'crsp_daily', '2020-12-01', '2020-12-31'
+    ... )
+    >>> download_data_wrds_crsp(
+    ...     'crsp_monthly',
+    ...     '2020-11-01',
+    ...     '2020-12-31',
+    ...     additional_columns=['mthvol', 'mthvolflg'],
+    ... )
     """
     if type is not None:
         warnings.warn(
@@ -2027,22 +2332,36 @@ def _download_data_wrds_ccm_links(
     linktype: list[str] = ["LU", "LC"], linkprim: list[str] = ["P", "C"]
 ) -> pd.DataFrame:
     """
-    Download data from the WRDS CRSP/Compustat Merged (CCM) links database.
+    Download CCM links from WRDS.
+
+    Downloads data from the WRDS CRSP/Compustat Merged (CCM) links
+    database. It allows users to specify the type of links ('linktype')
+    and the primacy of the link ('linkprim').
 
     Parameters
     ----------
     linktype : list of str, optional
-        A list of strings indicating the types of links to download.
-        Defaults to ["LU", "LC"].
+        A character vector indicating the type of link to download.
+        The default is ['LU', 'LC'], where 'LU' stands for 'Link Up'
+        and 'LC' for 'Link CRSP'.
     linkprim : list of str, optional
-        A list of strings indicating the primacy of the links.
-        Defaults to ["P", "C"].
+        A character vector indicating the primacy of the link. Default
+        is ['P', 'C'], where 'P' indicates primary and 'C' indicates
+        conditional links.
 
     Returns
     -------
     pd.DataFrame
-        A data frame containing columns permno, gvkey, linkprim, linkdt, and
-        linkenddt (missing end dates replaced with today's date).
+        A data frame with the columns 'permno', 'gvkey', 'linkdt', and
+        'linkenddt', where 'linkenddt' is the end date of the link and
+        missing end dates are replaced with today's date.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_wrds_ccm_links
+    >>> ccm_links = download_data_wrds_ccm_links(
+    ...     linktype=['LU'], linkprim=['P']
+    ... )
     """
     conn = get_wrds_connection()
 
@@ -2072,28 +2391,42 @@ def _download_data_wrds_compustat(
     only_us: bool = None,
 ) -> pd.DataFrame:
     """
-    Download financial data from WRDS Compustat.
+    Download data from WRDS Compustat.
+
+    Downloads financial data from the WRDS Compustat database for a
+    given dataset, start date, and end date. The function filters the
+    data according to industry format, data format, and consolidation
+    level, and returns the most current data for each reporting
+    period. Additionally, the annual data also includes the calculated
+    book equity ('be'), operating profitability ('op'), and investment
+    ('inv') for each company following Fama and French (1993, 2015),
+    as well as income before extraordinary items ('ib').
 
     Parameters
     ----------
     dataset : str
-        The dataset to download ("compustat_annual" or
-        "compustat_quarterly").
+        The dataset to download ('compustat_annual' or
+        'compustat_quarterly').
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, a subset of the dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, a subset of the
+        dataset is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, a subset of the dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, a subset of the
+        dataset is returned.
     type : str, optional
         Deprecated. Use 'dataset' instead. If supplied, a leading
         'wrds_' prefix is stripped (e.g., 'wrds_compustat_annual'
-        becomes 'compustat_annual') and a DeprecationWarning is emitted.
-    additional_columns : list, optional
-        Additional columns from the Compustat table as a list of strings.
+        becomes 'compustat_annual') and a DeprecationWarning is
+        emitted.
+    additional_columns : list of str, optional
+        Additional columns from the Compustat table as a list of
+        strings.
     only_usd : bool, optional
-        A boolean indicating whether only USD-denominated shares should be
-        returned. (i.e., excluding Canadian firms). Defaults to False.
+        A boolean indicating whether only USD-denominated shares
+        should be returned (i.e., excluding Canadian firms). Defaults
+        to False.
     only_us : bool, optional
         Deprecated. Use 'only_usd' instead. If supplied, the value is
         forwarded to 'only_usd' and a DeprecationWarning is emitted.
@@ -2102,8 +2435,31 @@ def _download_data_wrds_compustat(
     -------
     pd.DataFrame
         A data frame with financial data for the specified period,
-        including variables for book equity (be), operating profitability
-        (op), investment (inv), and others.
+        including variables for book equity ('be'), operating
+        profitability ('op'), investment ('inv'), and others.
+
+    References
+    ----------
+    Fama, E. F., and French, K. R. (1993). Common risk factors in the
+    returns on stocks and bonds. Journal of Financial Economics,
+    33(1), 3-56. https://doi.org/10.1016/0304-405X(93)90023-5
+
+    Fama, E. F., and French, K. R. (2015). A five-factor asset pricing
+    model. Journal of Financial Economics, 116(1), 1-22.
+    https://doi.org/10.1016/j.jfineco.2014.10.010
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_wrds_compustat
+    >>> download_data_wrds_compustat(
+    ...     'compustat_annual', '2020-01-01', '2020-12-31'
+    ... )
+    >>> download_data_wrds_compustat(
+    ...     'compustat_quarterly', '2020-01-01', '2020-12-31'
+    ... )
+    >>> download_data_wrds_compustat(
+    ...     'compustat_annual', additional_columns=['aodo', 'aldo']
+    ... )
     """
     if type is not None:
         warnings.warn(
@@ -2281,19 +2637,41 @@ def _download_data_wrds_compustat(
 
 def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
     """
-    Download a filtered subset of the FISD from WRDS.
+    Download filtered FISD data from WRDS.
+
+    Establishes a connection to the WRDS database to download a
+    filtered subset of the FISD (Fixed Income Securities Database).
+    The function filters the 'fisd_mergedissue' and
+    'fisd_mergedissuer' tables based on several criteria related to
+    the securities, such as security level, bond type, coupon type,
+    and others, focusing on specific attributes that denote the nature
+    of the securities. It finally returns a data frame with selected
+    fields from the 'fisd_mergedissue' table after joining it with
+    issuer information from the 'fisd_mergedissuer' table for issuers
+    domiciled in the USA.
 
     Parameters
     ----------
-    additional_columns : list, optional
-        Additional columns from the FISD table to include as a list
-        of strings.
+    additional_columns : list of str, optional
+        Additional columns from the FISD table as a list of strings.
 
     Returns
     -------
     pd.DataFrame
-        A data frame containing filtered FISD data with bond
-        characteristics and issuer information.
+        A data frame containing a subset of FISD data with fields
+        related to the bond's characteristics and issuer information.
+        This includes complete CUSIP, maturity date, offering amount,
+        offering date, dated date, interest frequency, coupon, last
+        interest date, issue ID, issuer ID, and SIC code of the
+        issuer.
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_wrds_fisd
+    >>> fisd = download_data_wrds_fisd()
+    >>> fisd_extended = download_data_wrds_fisd(
+    ...     additional_columns=['asset_backed', 'defeased']
+    ... )
     """
     wrds_connection = get_wrds_connection()
 
@@ -2383,24 +2761,50 @@ def _download_data_wrds_trace_enhanced(
     cusips: list, start_date: str = None, end_date: str = None
 ) -> pd.DataFrame:
     """
-    Download and clean Enhanced TRACE data from WRDS for specified CUSIPs.
+    Download Enhanced TRACE data from WRDS.
+
+    Establishes a connection to the WRDS database to download the
+    specified CUSIPs trade messages from the Trade Reporting and
+    Compliance Engine (TRACE). The trade data is cleaned as suggested
+    by Dick-Nielsen (2009, 2014).
 
     Parameters
     ----------
-    cusips : list
-        A list of 9-character CUSIPs to download.
+    cusips : list of str
+        A character vector specifying the 9-digit CUSIPs to download.
     start_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the start date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, a subset of the
+        dataset is returned.
     end_date : str, optional
-        A string in "YYYY-MM-DD" format specifying the end date for
-        the data. If not provided, the full dataset is returned.
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, a subset of the
+        dataset is returned.
 
     Returns
     -------
     pd.DataFrame
-        A data frame containing cleaned TRACE trade messages for the
-        specified CUSIPs.
+        A data frame containing the cleaned trade messages from TRACE
+        for the selected CUSIPs over the time window specified. Output
+        variables include identifying information (i.e., CUSIP, trade
+        date/time) and trade-specific information (i.e., price/yield,
+        volume, counterparty, and reporting side).
+
+    References
+    ----------
+    Dick-Nielsen, J. (2009). Liquidity biases in TRACE. Journal of
+    Fixed Income, 19(2), 43-55.
+    https://doi.org/10.3905/jfi.2009.19.2.043
+
+    Dick-Nielsen, J. (2014). How to clean enhanced TRACE data. Working
+    Paper. https://doi.org/10.2139/ssrn.2337908
+
+    Examples
+    --------
+    >>> from tidyfinance import download_data_wrds_trace_enhanced
+    >>> download_data_wrds_trace_enhanced(
+    ...     ['00101JAH9'], '2019-01-01', '2021-12-31'
+    ... )
     """
     if not all(isinstance(cusip, str) and len(cusip) == 9 for cusip in cusips):
         raise ValueError("All CUSIPs must be 9-character strings.")
@@ -2438,28 +2842,35 @@ def _download_data_wrds_trace_enhanced(
 
 # %% hugging face functions for tidy finance data
 
-
 def _get_available_huggingface_files(
     organization: str, dataset: str
 ) -> pd.DataFrame:
     """
-    List parquet files available in a Hugging Face dataset repository.
+    List parquet files in a Hugging Face dataset.
 
-    Queries the Hugging Face Datasets API and returns only files with a
-    '.parquet' suffix. Follows pagination links in the 'Link' response
-    header automatically.
+    Queries the Hugging Face Datasets API and returns a data frame of
+    files with a '.parquet' suffix. The function follows pagination
+    links returned in the response 'Link' header and returns the path
+    and size for each file. Requires internet access and the dataset
+    to be publicly accessible or accessible with appropriate
+    authentication.
 
     Parameters
     ----------
     organization : str
         Hugging Face organization or user name.
     dataset : str
-        Dataset repository name under the organization.
+        Dataset name under the organization.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with columns 'path' (str) and 'size' (int).
+        A data frame with columns 'path' (str) and 'size' (int).
+
+    Examples
+    --------
+    >>> from tidyfinance.data_download import _get_available_huggingface_files
+    >>> _get_available_huggingface_files('voigtstefan', 'sp500')
     """
     api_url = (
         f"https://huggingface.co/api/datasets/{organization}/{dataset}"
@@ -2485,20 +2896,33 @@ def _get_available_huggingface_files(
 
 def _download_factor_library_grid() -> pd.DataFrame:
     """
-    Download the factor-library grid from Hugging Face.
+    Download the factor library grid from Hugging Face.
+
+    Returns the 'tidy-finance/factor-library-grid' dataset, which
+    describes every portfolio construction available in the factor
+    library (one row per construction, identified by 'id'). Use the
+    returned data frame to discover which combinations of
+    'sorting_variable', 'weighting_scheme', 'rebalancing', and other
+    columns exist before requesting their returns with
+    '_download_factor_library_ids'.
 
     Returns
     -------
     pd.DataFrame
-        Grid metadata for every available factor portfolio, with the
-        sorting_variable column stripped of its sv_ prefix.
+        A data frame with one row per portfolio construction in the
+        factor library, including the integer 'id' column used by
+        '_download_factor_library_ids'.
 
     Raises
     ------
     ValueError
-        If an unrecognised filter name is provided, if
-        sorting_variable is missing, or if a non-univariate
-        sorting_method is requested without n_portfolios_secondary.
+        If no parquet files are found in the
+        'tidy-finance/factor-library-grid' repository.
+
+    Examples
+    --------
+    >>> from tidyfinance.data_download import _download_factor_library_grid
+    >>> _download_factor_library_grid()
     """
     available = _get_available_huggingface_files(
         "tidy-finance", "factor-library-grid"
@@ -2619,29 +3043,51 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
 
 def _download_factor_library_ids(ids: list) -> pd.DataFrame:
     """
-    Download factor-library returns for a list of portfolio IDs.
+    Download factor library returns for a vector of portfolio IDs.
 
-    Identifies the unique ''(sorting_variable, sorting_variable_lag)''
-    combinations for the requested IDs, downloads one parquet file per
-    combination, inner-joins to retain only the requested IDs, and appends
-    grid metadata.
+    Given a vector of portfolio IDs from the
+    'tidy-finance/factor-library-grid' Hugging Face dataset, downloads
+    the corresponding return data from the
+    'tidy-finance/factor-library' dataset on Hugging Face. The
+    function identifies the unique combinations of 'sorting_variable',
+    'sorting_variable_lag', 'sorting_method', and 'n_portfolios_main'
+    for the requested IDs, downloads one parquet file per combination
+    in full, and then inner-joins to retain only the requested IDs.
+    The grid metadata is joined back onto the result.
+
+    Use this function when you already know the portfolio IDs you want
+    (for example, from a previous call to '_download_data_huggingface'
+    with 'dataset' set to 'factor_library'). To resolve IDs from
+    filter criteria (sorting variable, weighting scheme, breakpoints,
+    etc.) and download in a single call, use
+    '_download_data_huggingface' instead.
+
+    Raises an error if 'ids' is empty or contains IDs that cannot be
+    matched to a parquet file, listing the affected IDs and their key
+    columns.
 
     Parameters
     ----------
-    ids : list
-        Portfolio IDs to download, as returned by
-        ''_filter_factor_library_grid''.
+    ids : list of int
+        Portfolio IDs to download. IDs correspond to rows of the
+        'tidy-finance/factor-library-grid' dataset.
 
     Returns
     -------
     pd.DataFrame
-        Portfolio returns with grid metadata columns appended.
+        A data frame of portfolio returns with the grid metadata
+        columns for the requested IDs appended.
 
     Raises
     ------
     ValueError
-        If ''ids'' is empty, or if any ID cannot be matched to a parquet
+        If 'ids' is empty, or if any ID cannot be matched to a parquet
         file in the factor library.
+
+    Examples
+    --------
+    >>> from tidyfinance.data_download import _download_factor_library_ids
+    >>> _download_factor_library_ids([1, 2, 3])
     """
     if not ids:
         raise ValueError(
@@ -2802,13 +3248,55 @@ def _download_data_huggingface(
     **kwargs,
 ) -> pd.DataFrame:
     """
-    Download data from a supported Hugging Face dataset.
+    Download data from a Hugging Face dataset.
 
-    For dataset="high_frequency_sp500", parquet files are filtered by
-    date range and concatenated. For dataset="factor_library", portfolio
-    characteristics are selected via keyword arguments and the matching
-    return data is downloaded. Files are cached locally by
-    'hf_hub_download' so repeated calls do not re-download from the Hub.
+    Downloads data from a supported Hugging Face dataset. For
+    'high_frequency_sp500', parquet files are filtered by date range
+    and row-bound. For 'factor_library', portfolio characteristics are
+    selected via '_filter_factor_library_grid', the matching return
+    data is downloaded, and the result is filtered to 'start_date' and
+    'end_date' when both are supplied. For 'factor_library_grid', the
+    grid itself is returned via '_download_factor_library_grid'.
+
+    For 'dataset' set to 'factor_library', the defaults below reflect
+    one common portfolio construction choice but may not suit every
+    research question; always verify that the selected combination
+    matches the intended design. Supported filter columns and their
+    defaults are:
+
+    - 'sorting_variable': required. The firm characteristic used to
+      sort stocks into portfolios (e.g., 'me' for market equity, 'bm'
+      for book-to-market). No default is applied.
+    - 'min_size_quantile' (defaults to 0.2): fraction of the smallest
+      stocks (by market cap) excluded from the portfolio universe; 0.2
+      drops the bottom 20%.
+    - 'exclude_financials' (defaults to False): whether to drop
+      financial-sector stocks (SIC 6000-6999) from the universe.
+    - 'exclude_utilities' (defaults to False): whether to drop
+      utility-sector stocks (SIC 4900-4999) from the universe.
+    - 'exclude_negative_earnings' (defaults to False): whether to drop
+      firms with negative earnings before sorting.
+    - 'sorting_variable_lag' (defaults to '6m'): lag applied to the
+      sorting variable before portfolio assignment (e.g., '6m' = a
+      six-month lag).
+    - 'rebalancing' (defaults to 'monthly'): how frequently portfolios
+      are reformed; 'monthly' or 'annual'.
+    - 'n_portfolios_main' (defaults to 10): number of quantile groups
+      (e.g., 10 for decile portfolios).
+    - 'sorting_method' (defaults to 'univariate'): whether portfolios
+      are formed on a single sort ('univariate') or a sequential
+      double sort ('sequential').
+    - 'n_portfolios_secondary' (defaults to None): number of groups
+      for the secondary sort variable. Required when 'sorting_method'
+      is not 'univariate'.
+    - 'breakpoints_exchanges' (defaults to 'NYSE'): exchange(s) used
+      to compute breakpoints; 'NYSE' uses only NYSE-listed stocks to
+      define quantile cutoffs (the conventional Fama-French approach).
+    - 'breakpoints_min_size_threshold' (defaults to None): minimum
+      market-cap threshold (in USD) applied when computing
+      breakpoints. None means no minimum-size screen is applied.
+    - 'weighting_scheme' (defaults to 'VW'): return weighting within
+      portfolios; 'VW' for value-weighted or 'EW' for equal-weighted.
 
     Parameters
     ----------
@@ -2830,28 +3318,56 @@ def _download_data_huggingface(
         Deprecated. Use 'dataset' instead. If provided, emits a
         DeprecationWarning and strips any leading 'hf_' prefix.
     **kwargs : dict
-        For 'dataset="factor_library"': named arguments used to filter
-        the portfolio grid (e.g. 'sorting_variable="me"'). Pass
-        'fill_all=True' to leave unspecified columns unrestricted
-        (default: 'False'). Pass 'ids=[...]' to bypass the grid filter
-        and request specific portfolio IDs directly (cannot be
-        combined with filters). Passing an unrecognised column name
-        raises a 'ValueError'. Ignored when
-        'dataset != "factor_library"'.
+        For 'dataset' set to 'factor_library': either named arguments
+        used to filter the portfolio grid, or 'ids=<vector>' to bypass
+        the grid filter and download specific portfolios directly via
+        '_download_factor_library_ids'. Filter arguments take the form
+        'column=value', where 'value' may be a list or tuple to match
+        multiple levels. Optionally pass 'fill_all=True' to leave
+        unspecified columns unrestricted (default False, i.e.,
+        unspecified columns are fixed at the defaults listed above).
+        Passing None for any parameter removes that filter entirely,
+        returning all values for that column. Passing an unrecognised
+        column name raises a 'ValueError'. 'ids' cannot be combined
+        with filter arguments. Ignored when 'dataset' is not
+        'factor_library'.
 
     Returns
     -------
     pd.DataFrame
-        For 'high_frequency_sp500', contains 5-second aggregated
-        order-book snapshots filtered to the requested date range. For
+        A data frame with the downloaded data. For
+        'high_frequency_sp500', contains 5-second aggregated order-book
+        snapshots filtered to the requested date range. For
         'factor_library', contains portfolio return data joined with
-        full grid metadata for the matched portfolio IDs.
+        the full grid metadata for the matched portfolio IDs.
 
     Raises
     ------
     ValueError
-        If 'dataset' is 'None', unsupported, or if invalid filter
-        names are passed for the factor library.
+        If 'dataset' is None, unsupported, or if invalid filter names
+        are passed for the factor library.
+
+    Examples
+    --------
+    >>> from tidyfinance.data_download import _download_data_huggingface
+    >>> _download_data_huggingface(
+    ...     'high_frequency_sp500', '2007-07-26', '2007-07-27'
+    ... )
+    >>> _download_data_huggingface(
+    ...     'factor_library',
+    ...     sorting_variable='52w',
+    ...     rebalancing='annual',
+    ... )
+    >>> _download_data_huggingface(
+    ...     'factor_library', sorting_variable='ag', fill_all=True
+    ... )
+    >>> _download_data_huggingface(
+    ...     'factor_library',
+    ...     sorting_variable='me',
+    ...     start_date='2000-01-01',
+    ...     end_date='2020-12-31',
+    ... )
+    >>> _download_data_huggingface('factor_library', ids=[1, 2, 3])
     """
     if type is not None:
         warnings.warn(

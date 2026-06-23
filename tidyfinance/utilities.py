@@ -12,20 +12,39 @@ from sqlalchemy import create_engine, URL
 
 
 def get_wrds_connection(config_path: str = "config.yaml") -> object:
-    """
-    Establish a connection to Wharton Research Data Services (WRDS).
+    """Establish a connection to the WRDS database.
 
-    Retrieves WRDS credentials from environment variables or a config.yaml
-    file and connects to the WRDS PostgreSQL database using SQLAlchemy.
+    Opens a connection to Wharton Research Data Services (WRDS) via the
+    PostgreSQL backend. Credentials are read first from the 'WRDS_USER'
+    and 'WRDS_PASSWORD' environment variables and, if missing, from a
+    YAML configuration file. The connection uses SSL and a fixed host
+    ('wrds-pgdata.wharton.upenn.edu') on port 9737.
 
     Parameters
     ----------
-        config_path (str): Path to the configuration file.
-        Default is "config.yaml".
+    config_path : str, default 'config.yaml'
+        Path to a YAML file that may supply 'WRDS_USER' and
+        'WRDS_PASSWORD' when environment variables are absent. The file
+        is expected to contain a top-level 'WRDS' mapping with 'USER'
+        and 'PASSWORD' entries.
 
     Returns
     -------
-        object: A connection object to interact with the WRDS database.
+    object
+        A SQLAlchemy connection object that can be passed to other
+        DBI-compatible helpers (for instance the various
+        'download_data_wrds_*' downloaders) for querying WRDS tables.
+        Disconnect the connection with 'disconnect_connection' when
+        done.
+
+    Examples
+    --------
+    >>> import os
+    >>> os.environ['WRDS_USER'] = 'your_username'
+    >>> os.environ['WRDS_PASSWORD'] = 'your_password'
+    >>> from tidyfinance import get_wrds_connection, disconnect_connection
+    >>> con = get_wrds_connection()
+    >>> disconnect_connection(con)
     """
     wrds_user, wrds_password = load_wrds_credentials(config_path)
     url = URL.create(
@@ -45,15 +64,29 @@ def get_wrds_connection(config_path: str = "config.yaml") -> object:
 
 
 def disconnect_connection(connection: object) -> bool:
-    """Close the database connection.
+    """Close an open WRDS database connection safely.
+
+    Attempts to close the supplied connection. Any exception raised by
+    the underlying driver is swallowed so the call can be used in
+    'finally' blocks without masking the original error.
 
     Parameters
     ----------
-        connection (object): The active database connection to be closed.
+    connection : object
+        The connection object to close. Typically the value returned by
+        'get_wrds_connection'.
 
     Returns
     -------
-        bool: True if disconnection was successful, False otherwise.
+    bool
+        'True' on successful disconnection, 'False' if the close call
+        raised an exception.
+
+    Examples
+    --------
+    >>> from tidyfinance import get_wrds_connection, disconnect_connection
+    >>> con = get_wrds_connection()
+    >>> disconnect_connection(con)
     """
     try:
         connection.close()
@@ -63,20 +96,27 @@ def disconnect_connection(connection: object) -> bool:
 
 
 def list_supported_indexes() -> pd.DataFrame:
-    """
-    Return a DataFrame containing information on supported financial indexes.
+    """Return a DataFrame of supported financial indexes.
 
-    Each index is associated with a URL pointing to a CSV file containing
-    the holdings of the index and a 'skip' value indicating the number of
-    lines to skip when reading the CSV.
+    Each row corresponds to one index and pairs the index name with the
+    URL of an iShares CSV holdings file plus the number of header rows
+    to skip when parsing it. This table powers
+    'download_data_constituents'.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame with three columns:
-            - index (str): The name of the financial index
-            (e.g., "DAX", "S&P 500").
-            - url (str): The URL to the CSV file containing holdings data.
-            - skip (int): The number of lines to skip when reading CSV file.
+    pandas.DataFrame
+        A DataFrame with three columns:
+
+        - 'index': name of the financial index (e.g. 'DAX', 'S&P 500').
+        - 'url': URL of the CSV file with constituent holdings.
+        - 'skip': number of leading rows to skip when reading the CSV.
+
+    Examples
+    --------
+    >>> from tidyfinance import list_supported_indexes
+    >>> supported_indexes = list_supported_indexes()
+    >>> print(supported_indexes)
     """
     data = [
         (
@@ -149,13 +189,22 @@ def list_supported_indexes() -> pd.DataFrame:
 
 
 def list_tidy_finance_chapters() -> list:
-    """
-    Return a list of available chapters in the Tidy Finance resource.
+    """Return the chapter slugs of the Tidy Finance book.
+
+    Provides the URL-safe identifiers used to address chapters on the
+    Tidy Finance website. The list can be passed to
+    'open_tidy_finance_website' or formatted into other links.
 
     Returns
     -------
-        list: A list where each element is the name of a chapter available in
-        the Tidy Finance resource.
+    list of str
+        Chapter slugs in the order they appear in the book. Each slug
+        corresponds to a chapter page on https://www.tidy-finance.org.
+
+    Examples
+    --------
+    >>> from tidyfinance import list_tidy_finance_chapters
+    >>> list_tidy_finance_chapters()
     """
     return [
         "setting-up-your-environment",
@@ -224,15 +273,30 @@ def load_wrds_credentials(config_path: str = "./config.yaml") -> tuple:
 
 
 def open_tidy_finance_website(chapter: str = None) -> None:
-    """Open the Tidy Finance website or a specific chapter in a browser.
+    """Open the Tidy Finance website or a specific chapter.
+
+    If 'chapter' is omitted, the main landing page of the Python
+    edition of Tidy Finance is opened. Otherwise the URL for the
+    requested chapter is constructed and opened. An unknown chapter
+    name falls back to the main page.
 
     Parameters
     ----------
-        chapter (str, optional): Name of the chapter to open. Defaults to None.
+    chapter : str, optional
+        Slug of the chapter to open (e.g. 'beta-estimation'). Must
+        match an entry returned by 'list_tidy_finance_chapters'.
 
     Returns
     -------
-        None
+    None
+        The function is called for its side effect of launching the
+        default browser at the appropriate URL.
+
+    Examples
+    --------
+    >>> from tidyfinance import open_tidy_finance_website
+    >>> open_tidy_finance_website()
+    >>> open_tidy_finance_website('beta-estimation')
     """
     base_url = "https://www.tidy-finance.org/python/"
 
@@ -569,20 +633,26 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
 
 def set_wrds_credentials() -> None:
-    """Set WRDS credentials in the environment.
+    """Interactively store WRDS credentials.
 
-    Prompts the user for WRDS credentials and stores them in a YAML
-    configuration file.
-
-    The user can choose to store the credentials in the project directory or
-    the home directory. If credentials already exist, the user is prompted for
-    confirmation before overwriting them. Additionally, the user is given an
-    option to add the configuration file to .gitignore.
+    Prompts for a WRDS username and password and writes them into a
+    'config.yaml' file. The file may live in the project directory or
+    the user's home directory. When the configuration already contains
+    WRDS credentials, the user is asked whether to overwrite them.
+    When a '.gitignore' file is found in the chosen location, the user
+    is offered the option to append 'config.yaml' so credentials are
+    not committed.
 
     Returns
     -------
-        - Saves the WRDS credentials in a 'config.yaml' file
-        - Optionally adds 'config.yaml' to '.gitignore'
+    None
+        The function is called for its side effects: writing
+        'config.yaml' and, optionally, updating '.gitignore'.
+
+    Examples
+    --------
+    >>> from tidyfinance import set_wrds_credentials
+    >>> set_wrds_credentials()
     """
     wrds_user = input("Enter your WRDS username: ")
     wrds_password = input("Enter your WRDS password: ")
@@ -665,16 +735,35 @@ def set_wrds_credentials() -> None:
 
 
 def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
-    """Winsorize a numeric vector by replacing extreme values.
+    """Winsorize a numeric vector at symmetric quantiles.
+
+    Replaces values below the lower 'cut' quantile and above the upper
+    '1 - cut' quantile with the corresponding quantile boundaries. The
+    length of the vector is preserved.
 
     Parameters
     ----------
-        x (pd.Series): Numeric vector to winsorize.
-        cut (float): Proportion to replace at both ends.
+    x : numpy.ndarray
+        A numeric vector to winsorize. Inputs that are not already
+        arrays are coerced via 'numpy.array'.
+    cut : float
+        Proportion of observations replaced at each tail. For example,
+        'cut=0.05' clips the lowest and highest five percent. Must lie
+        in '[0, 0.5]'.
 
     Returns
     -------
-        pd.Series: Winsorized vector.
+    numpy.ndarray
+        Vector with the same length as 'x' in which extreme values have
+        been replaced by the lower and upper quantile cutoffs.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from tidyfinance import winsorize
+    >>> rng = np.random.default_rng(123)
+    >>> data = rng.standard_normal(100)
+    >>> winsorized = winsorize(data, 0.05)
     """
     if not isinstance(x, np.ndarray):
         x = np.array(x)
@@ -693,18 +782,33 @@ def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
 
 
 def trim(x: np.ndarray, cut: float) -> np.ndarray:
-    """
-    Remove values in a numeric vector beyond the specified quantiles.
+    """Trim a numeric vector by removing extreme observations.
+
+    Drops values below the lower 'cut' quantile and above the upper
+    '1 - cut' quantile. The returned vector is therefore shorter than
+    the input.
 
     Parameters
     ----------
-        x (np.ndarray): A numeric array to be trimmed.
-        cut (float): The proportion of data to be trimmed from both ends
-        (must be between [0, 0.5]).
+    x : numpy.ndarray
+        A numeric vector to trim.
+    cut : float
+        Proportion of observations removed at each tail. For example,
+        'cut=0.05' removes the lowest and highest five percent. Must
+        lie in '[0, 0.5]'.
 
     Returns
     -------
-        np.ndarray: A numeric array with extreme values removed.
+    numpy.ndarray
+        Vector with the extreme observations removed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from tidyfinance import trim
+    >>> rng = np.random.default_rng(123)
+    >>> data = rng.standard_normal(100)
+    >>> trimmed = trim(data, 0.05)
     """
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")

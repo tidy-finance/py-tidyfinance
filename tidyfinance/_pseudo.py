@@ -182,12 +182,76 @@ def _download_data_pseudo_crsp(
     n_assets: int = 1000,
     seed: int = 1234,
 ) -> pd.DataFrame:
-    """Generate pseudo CRSP data with the same column layout as
-    ''_download_data_wrds_crsp''. The returned values are simulated and
-    not suitable for inference.
+    """Generate pseudo CRSP data with the WRDS CRSP schema.
 
-    Both ''crsp_monthly'' and ''crsp_daily'' are supported. The daily
-    panel uses weekdays (Mon–Fri) only; weekend dates are excluded.
+    Returns simulated panel data that mirrors the column layout of
+    '_download_data_wrds_crsp'. Useful for testing and for reproducing
+    the workflow of CRSP-based analyses without a WRDS subscription. The
+    generated values are random draws and are not suitable for
+    inference. Both 'crsp_monthly' and 'crsp_daily' are supported; the
+    daily panel uses weekdays (Monday through Friday) only so the
+    calendar approximates a trading-day grid.
+
+    Parameters
+    ----------
+    dataset : str
+        Which CRSP variant to simulate. One of 'crsp_monthly' or
+        'crsp_daily'.
+    start_date : str or datetime-like, optional
+        Inclusive lower bound of the simulated panel, in 'YYYY-MM-DD'
+        format. Falls back to a default range when omitted.
+    end_date : str or datetime-like, optional
+        Inclusive upper bound of the simulated panel, in 'YYYY-MM-DD'
+        format.
+    version : str, default 'v2'
+        Accepted for API compatibility with '_download_data_wrds_crsp';
+        the pseudo schema follows the v2 output.
+    additional_columns : list of str, optional
+        Extra column names appended to the panel. Filled with plausible
+        random draws so call sites continue to work; values themselves
+        are not economically meaningful.
+    add_ccm_links : bool, default False
+        When 'True', a 'gvkey' column derived from the same pseudo
+        identifier universe used by '_download_data_pseudo_ccm_links' is
+        appended.
+    adjust_volume : bool, default False
+        Accepted for API compatibility; ignored for pseudo data.
+    batch_size : int, default 500
+        Accepted for API compatibility; ignored for pseudo data.
+    n_assets : int, default 1000
+        Number of pseudo firms in the universe.
+    seed : int, default 1234
+        Random seed controlling the pseudo identifier universe and the
+        simulated values. Identical '(seed, n_assets)' pairs produce
+        identical output across calls and match the identifier universe
+        used by '_download_data_pseudo_compustat' and
+        '_download_data_pseudo_ccm_links'.
+
+    Returns
+    -------
+    pandas.DataFrame
+        For 'crsp_monthly', a DataFrame with columns 'permno', 'date',
+        'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
+        'industry', and 'ret_excess'. For 'crsp_daily', a DataFrame
+        with columns 'permno', 'date', 'ret', and 'ret_excess'. When
+        'add_ccm_links=True', a 'gvkey' column is appended.
+
+    Examples
+    --------
+    >>> from tidyfinance._pseudo import _download_data_pseudo_crsp
+    >>> monthly = _download_data_pseudo_crsp(
+    ...     'crsp_monthly',
+    ...     start_date='2020-01-01',
+    ...     end_date='2024-12-31',
+    ...     n_assets=20,
+    ... )
+    >>> daily = _download_data_pseudo_crsp(
+    ...     'crsp_daily',
+    ...     start_date='2020-01-01',
+    ...     end_date='2020-03-31',
+    ...     n_assets=20,
+    ... )
     """
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -328,13 +392,69 @@ def _download_data_pseudo_compustat(
     n_assets: int = 1000,
     seed: int = 1234,
 ) -> pd.DataFrame:
-    """Generate pseudo Compustat data with the same column layout as
-    ''_download_data_wrds_compustat''. The returned values are
-    simulated and not suitable for inference.
+    """Generate pseudo Compustat data with the WRDS schema.
 
-    Both ''compustat_annual'' and ''compustat_quarterly'' are
-    supported. ''only_usd'' is accepted for API compatibility and has
-    no effect (the pseudo universe is USD-denominated).
+    Returns simulated panel data that mirrors the column layout of
+    '_download_data_wrds_compustat'. Useful for testing and for
+    reproducing the workflow of Compustat-based analyses without a WRDS
+    subscription. The generated values are random draws and are not
+    suitable for inference. Both 'compustat_annual' and
+    'compustat_quarterly' are supported.
+
+    Parameters
+    ----------
+    dataset : str
+        Which Compustat variant to simulate. One of 'compustat_annual'
+        or 'compustat_quarterly'.
+    start_date : str or datetime-like, optional
+        Inclusive lower bound of the simulated panel, in 'YYYY-MM-DD'
+        format.
+    end_date : str or datetime-like, optional
+        Inclusive upper bound of the simulated panel, in 'YYYY-MM-DD'
+        format.
+    additional_columns : list of str, optional
+        Extra column names appended to the panel. Filled with plausible
+        random draws; values themselves are not economically meaningful.
+    only_usd : bool, default False
+        Accepted for API compatibility with
+        '_download_data_wrds_compustat'. The pseudo universe is treated
+        as USD-denominated, so this flag has no effect.
+    n_assets : int, default 1000
+        Number of pseudo firms in the universe.
+    seed : int, default 1234
+        Random seed controlling the pseudo identifier universe and the
+        simulated values. Identical '(seed, n_assets)' pairs produce
+        identical output across calls and match the identifier universe
+        used by '_download_data_pseudo_crsp' and
+        '_download_data_pseudo_ccm_links'.
+
+    Returns
+    -------
+    pandas.DataFrame
+        For 'compustat_annual', a DataFrame with 'gvkey', 'date',
+        'datadate', the financial-statement variables 'seq', 'ceq',
+        'at', 'lt', 'txditc', 'txdb', 'itcb', 'pstkrv', 'pstkl',
+        'pstk', 'capx', 'oancf', 'sale', 'cogs', 'xint', 'xsga', 'ib',
+        'curcd', plus the derived 'be', 'op', 'at_lag', 'inv', and any
+        requested 'additional_columns'. For 'compustat_quarterly', a
+        DataFrame with 'gvkey', 'date', 'datadate', 'atq', 'ceqq', and
+        any requested 'additional_columns'.
+
+    Examples
+    --------
+    >>> from tidyfinance._pseudo import _download_data_pseudo_compustat
+    >>> annual = _download_data_pseudo_compustat(
+    ...     'compustat_annual',
+    ...     start_date='2020-01-01',
+    ...     end_date='2024-12-31',
+    ...     n_assets=20,
+    ... )
+    >>> quarterly = _download_data_pseudo_compustat(
+    ...     'compustat_quarterly',
+    ...     start_date='2020-01-01',
+    ...     end_date='2024-12-31',
+    ...     n_assets=20,
+    ... )
     """
     _ = only_usd  # kept for API parity
     if dataset is None:
@@ -523,9 +643,35 @@ def _download_data_pseudo_ccm_links(
 ) -> pd.DataFrame:
     """Generate a pseudo CRSP-Compustat linking table.
 
-    Every pseudo ''permno'' is linked to its corresponding ''gvkey''
-    for the full sample horizon. ''linktype'' and ''linkprim'' are
-    accepted for API compatibility and ignored.
+    Returns a simulated linking table with the same column layout as
+    '_download_data_wrds_ccm_links'. Every pseudo 'permno' is linked to
+    its corresponding 'gvkey' for the full sample horizon (1925 through
+    2099). The 'linktype' and 'linkprim' arguments are accepted for API
+    compatibility and ignored.
+
+    Parameters
+    ----------
+    n_assets : int, default 1000
+        Number of pseudo firms in the universe.
+    seed : int, default 1234
+        Random seed controlling the pseudo identifier universe.
+    linktype : list of str, optional
+        Accepted for API compatibility with
+        '_download_data_wrds_ccm_links'; ignored for pseudo data.
+    linkprim : list of str, optional
+        Accepted for API compatibility with
+        '_download_data_wrds_ccm_links'; ignored for pseudo data.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with columns 'permno', 'gvkey', 'linkdt', and
+        'linkenddt', one row per pseudo firm.
+
+    Examples
+    --------
+    >>> from tidyfinance._pseudo import _download_data_pseudo_ccm_links
+    >>> links = _download_data_pseudo_ccm_links(n_assets=10)
     """
     _ = (linktype, linkprim)
     identifiers = _simulate_pseudo_identifiers(

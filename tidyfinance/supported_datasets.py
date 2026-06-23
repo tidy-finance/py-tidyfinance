@@ -410,26 +410,35 @@ def list_supported_datasets(
     domain: Optional[str | list[str]] = None,
     as_vector: bool = False,
 ) -> "pd.DataFrame | list[str]":
-    """List all datasets supported by ''download_data''.
+    """List all datasets supported by 'download_data'.
 
-    Aggregates the Global Q, Fama-French, Goyal-Welch, WRDS, pseudo, and
-    "other" tables into a single :class:'pandas.DataFrame'. The legacy
-    Fama-French table is intentionally excluded from the master listing.
+    Aggregates the Global Q, Fama-French, Goyal-Welch, WRDS, pseudo,
+    and miscellaneous tables into a single pandas DataFrame. The
+    listing can optionally be restricted to one or more domains, or
+    returned as a plain list of 'type' strings. The legacy Fama-French
+    table is intentionally excluded from the master listing.
 
     Parameters
     ----------
     domain : str or list of str, optional
         Restrict the result to one or more domain labels (for example
-        ''"WRDS"'' or ''["Fama-French", "Global Q"]'').
+        'WRDS' or '['Fama-French', 'Global Q']').
     as_vector : bool, default False
-        If ''True'', return a list of dataset ''type'' strings instead of a
+        When 'True', return a list of 'type' strings instead of a
         DataFrame.
 
     Returns
     -------
     pandas.DataFrame or list of str
-        Either a DataFrame with columns ''type'', ''dataset_name'', and
-        ''domain'', or a list of ''type'' strings when ''as_vector=True''.
+        Either a DataFrame with columns 'type', 'dataset_name', and
+        'domain', or a list of 'type' strings when 'as_vector=True'.
+
+    Examples
+    --------
+    >>> from tidyfinance import list_supported_datasets
+    >>> list_supported_datasets()
+    >>> list_supported_datasets(domain='WRDS')
+    >>> list_supported_datasets(as_vector=True)
     """
     rows = (
         _Q_DATASETS
