@@ -130,11 +130,11 @@ def _simulate_pseudo_data(
     end_date: Optional[str] = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Internal router invoked when ''domain='pseudo'''.
+    """Internal router invoked when ''domain='Pseudo Data'''.
 
     Validates ''dataset'', emits a notice that pseudo data is being
     returned, and dispatches to the per-dataset generator. Users access
-    pseudo data via ''download_data(domain='pseudo', ...)'' or the
+    pseudo data via ''download_data(domain='Pseudo Data', ...)'' or the
     per-dataset ''_download_data_pseudo_*()'' functions.
     """
     if dataset is None:
@@ -143,8 +143,8 @@ def _simulate_pseudo_data(
     _check_supported_dataset_pseudo(dataset)
 
     warnings.warn(
-        'Returning pseudo data from domain="pseudo". Schema matches '
-        'domain="wrds", but values are simulated and not suitable '
+        'Returning pseudo data from domain="Pseudo Data". Schema matches '
+        'domain="WRDS", but values are simulated and not suitable '
         "for inference.",
         UserWarning,
         stacklevel=2,
