@@ -6,41 +6,40 @@ import sys
 import numpy as np
 import pandas as pd
 import pytest
-import yaml
+from dotenv import dotenv_values
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-from tidyfinance.utilities import list_supported_indexes, trim, winsorize
+from tidyfinance.utilities import (
+    list_supported_indexes,
+    set_wrds_credentials,
+    trim,
+    winsorize,
+)
 
 
-def test_set_wrds_credentials(tmp_path):
-    """Test function for set_wrds_credentials using a temporary directory."""
-    test_config_path = tmp_path / "config.yaml"
+def test_set_wrds_credentials(tmp_path, monkeypatch):
+    """Test that set_wrds_credentials writes credentials to a .env file."""
+    monkeypatch.chdir(tmp_path)
+
     test_gitignore_path = tmp_path / ".gitignore"
-    test_credentials = {
-        "WRDS": {"USER": "test_user", "PASSWORD": "test_password"}
-    }
+    test_gitignore_path.write_text("")
 
-    with open(test_config_path, "w") as file:
-        yaml.safe_dump(test_credentials, file)
-    assert test_config_path.exists()
+    inputs = iter(["test_user", "test_password", "project", "yes"])
+    monkeypatch.setattr("builtins.input", lambda *args: next(inputs))
 
-    with open(test_config_path, "r") as file:
-        loaded_config = yaml.safe_load(file)
+    set_wrds_credentials()
 
-    assert loaded_config["WRDS"]["USER"] == "test_user"
-    assert loaded_config["WRDS"]["PASSWORD"] == "test_password"
+    env_path = tmp_path / ".env"
+    assert env_path.exists()
 
-    with open(test_gitignore_path, "w") as file:
-        file.write("config.yaml\n")
+    credentials = dotenv_values(env_path)
+    assert credentials["WRDS_USER"] == "test_user"
+    assert credentials["WRDS_PASSWORD"] == "test_password"
 
-    assert test_gitignore_path.exists()
-
-    with open(test_gitignore_path, "r") as file:
-        gitignore_content = file.readlines()
-
-    assert "config.yaml\n" in gitignore_content
+    gitignore_content = test_gitignore_path.read_text().splitlines()
+    assert ".env" in gitignore_content
 
 
 def test_winsorize_correct_adjustment():
