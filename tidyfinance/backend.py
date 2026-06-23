@@ -1,0 +1,129 @@
+"""Global data frame backend for tidyfinance.
+
+The backend controls the type of data frame returned by the public
+tidyfinance API. The default is ``"pandas"``; after
+``set_backend("polars")`` the functions return :class:`polars.DataFrame`
+objects instead. Polars data frames are also accepted as input
+regardless of the active backend (they are converted to pandas
+internally), so results from one call can be fed straight into the next.
+
+Examples
+--------
+>>> import tidyfinance as tf
+>>> tf.set_backend("polars")
+>>> data = tf.download_data("Fama-French", "factors_ff3_monthly")
+>>> tf.estimate_model(data, "mkt_excess")  # also returns polars
+>>> tf.set_backend("pandas")  # back to the default
+"""
+
+import functools
+
+_VALID_BACKENDS = ("pandas", "polars")
+
+_BACKEND = "pandas"
+
+
+def set_backend(backend: str) -> None:
+    """Set the global data frame backend for the tidyfinance API.
+
+    Parameters
+    ----------
+    backend : str
+        Either ``"pandas"`` (the default) or ``"polars"``.
+
+    Raises
+    ------
+    ValueError
+        If ``backend`` is not a recognized value.
+    ImportError
+        If ``backend`` is ``"polars"`` but the optional ``polars``
+        package is not installed.
+    """
+    global _BACKEND
+    if backend not in _VALID_BACKENDS:
+        raise ValueError(
+            f"Invalid backend '{backend}'. Valid backends: "
+            f"{', '.join(_VALID_BACKENDS)}."
+        )
+    if backend == "polars":
+        try:
+            import polars  # noqa: F401
+        except ImportError as e:
+            raise ImportError(
+                "The 'polars' backend requires the optional 'polars' "
+                "package. Install it via "
+                "`pip install tidyfinance[polars]`."
+            ) from e
+    _BACKEND = backend
+
+
+def get_backend() -> str:
+    """Return the active data frame backend (``"pandas"`` or
+    ``"polars"``)."""
+    return _BACKEND
+
+
+def _is_polars_obj(obj) -> bool:
+    """Return True for polars DataFrame/LazyFrame/Series without
+    importing polars (so the check is cheap when polars is absent)."""
+    module = type(obj).__module__ or ""
+    return module.split(".")[0] == "polars" and type(obj).__name__ in (
+        "DataFrame",
+        "LazyFrame",
+        "Series",
+    )
+
+
+def _to_pandas_input(obj):
+    """Convert a polars input to pandas, leaving anything else as-is."""
+    if _is_polars_obj(obj):
+        if type(obj).__name__ == "LazyFrame":
+            obj = obj.collect()
+        return obj.to_pandas()
+    return obj
+
+
+def _convert_output(obj):
+    """Convert a pandas data frame to the active backend.
+
+    With the ``"pandas"`` backend (or for anything that is not a pandas
+    data frame, e.g. a Series, dict, or ndarray) the object is returned
+    unchanged. With the ``"polars"`` backend, a pandas data frame is
+    converted via :func:`polars.from_pandas`. A non-default index (a
+    named index or a non-``RangeIndex``, such as a date index) is
+    preserved as a column, since polars has no concept of an index.
+    """
+    if get_backend() != "polars":
+        return obj
+
+    import pandas as pd
+
+    if not isinstance(obj, pd.DataFrame):
+        return obj
+
+    import polars as pl
+
+    include_index = not (
+        isinstance(obj.index, pd.RangeIndex) and obj.index.name is None
+    )
+    return pl.from_pandas(obj, include_index=include_index)
+
+
+def use_backend(func):
+    """Wrap a public function so it honors the active backend.
+
+    Polars data frames passed as arguments are converted to pandas
+    before the call; a pandas data frame returned by the call is
+    converted to the active backend afterwards. Non-data-frame
+    arguments and return values pass through untouched. Apply this at
+    the public API boundary only, so that internal calls between
+    functions keep operating on pandas.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        args = tuple(_to_pandas_input(a) for a in args)
+        kwargs = {k: _to_pandas_input(v) for k, v in kwargs.items()}
+        return _convert_output(func(*args, **kwargs))
+
+    return wrapper

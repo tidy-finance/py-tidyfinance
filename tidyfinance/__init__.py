@@ -1,3 +1,4 @@
+from .backend import set_backend, get_backend, use_backend
 from .core import (
     add_lagged_columns,
     assign_portfolio,
@@ -40,7 +41,32 @@ from .utilities import (
 )
 from .supported_datasets import list_supported_datasets
 
+# Wrap the public, data-bearing API at the boundary so it honors the
+# active backend (see tidyfinance.set_backend). The wrapped functions
+# accept polars or pandas input and return the active backend's data
+# frame type. Internal calls between core functions are left untouched,
+# since they reference the original (undecorated) functions in their
+# defining modules.
+add_lagged_columns = use_backend(add_lagged_columns)
+assign_portfolio = use_backend(assign_portfolio)
+compute_breakpoints = use_backend(compute_breakpoints)
+compute_portfolio_returns = use_backend(compute_portfolio_returns)
+compute_long_short_returns = use_backend(compute_long_short_returns)
+compute_rolling_value = use_backend(compute_rolling_value)
+create_summary_statistics = use_backend(create_summary_statistics)
+estimate_betas = use_backend(estimate_betas)
+estimate_fama_macbeth = use_backend(estimate_fama_macbeth)
+estimate_model = use_backend(estimate_model)
+join_lagged_values = use_backend(join_lagged_values)
+filter_sorting_data = use_backend(filter_sorting_data)
+implement_portfolio_sort = use_backend(implement_portfolio_sort)
+download_data = use_backend(download_data)
+list_supported_datasets = use_backend(list_supported_datasets)
+list_supported_indexes = use_backend(list_supported_indexes)
+
 __all__ = [
+    "set_backend",
+    "get_backend",
     "download_data",
     "get_available_famafrench_datasets",
     "_download_data_factors_ff",

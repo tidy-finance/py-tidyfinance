@@ -162,9 +162,13 @@ def download_data(
 
     Returns
     -------
-    pd.DataFrame
+    pd.DataFrame or polars.DataFrame
         A data frame with processed data, including dates and relevant
-        financial metrics, filtered by the specified date range.
+        financial metrics, filtered by the specified date range. The
+        type depends on the global backend (see
+        :func:`tidyfinance.set_backend`): a pandas data frame by
+        default, or a polars data frame after
+        ``set_backend("polars")``.
     """
     if type is not None:
         warnings.warn(
