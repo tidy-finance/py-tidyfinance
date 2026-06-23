@@ -35,7 +35,7 @@ The function always requires a `domain` argument and depending on the domain typ
 
 ```python
 tf.download_data(
-  domain="factors_ff",
+  domain="Fama-French",
   dataset="Fama/French 5 Factors (2x3) [Daily]",
   start_date="2000-01-01",
   end_date="2020-12-31"
@@ -46,7 +46,7 @@ For q factors, you provide the relevant file name:
 
 ```python
 tf.download_data(
-  domain="factors_q",
+  domain="Global Q",
   dataset="q5_factors_monthly",
   start_date="2000-01-01",
   end_date="2020-12-31"
@@ -57,7 +57,7 @@ To download the Welch and Goyal (2008) macroeconomic predictors for monthly, qua
 
 ```python
 tf.download_data(
-  domain="macro_predictors",
+  domain="Goyal-Welch",
   dataset="monthly",
   start_date="2000-01-01",
   end_date="2020-12-31"
@@ -68,7 +68,7 @@ To download data from Open Source Asset Pricing (OSAP):
 
 ```python
 tf.download_data(
-  domain="osap",
+  domain="Open Source Asset Pricing",
   start_date="2020-01-01",
   end_date="2020-12-31"
 )
@@ -78,7 +78,7 @@ To download multiple series from the Federal Reserve Economic Data (FRED):
 
 ```python
 tf.download_data(
-  domain="fred",
+  domain="FRED",
   series=["GDP", "CPIAUCNS"],
   start_date="2020-01-01",
   end_date="2020-12-31"
@@ -89,7 +89,7 @@ To download stock prices from Yahoo Finance:
 
 ```python
 tf.download_data(
-  domain="stock_prices",
+  domain="Stock Prices",
   symbols=["AAPL", "MSFT"],
   start_date="2020-01-01",
   end_date="2020-12-31"
@@ -100,7 +100,7 @@ To download index constituents from selected ETF holdings:
 
 ```python
 tf.download_data(
-  domain="constituents",
+  domain="Index Constituents",
   index="S&P 500"
 )
 ```
@@ -117,7 +117,7 @@ To download monthly CRSP data:
 
 ```python
 tf.download_data(
-  domain="wrds",
+  domain="WRDS",
   dataset="crsp_monthly",
   start_date="2020-01-01",
   end_date="2020-12-31"
@@ -128,7 +128,7 @@ To download annual (or quaterly) Compustat data:
 
 ```python
 tf.download_data(
-  domain="wrds",
+  domain="WRDS",
   dataset="compustat_annual",
   start_date="2020-01-01",
   end_date="2020-12-31"
@@ -139,7 +139,7 @@ To download the CRSP-Compustat linking table:
 
 ```python
 tf.download_data(
-  domain="wrds",
+  domain="WRDS",
   dataset="ccm_links"
 )
 ```
@@ -148,7 +148,7 @@ To download bond characteristics from Mergent FISD:
 
 ```python
 tf.download_data(
-  domain="wrds",
+  domain="WRDS",
   dataset="fisd"
 )
 ```
@@ -157,7 +157,7 @@ To download Enhanced TRACE data for selected bonds:
 
 ```python
 tf.download_data(
-  domain="wrds",
+  domain="WRDS",
   dataset="trace_enhanced",
   cusips=["00101JAH9"],
   start_date="2019-01-01",
@@ -169,14 +169,14 @@ To download high-frequency S&P 500 data or factor library data from Hugging Face
 
 ```python
 tf.download_data(
-  domain="tidyfinance",
+  domain="Tidy Finance",
   dataset="high_frequency_sp500",
   start_date="2007-07-26",
   end_date="2007-07-27"
 )
 
 tf.download_data(
-  domain="tidyfinance",
+  domain="Tidy Finance",
   dataset="factor_library",
   sorting_variable="me"
 )

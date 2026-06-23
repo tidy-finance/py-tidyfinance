@@ -39,6 +39,7 @@ from .supported_datasets import (
     _is_legacy_type_q,
     _is_legacy_type_wrds,
     _parse_type_to_domain_dataset,
+    _resolve_domain_alias,
 )
 from .utilities import (
     _process_additional_columns,
@@ -135,9 +136,13 @@ def download_data(
     Parameters
     ----------
     domain : str
-        The domain of the dataset to download (e.g., "famafrench",
-        "globalq", "macro_predictors", "wrds", "constituents", "fred",
-        "stock_prices", "osap").
+        The domain of the dataset to download, given as one of the
+        canonical names returned by ``list_supported_datasets()``:
+        "Fama-French", "Global Q", "Goyal-Welch", "WRDS", "Pseudo Data",
+        "Index Constituents", "FRED", "Stock Prices",
+        "Open Source Asset Pricing", "Tidy Finance". The previous
+        machine-readable names (e.g. "famafrench", "wrds", "pseudo") are
+        deprecated but still accepted.
     dataset : str, optional
         The specific dataset within the domain to download.
     start_date : str, optional
@@ -182,39 +187,41 @@ def download_data(
     if domain is None:
         raise ValueError("Argument 'domain' is required.")
 
+    domain = _resolve_domain_alias(domain)
+
     _check_supported_domain(domain)
 
-    if domain in ["famafrench", "factors_ff"]:
+    if domain == "Fama-French":
         processed_data = _download_data_factors_ff(
             dataset=dataset, start_date=start_date, end_date=end_date
         )
-    elif domain in ["globalq", "factors_q"]:
+    elif domain == "Global Q":
         processed_data = _download_data_factors_q(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "macro_predictors":
+    elif domain == "Goyal-Welch":
         processed_data = _download_data_macro_predictors(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "wrds":
+    elif domain == "WRDS":
         processed_data = _download_data_wrds(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "constituents":
+    elif domain == "Index Constituents":
         processed_data = _download_data_constituents(dataset=dataset, **kwargs)
-    elif domain == "fred":
+    elif domain == "FRED":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "stock_prices":
+    elif domain == "Stock Prices":
         processed_data = _download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "osap":
+    elif domain == "Open Source Asset Pricing":
         processed_data = _download_data_osap(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "tidyfinance":
+    elif domain == "Tidy Finance":
         if dataset == "risk_free":
             processed_data = _download_data_risk_free(
                 start_date=start_date, end_date=end_date, **kwargs
@@ -226,7 +233,7 @@ def download_data(
                 end_date=end_date,
                 **kwargs,
             )
-    elif domain == "pseudo":
+    elif domain == "Pseudo Data":
         processed_data = _simulate_pseudo_data(
             dataset=dataset,
             start_date=start_date,
@@ -753,9 +760,9 @@ def _download_data_constituents(
     """
     if dataset is not None and index is None:
         warnings.warn(
-            "The 'dataset' argument is not valid for domain='constituents'. "
-            "Use 'index' instead, e.g. download_data(domain='constituents',"
-            " index='DAX').",
+            "The 'dataset' argument is not valid for "
+            "domain='Index Constituents'. Use 'index' instead, e.g. "
+            "download_data(domain='Index Constituents', index='DAX').",
             UserWarning,
             stacklevel=2,
         )

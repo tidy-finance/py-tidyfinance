@@ -16,6 +16,7 @@ from tidyfinance.supported_datasets import (
     _check_supported_domain,
     _is_legacy_type,
     _parse_type_to_domain_dataset,
+    _resolve_domain_alias,
     list_supported_datasets,
 )
 
@@ -67,7 +68,7 @@ def test_pseudo_table_has_expected_columns_and_domain():
     assert {"type", "dataset_name", "domain"} <= set(
         _PSEUDO_DATASETS[0].keys()
     )
-    assert all(row["domain"] == "pseudo" for row in _PSEUDO_DATASETS)
+    assert all(row["domain"] == "Pseudo Data" for row in _PSEUDO_DATASETS)
 
 
 def test_other_table_has_expected_columns():
@@ -132,14 +133,14 @@ def test_total_row_count_matches_sum_of_components():
 
 def test_parse_type_ff():
     assert _parse_type_to_domain_dataset("factors_ff_3_monthly") == (
-        "factors_ff",
+        "Fama-French",
         "Fama/French 3 Factors",
     )
 
 
 def test_parse_type_ff_legacy():
     assert _parse_type_to_domain_dataset("factors_ff3_monthly") == (
-        "factors_ff",
+        "Fama-French",
         "Fama/French 3 Factors",
     )
 
@@ -148,37 +149,43 @@ def test_parse_type_q_strips_csv_suffix():
     # The Q dataset names do not actually end in ".csv" in the current
     # tribble, but the suffix-stripping logic must still hold.
     assert _parse_type_to_domain_dataset("factors_q5_daily") == (
-        "factors_q",
+        "Global Q",
         "q5_factors_daily_2024",
     )
 
 
 def test_parse_type_macro_strips_prefix():
     assert _parse_type_to_domain_dataset("macro_predictors_monthly") == (
-        "macro_predictors",
+        "Goyal-Welch",
         "monthly",
     )
 
 
 def test_parse_type_wrds_strips_prefix():
     assert _parse_type_to_domain_dataset("wrds_crsp_monthly") == (
-        "wrds",
+        "WRDS",
         "crsp_monthly",
     )
 
 
 def test_parse_type_hf_prefix():
     assert _parse_type_to_domain_dataset("hf_sp500") == (
-        "tidyfinance",
+        "Tidy Finance",
         "sp500",
     )
 
 
 @pytest.mark.parametrize(
-    "simple", ["constituents", "fred", "stock_prices", "osap"]
+    "simple,canonical",
+    [
+        ("constituents", "Index Constituents"),
+        ("fred", "FRED"),
+        ("stock_prices", "Stock Prices"),
+        ("osap", "Open Source Asset Pricing"),
+    ],
 )
-def test_parse_type_simple_domain(simple):
-    assert _parse_type_to_domain_dataset(simple) == (simple, None)
+def test_parse_type_simple_domain(simple, canonical):
+    assert _parse_type_to_domain_dataset(simple) == (canonical, None)
 
 
 def test_parse_type_unknown_raises():
@@ -207,7 +214,7 @@ def test_is_legacy_type_true_for_wrds_type():
 
 
 def test_is_legacy_type_false_for_tidyfinance_other_type():
-    # 'risk_free' is in OTHER with domain == "tidyfinance" and must NOT be
+    # 'risk_free' is in OTHER with domain == "Tidy Finance" and must NOT be
     # treated as a legacy type.
     assert _is_legacy_type("risk_free") is False
 
@@ -221,18 +228,16 @@ def test_is_legacy_type_false_for_unknown_string():
 @pytest.mark.parametrize(
     "domain",
     [
-        "famafrench",
-        "factors_ff",
-        "globalq",
-        "factors_q",
-        "macro_predictors",
-        "wrds",
-        "pseudo",
-        "constituents",
-        "fred",
-        "stock_prices",
-        "osap",
-        "tidyfinance",
+        "Fama-French",
+        "Global Q",
+        "Goyal-Welch",
+        "WRDS",
+        "Pseudo Data",
+        "Index Constituents",
+        "FRED",
+        "Stock Prices",
+        "Open Source Asset Pricing",
+        "Tidy Finance",
     ],
 )
 def test_check_supported_domain_accepts_known(domain):
@@ -243,6 +248,39 @@ def test_check_supported_domain_accepts_known(domain):
 def test_check_supported_domain_rejects_unknown():
     with pytest.raises(ValueError, match="Unsupported domain"):
         _check_supported_domain("unknown")
+
+
+# %% _resolve_domain_alias
+
+@pytest.mark.parametrize(
+    "alias,canonical",
+    [
+        ("famafrench", "Fama-French"),
+        ("factors_ff", "Fama-French"),
+        ("globalq", "Global Q"),
+        ("factors_q", "Global Q"),
+        ("macro_predictors", "Goyal-Welch"),
+        ("wrds", "WRDS"),
+        ("pseudo", "Pseudo Data"),
+        ("constituents", "Index Constituents"),
+        ("fred", "FRED"),
+        ("stock_prices", "Stock Prices"),
+        ("osap", "Open Source Asset Pricing"),
+        ("tidyfinance", "Tidy Finance"),
+    ],
+)
+def test_resolve_domain_alias_warns_and_maps(alias, canonical):
+    with pytest.warns(DeprecationWarning, match="is deprecated"):
+        assert _resolve_domain_alias(alias) == canonical
+
+
+def test_resolve_domain_alias_passes_canonical_through():
+    # Canonical names are returned unchanged without a warning.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert _resolve_domain_alias("Fama-French") == "Fama-French"
 
 
 # %% run all tests

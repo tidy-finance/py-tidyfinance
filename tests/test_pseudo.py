@@ -78,13 +78,13 @@ def test_simulate_pseudo_data_dispatches_to_ccm():
 
 
 def test_download_data_routes_pseudo():
-    """download_data(domain='pseudo', ...) reaches _simulate_pseudo_data."""
+    """download_data(domain='Pseudo Data', ...) reaches _simulate_pseudo_data."""
     with patch(
         "tidyfinance.data_download._simulate_pseudo_data",
         return_value=pd.DataFrame({"sentinel": [1]}),
     ):
         out = download_data(
-            domain="pseudo",
+            domain="Pseudo Data",
             dataset="crsp_monthly",
             start_date="2020-01-01",
             end_date="2020-06-30",
