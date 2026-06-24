@@ -1531,8 +1531,9 @@ def estimate_fama_macbeth(
     if "maxlags" in options:
         warnings.warn(
             "vcov_options key 'maxlags' is deprecated; use 'lag' (and "
-            "'prewhite'). The default Newey-West estimator now matches R's "
-            "sandwich::NeweyWest (VAR(1) prewhitening + automatic bandwidth).",
+            "'prewhite'). The default Newey-West estimator now uses "
+            "VAR(1) prewhitening with automatic Newey-West (1994) "
+            "bandwidth selection.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1566,10 +1567,20 @@ def estimate_fama_macbeth(
         .rename(columns={"estimate": "risk_premium"})
     )
 
-    # Compute standard errors based on vcov choice
-    def compute_t_statistic(x):
+    # Compute standard error, t-statistic, and n per factor under
+    # the chosen vcov.
+    def compute_se_and_t(x):
         x = x.sort_values(date_col)
-        estimate = x["estimate"]
+        estimate = x["estimate"].dropna()
+        n = int(estimate.size)
+        if n < 2:
+            return pd.Series(
+                {
+                    "standard_error": np.nan,
+                    "t_statistic": np.nan,
+                    "n": n,
+                }
+            )
         if vcov == "newey-west":
             se = _newey_west_se(
                 estimate.to_numpy(),
@@ -1578,20 +1589,36 @@ def estimate_fama_macbeth(
                 adjust=nw_adjust,
             )
         else:
-            se = smf.ols("estimate ~ 1", x).fit().bse["Intercept"]
-        return estimate.mean() / se
+            se = (
+                smf.ols("estimate ~ 1", x.dropna(subset=["estimate"]))
+                .fit()
+                .bse["Intercept"]
+            )
+        if se is None or np.isnan(se) or se == 0:
+            t_stat = np.nan
+        else:
+            t_stat = float(estimate.mean()) / float(se)
+        return pd.Series(
+            {
+                "standard_error": float(se) if se is not None else np.nan,
+                "t_statistic": t_stat,
+                "n": n,
+            }
+        )
 
-    price_of_risk_t_stat = (
+    price_of_risk_se_t_n = (
         risk_premiums.melt(
             id_vars=date_col, var_name="factor", value_name="estimate"
         )
         .groupby("factor")
-        .apply(compute_t_statistic, include_groups=False)
+        .apply(compute_se_and_t, include_groups=False)
         .reset_index()
-        .rename(columns={0: "t_statistic"})
     )
 
-    result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor")
+    result_df = (
+        price_of_risk.merge(price_of_risk_se_t_n, on="factor")
+        [["factor", "risk_premium", "standard_error", "t_statistic", "n"]]
+    )
 
     return result_df
 

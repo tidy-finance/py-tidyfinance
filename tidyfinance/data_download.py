@@ -1230,8 +1230,6 @@ def _download_data_stock_prices(
     ):
         raise ValueError("symbols must be a list of stock symbols (strings).")
 
-    start_date, end_date = _validate_dates(start_date, end_date)
-
     start_date, end_date = _validate_dates(
         start_date, end_date, use_default_range=True
     )

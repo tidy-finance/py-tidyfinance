@@ -211,9 +211,8 @@ def _to_offset(x):
 def _check_new_col(data: pd.DataFrame, names) -> None:
     """Raise ValueError if any names already exist in data.columns.
 
-    Mirrors R's check_new_col: prevents silent overwrite of user
-    columns when the function plans to introduce temporary helpers
-    like _upper / _lower / _src_date.
+    Prevents silent overwrite of user columns when the function plans
+    to introduce temporary helpers like _upper / _lower / _src_date.
     """
     if isinstance(names, str):
         names = [names]
