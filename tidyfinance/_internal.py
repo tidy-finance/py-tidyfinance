@@ -103,8 +103,9 @@ def _validate_dates(
     """
     if start_date is None and end_date is None:
         if use_default_range:
-            end_date = pd.Timestamp.today().normalize()
-            start_date = end_date - pd.DateOffset(years=2)
+            today = pd.Timestamp.today().normalize()
+            start_date = today - pd.DateOffset(years=2)
+            end_date = today - pd.DateOffset(years=1)
             print(
                 "No start_date or end_date provided. Using the range "
                 f"{start_date.date()} to {end_date.date()} to avoid "

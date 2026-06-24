@@ -1204,10 +1204,9 @@ def _download_data_stock_prices(
 
     start_date, end_date = _validate_dates(start_date, end_date)
 
-    if start_date is None:
-        start_date = pd.Timestamp.today() - pd.DateOffset(years=2)
-    if end_date is None:
-        end_date = pd.Timestamp.today()
+    start_date, end_date = _validate_dates(
+        start_date, end_date, use_default_range=True
+    )
 
     start_timestamp = int(start_date.timestamp())
     end_timestamp = int(end_date.timestamp())
