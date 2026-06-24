@@ -720,13 +720,21 @@ def breakpoint_options(
     Examples
     --------
     >>> from tidyfinance import breakpoint_options
+    >>> # Quintile portfolios with NYSE breakpoints
     >>> breakpoint_options(
     ...     n_portfolios=5,
-    ...     percentiles=None,
     ...     breakpoints_exchanges='NYSE',
-    ...     smooth_bunching=True,
-    ...     custom_threshold=0.5,
-    ...     another_option='example',
+    ... )
+    >>> # Custom percentile thresholds (mutually exclusive with n_portfolios)
+    >>> breakpoint_options(
+    ...     percentiles=[0.3, 0.7],
+    ...     breakpoints_exchanges='NYSE',
+    ... )
+    >>> # Exclude the smallest 20% of NYSE stocks from breakpoint computation
+    >>> breakpoint_options(
+    ...     n_portfolios=10,
+    ...     breakpoints_exchanges='NYSE',
+    ...     breakpoints_min_size_threshold=0.2,
     ... )
     """
     # Validate n_portfolios
