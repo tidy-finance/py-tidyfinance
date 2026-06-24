@@ -73,15 +73,15 @@ def _simulate_pseudo_identifiers(
 ) -> pd.DataFrame:
     """Draw a pseudo universe of stock identifiers.
 
-    Fully determined by ''(seed, n_assets)'' so calls to different
+    Fully determined by '(seed, n_assets)' so calls to different
     pseudo datasets (CRSP, Compustat, CCM links) share the same
     identifier mapping and join cleanly.
 
     Returns
     -------
     pd.DataFrame
-        One row per pseudo firm with columns ''permno'', ''permco'',
-        ''gvkey'', ''exchange'', ''industry'', and ''siccd''.
+        One row per pseudo firm with columns 'permno', 'permco',
+        'gvkey', 'exchange', 'industry', and 'siccd'.
     """
     n_assets = int(n_assets)
     if n_assets <= 0:
@@ -115,7 +115,7 @@ def _simulate_pseudo_identifiers(
 # %% Router
 
 def _check_supported_dataset_pseudo(dataset: str) -> None:
-    """Raise when ''dataset'' is not a supported pseudo dataset."""
+    """Raise when 'dataset' is not a supported pseudo dataset."""
     if dataset not in _SUPPORTED_PSEUDO_DATASETS:
         joined = ", ".join(repr(d) for d in _SUPPORTED_PSEUDO_DATASETS)
         raise ValueError(
@@ -130,12 +130,12 @@ def _simulate_pseudo_data(
     end_date: Optional[str] = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Internal router invoked when ''domain='Pseudo Data'''.
+    """Internal router invoked when ''domain='Pseudo Data''.
 
-    Validates ''dataset'', emits a notice that pseudo data is being
+    Validates 'dataset', emits a notice that pseudo data is being
     returned, and dispatches to the per-dataset generator. Users access
-    pseudo data via ''download_data(domain='Pseudo Data', ...)'' or the
-    per-dataset ''_download_data_pseudo_*()'' functions.
+    pseudo data via 'download_data(domain='Pseudo Data', ...)' or the
+    per-dataset '_download_data_pseudo_*()'' functions.
     """
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")

@@ -474,8 +474,8 @@ _SIMPLE_DOMAINS: tuple[str, ...] = (
 )
 
 
-# Canonical, human-readable domain names accepted by ``download_data``.
-# These match the ``domain`` column returned by ``list_supported_datasets``.
+# Canonical, human-readable domain names accepted by 'download_data'.
+# These match the 'domain' column returned by 'list_supported_datasets'.
 _SUPPORTED_DOMAINS: tuple[str, ...] = (
     "Fama-French",
     "Global Q",
@@ -491,9 +491,9 @@ _SUPPORTED_DOMAINS: tuple[str, ...] = (
 
 
 # Soft-deprecated machine-readable domain names mapped to their canonical
-# human-readable replacements. Passing any of these to ``download_data``
-# still works but emits a ``DeprecationWarning`` via
-# ``_resolve_domain_alias``.
+# human-readable replacements. Passing any of these to 'download_data'
+# still works but emits a 'DeprecationWarning' via
+# '_resolve_domain_alias'.
 _DOMAIN_ALIASES: dict[str, str] = {
     "famafrench": "Fama-French",
     "factors_ff": "Fama-French",
@@ -514,11 +514,11 @@ def _resolve_domain_alias(domain: str) -> str:
     """Map a soft-deprecated domain alias to its canonical name.
 
     The machine-readable domain names used in earlier releases (for
-    example ``"famafrench"``, ``"wrds"``, ``"pseudo"`` or
-    ``"tidyfinance"``) are still accepted but now resolve to the
+    example '"famafrench"', '"wrds"', '"pseudo"' or
+    '"tidyfinance"') are still accepted but now resolve to the
     canonical, human-readable names returned by
-    ``list_supported_datasets``. Passing an alias emits a
-    :class:`DeprecationWarning`. Any other value is returned unchanged.
+    'list_supported_datasets'. Passing an alias emits a
+    'DeprecationWarning'. Any other value is returned unchanged.
     """
     canonical = _DOMAIN_ALIASES.get(domain)
     if canonical is not None:
@@ -536,39 +536,39 @@ def _resolve_domain_alias(domain: str) -> str:
 def _parse_type_to_domain_dataset(
     type_str: str,
 ) -> tuple[str, Optional[str]]:
-    """Translate a legacy ''type'' string into a ''(domain, dataset)'' pair.
+    """Translate a legacy 'type' string into a '(domain, dataset)' pair.
 
     The dispatch rules are (domains are the canonical, human-readable
-    names returned by ``list_supported_datasets``):
+    names returned by 'list_supported_datasets'):
 
     * Fama-French legacy / current types resolve to
-      ''("Fama-French", <dataset_name>)''.
+      '("Fama-French", <dataset_name>)'.
     * Global Q types resolve to
-      ''("Global Q", <dataset_name without trailing ".csv">)''.
-    * ''macro_predictors_*'' strings resolve to
-      ''("Goyal-Welch", <suffix>)''.
-    * ''wrds_*'' strings resolve to ''("WRDS", <suffix>)''.
-    * ''hf_*'' strings resolve to ''("Tidy Finance", <suffix>)''.
-    * ''constituents'', ''fred'', ''stock_prices'', ''osap'' resolve to
-      ''("Index Constituents", None)'', ''("FRED", None)'',
-      ''("Stock Prices", None)'' and
-      ''("Open Source Asset Pricing", None)'' respectively.
+      '("Global Q", <dataset_name without trailing ".csv">)'.
+    * 'macro_predictors_*' strings resolve to
+      '("Goyal-Welch", <suffix>)'.
+    * 'wrds_*' strings resolve to '("WRDS", <suffix>)'.
+    * 'hf_*' strings resolve to '("Tidy Finance", <suffix>)'.
+    * 'constituents', 'fred', 'stock_prices', 'osap' resolve to
+      '("Index Constituents", None)', '("FRED", None)',
+      '("Stock Prices", None)' and
+      '("Open Source Asset Pricing", None)' respectively.
     * Anything else raises :class:'ValueError'.
 
     Parameters
     ----------
     type_str : str
-        The legacy ''type'' string passed by the caller.
+        The legacy 'type' string passed by the caller.
 
     Returns
     -------
     tuple of (str, str or None)
-        The resolved ''(domain, dataset)'' pair.
+        The resolved '(domain, dataset)' pair.
 
     Raises
     ------
     ValueError
-        If ''type_str'' does not match any known legacy pattern.
+        If 'type_str' does not match any known legacy pattern.
     """
     # Fama-French (current + legacy share the lookup table)
     for row in _FF_DATASETS:
@@ -621,13 +621,13 @@ def _parse_type_to_domain_dataset(
 
 
 def _is_legacy_type(x: str) -> bool:
-    """Return ''True'' iff ''x'' is a legacy ''type'' string.
+    """Return 'True' iff 'x' is a legacy 'type' string.
 
-    A value is considered legacy when ''_parse_type_to_domain_dataset''
+    A value is considered legacy when '_parse_type_to_domain_dataset'
     would succeed on it *and* it is not one of the simple domain names
     listed in :data:'_SIMPLE_DOMAINS' (those are already valid domains in
-    their own right).  ''Tidy Finance''-domain "other" datasets such as
-    ''risk_free'' or ''factor_library'' are not treated as legacy either.
+    their own right).  'Tidy Finance'-domain "other" datasets such as
+    'risk_free' or 'factor_library' are not treated as legacy either.
     """
     if x in _SIMPLE_DOMAINS:
         return False
@@ -649,7 +649,7 @@ def _is_legacy_type(x: str) -> bool:
 
 
 def _check_supported_domain(domain: str) -> None:
-    """Raise :class:'ValueError' when ''domain'' is not supported.
+    """Raise :class:'ValueError' when 'domain' is not supported.
 
     The list of supported domains is exposed via :data:'_SUPPORTED_DOMAINS'.
     """
