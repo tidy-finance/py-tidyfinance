@@ -74,7 +74,26 @@ def _assign_industry(siccd):
 
 
 def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
-    """Parse YYYY-MM-DD or YYYYMM into a Timestamp."""
+    """
+    Parse a date-like string into a normalized 'pd.Timestamp'.
+
+    Parameters
+    ----------
+    d : str or None
+        Date string in one of two supported formats: 'YYYY-MM-DD'
+        (any pandas-parseable date) or 'YYYYMM' (year-month, six
+        digits). 'None' returns 'None'.
+    is_end : bool, default False
+        Only relevant for the 'YYYYMM' form. When 'True', shift the
+        parsed timestamp to the last day of that month; when 'False',
+        the timestamp is the first day of the month.
+
+    Returns
+    -------
+    pd.Timestamp or None
+        Normalized timestamp at midnight (time component stripped),
+        or 'None' if 'd' was 'None'.
+    """
     if d is None:
         return None
     d = str(d)
@@ -246,7 +265,27 @@ def _get_random_user_agent():
 
 
 def _to_offset(x):
-    """Coerce int to pd.Timedelta; pass through pd.Timedelta/pd.DateOffset."""
+    """
+    Normalize a lag specification to a pandas time offset.
+
+    Parameters
+    ----------
+    x : int, pd.Timedelta, or pd.DateOffset
+        Lag value. Integers are interpreted as a number of days.
+        'pd.Timedelta' and 'pd.DateOffset' instances are returned
+        unchanged.
+
+    Returns
+    -------
+    pd.Timedelta or pd.DateOffset
+        An offset object suitable for date arithmetic.
+
+    Raises
+    ------
+    TypeError
+        If 'x' is not one of the supported types (booleans are
+        rejected even though they subclass 'int').
+    """
     if isinstance(x, int) and not isinstance(x, bool):
         return pd.Timedelta(days=x)
     if isinstance(x, (pd.Timedelta, pd.tseries.offsets.BaseOffset)):
@@ -258,10 +297,25 @@ def _to_offset(x):
 
 
 def _check_new_col(data: pd.DataFrame, names) -> None:
-    """Raise ValueError if any names already exist in data.columns.
+    """
+    Guard against overwriting user columns with internal helpers.
 
-    Prevents silent overwrite of user columns when the function plans
-    to introduce temporary helpers like _upper / _lower / _src_date.
+    Raises 'ValueError' if any of 'names' already exist in
+    'data.columns'. Used before adding temporary columns like
+    '_upper', '_lower', '_src_date' inside lagging functions, so
+    user data is never silently clobbered.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Input frame whose columns are checked.
+    names : str or iterable of str
+        Column name(s) the caller intends to introduce.
+
+    Raises
+    ------
+    ValueError
+        If any name in 'names' is already a column of 'data'.
     """
     if isinstance(names, str):
         names = [names]
@@ -275,7 +329,25 @@ def _check_new_col(data: pd.DataFrame, names) -> None:
 
 
 def _validate_column_name(value, arg: str, description: str) -> None:
-    """Raise ValueError if value is not a single non-empty string."""
+    """
+    Validate that 'value' is a single string usable as a column name.
+
+    Parameters
+    ----------
+    value : Any
+        Value to check.
+    arg : str
+        Name of the argument being validated, used in the error
+        message.
+    description : str
+        Short description of what the column represents, used in
+        the error message (e.g., 'date', 'sorting').
+
+    Raises
+    ------
+    ValueError
+        If 'value' is not a string.
+    """
     if not isinstance(value, str):
         raise ValueError(
             f"'{arg}' must be a string indicating the column name "
@@ -284,7 +356,26 @@ def _validate_column_name(value, arg: str, description: str) -> None:
 
 
 def _validate_flag(value, arg: str, message: str | None = None) -> None:
-    """Raise ValueError if value is not a single bool."""
+    """
+    Validate that 'value' is a Python bool.
+
+    Parameters
+    ----------
+    value : Any
+        Value to check. Numeric 0 or 1 are rejected; only actual
+        'bool' instances pass.
+    arg : str
+        Name of the argument being validated, used in the default
+        error message when 'message' is not supplied.
+    message : str, optional
+        Custom error message. If 'None' (the default), a generic
+        "'<arg>' must be a single boolean." message is raised.
+
+    Raises
+    ------
+    ValueError
+        If 'value' is not a 'bool'.
+    """
     if not isinstance(value, bool):
         if message is None:
             message = f"'{arg}' must be a single boolean."
@@ -299,7 +390,34 @@ def _validate_optional_number(
     min_strict: bool = False,
     max_strict: bool = False,
 ) -> None:
-    """Raise ValueError unless value is None or a single number in bounds."""
+    """
+    Validate that 'value' is None or a finite number within bounds.
+
+    Accepts 'None' as a way to signal "not supplied". When 'value' is
+    a number, it must be an 'int' or 'float' (booleans are rejected),
+    must not be 'NaN', and must lie within the requested range.
+
+    Parameters
+    ----------
+    value : None, int, or float
+        Value to check.
+    message : str
+        Error message raised on any validation failure.
+    min : float, default '-inf'
+        Lower bound for 'value'.
+    max : float, default '+inf'
+        Upper bound for 'value'.
+    min_strict : bool, default False
+        If 'True', require 'value > min' rather than 'value >= min'.
+    max_strict : bool, default False
+        If 'True', require 'value < max' rather than 'value <= max'.
+
+    Raises
+    ------
+    ValueError
+        If 'value' is not 'None', not numeric, is 'NaN', or lies
+        outside the requested bounds.
+    """
     if value is None:
         return
     if isinstance(value, bool) or not isinstance(value, (int, float)):
