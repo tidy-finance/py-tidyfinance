@@ -618,15 +618,16 @@ def breakpoint_options(
     percentiles : list, optional
         Percentile thresholds for defining breakpoints. Each value
         must be between 0 and 1.
-    breakpoints_exchanges : str, optional
-        A non-empty string specifying the exchange from which to
-        compute the breakpoints.
-    smooth_bunching : bool, default False
-        Whether smooth bunching should be applied.
     breakpoints_exchanges : str or list of str, optional
         Exchange (or exchanges) from which to compute the breakpoints.
         Accepts either a non-empty string or a non-empty list of
         strings.
+    smooth_bunching : bool, default False
+        Whether smooth bunching should be applied.
+    breakpoints_min_size_threshold : float, optional
+        Quantile below which stocks are excluded from breakpoint
+        computation. Must be None or a single numeric value strictly
+        between 0 and 1. None disables the filter.
     **kwargs
         Additional optional arguments, stored verbatim in the dict.
 
@@ -919,22 +920,34 @@ def create_summary_statistics(
     """
     Compute summary statistics for specified numeric variables in a DataFrame.
 
+    For each selected variable the function reports the number of
+    observations (count), mean, standard deviation (std), minimum,
+    median (50%), and maximum. When ``detail`` is True, the additional
+    quantiles 1%, 5%, 10%, 25%, 75%, 90%, 95%, and 99% are included.
+    Statistics are computed for the whole dataset, or separately for
+    each group when ``by`` is supplied.
+
     Parameters
     ----------
-    data (pd.DataFrame): A DataFrame containing the data to summarize.
-    variables (list): List of column names to summarize
-        (must be numeric or boolean).
-    by (str, optional): A column name to group data before summarization.
-        Default is None.
-    detail (bool, optional): Whether to include detailed quantiles.
-        Default is False.
-    drop_na (bool, optional): Whether to drop missing values before
-        summarizing. Default is False.
+    data : pd.DataFrame
+        DataFrame containing the data to summarize.
+    variables : list of str
+        Column names to summarize. Each must be numeric or boolean.
+    by : str, optional
+        Column name to group the data by before summarizing. Defaults
+        to None (summarize the whole dataset).
+    detail : bool, default False
+        If True, include the detailed quantiles (1%, 5%, 10%, 25%,
+        75%, 90%, 95%, 99%) in addition to the basic statistics.
+    drop_na : bool, default False
+        Whether to drop missing values before summarizing.
 
     Returns
     -------
-    pd.DataFrame: A DataFrame containing summary statistics for
-        each selected variable.
+    pd.DataFrame
+        Summary statistics (count, mean, std, min, median or the
+        requested quantiles, and max) for each selected variable;
+        reported per group when ``by`` is supplied.
     """
     # Check that all specified variables are numeric or boolean
     non_numeric_vars = [
@@ -982,7 +995,7 @@ def create_summary_statistics(
 def estimate_betas(
     data: pd.DataFrame,
     model: str,
-    lookback: pd.Timedelta,
+    lookback: int,
     min_obs: int = None,
     id_col: str = "permno",
 ) -> pd.DataFrame:
@@ -995,7 +1008,8 @@ def estimate_betas(
         stock identifier columns.
     model (str): A formula representing the regression model
         (e.g., 'ret_excess ~ mkt_excess').
-    lookback (int): The period window size to estimate rolling betas.
+    lookback (int): Rolling-window size, given as the number of
+        observations (rows) per stock used to estimate the betas.
     min_obs (int, optional): Minimum number of observations required for a
         valid estimate. Defaults to 80% of lookback.
     id_col (str, optional): Column name representing the stock identifier.
@@ -1681,8 +1695,13 @@ def compute_portfolio_returns(
         Function for computing secondary breakpoints. Defaults to
         compute_breakpoints.
     min_portfolio_size : int, default 1
-        Minimum firms per (portfolio, date) cross-section.
-        Cross-sections below this size receive NaN.
+        Minimum number of firms required in a reported cross-section;
+        cross-sections with fewer firms receive NaN. For univariate
+        sorts this is the firm count per (portfolio, date). For
+        bivariate sorts the firm counts are summed over the
+        controlling (secondary) sorting variable, so the threshold
+        applies to the per-(portfolio, date) total. A typical value is
+        5 (Fama-French convention); set to 0 to deactivate.
     cap_weight : float, default 0.8
         Quantile of market cap at which to cap weights for the capped
         value-weighted return. Must be in [0, 1].
@@ -2515,7 +2534,11 @@ def implement_portfolio_sort(
         Function for secondary breakpoints. Defaults to
         compute_breakpoints.
     min_portfolio_size : int, default 1
-        Minimum firms per reported cross-section.
+        Minimum number of firms required in a reported cross-section;
+        cross-sections with fewer firms receive NaN. For bivariate
+        sorts the firm counts are summed over the controlling sorting
+        variable (see compute_portfolio_returns). A typical value is 5
+        (Fama-French convention); set to 0 to deactivate.
     cap_weight : float, default 0.8
         Quantile for capping value weights.
     data_options : dict, optional

@@ -649,12 +649,18 @@ def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
 
     Parameters
     ----------
-        x (pd.Series): Numeric vector to winsorize.
-        cut (float): Proportion to replace at both ends.
+    x : np.ndarray
+        Numeric vector to winsorize.
+    cut : float
+        Proportion of data to replace at both ends (must be between
+        [0, 0.5]). For example, 0.05 replaces the lowest and highest
+        5% of values with the corresponding quantiles.
 
     Returns
     -------
-        pd.Series: Winsorized vector.
+    np.ndarray
+        Winsorized vector with extreme values replaced by the
+        corresponding quantile values.
     """
     if not isinstance(x, np.ndarray):
         x = np.array(x)
