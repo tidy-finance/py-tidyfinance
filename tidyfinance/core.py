@@ -606,7 +606,30 @@ def assign_portfolio(
     Returns
     -------
     pd.Series
-        Portfolio assignments as a float series.
+        Portfolio assignments as a float series. Each entry is the
+        1-indexed portfolio number; values outside the breakpoint
+        range fall into the boundary portfolios. NaN inputs are
+        returned as NaN.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import assign_portfolio, breakpoint_options
+    >>> rng = np.random.default_rng(42)
+    >>> data = pd.DataFrame({
+    ...     'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
+    ...     'market_cap': rng.uniform(1, 100, 100),
+    ... })
+    >>> # Quintile portfolios on market_cap with NYSE breakpoints
+    >>> assign_portfolio(
+    ...     data,
+    ...     sorting_variable='market_cap',
+    ...     breakpoint_options=breakpoint_options(
+    ...         n_portfolios=5,
+    ...         breakpoints_exchanges='NYSE',
+    ...     ),
+    ... )
     """
     if breakpoint_function is None:
         breakpoint_function = compute_breakpoints

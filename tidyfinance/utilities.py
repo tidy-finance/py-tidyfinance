@@ -245,12 +245,23 @@ def list_tidy_finance_chapters() -> list:
 
 
 def load_wrds_credentials() -> tuple:
-    """
-    Load WRDS credentials from environment variables or a .env file.
+    """Load WRDS credentials from environment variables or a '.env' file.
+
+    Reads 'WRDS_USER' and 'WRDS_PASSWORD' from the process environment.
+    If neither is set, also looks for a '.env' file in the working
+    directory via 'load_dotenv'.
 
     Returns
     -------
-        tuple: A tuple containing (wrds_user (str), wrds_password (str)).
+    tuple of (str, str)
+        '(wrds_user, wrds_password)' pair suitable for building a
+        SQLAlchemy connection URL.
+
+    Raises
+    ------
+    ValueError
+        If either 'WRDS_USER' or 'WRDS_PASSWORD' is missing after the
+        '.env' file has been loaded.
     """
     load_dotenv()
 

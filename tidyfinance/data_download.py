@@ -1972,9 +1972,9 @@ def _download_data_wrds_crsp(
                         },
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    # listing_age is assigned before mktcap so the output
-                    # column order matches r-tidyfinance (..., siccd,
-                    # listing_age, mktcap, mktcap_lag, ...).
+                    # listing_age is assigned before mktcap to keep the
+                    # documented column order:
+                    # ..., siccd, listing_age, mktcap, mktcap_lag, ...
                     .assign(
                         listing_age=lambda df: (
                             (df["date"].dt.year - df["first_crsp_date"].dt.year)

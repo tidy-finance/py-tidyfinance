@@ -7,15 +7,18 @@ import re
 
 def _assign_exchange(primaryexch):
     """
-    Assign exchange for CRSP data.
+    Map a CRSP primary-exchange code to a readable label.
 
     Parameters
     ----------
-        primaryexch (str): A string of exchange letter.
+    primaryexch : str
+        Single-letter primary-exchange code from CRSP CIZ
+        ('stksecurityinfohist.primaryexch').
 
     Returns
     -------
-        str: Exchange name.
+    str
+        'NYSE', 'AMEX', 'NASDAQ', or 'Other'.
     """
     if primaryexch == "N":
         return "NYSE"
@@ -29,15 +32,20 @@ def _assign_exchange(primaryexch):
 
 def _assign_industry(siccd):
     """
-    Assign industry for CRSP data.
+    Map a Standard Industrial Classification code to a coarse industry label.
 
     Parameters
     ----------
-        siccd (int): An integer to present the siccd.
+    siccd : int
+        Four-digit SIC code (CRSP 'siccd' or Compustat 'sich').
 
     Returns
     -------
-        str: Industry name.
+    str
+        One of 'Agriculture', 'Mining', 'Construction',
+        'Manufacturing', 'Transportation', 'Utilities', 'Wholesale',
+        'Retail', 'Finance', 'Services', 'Public', or 'Missing'
+        (when the SIC code is outside the documented ranges).
     """
     if 1 <= siccd <= 999:
         return "Agriculture"
@@ -66,17 +74,17 @@ def _assign_industry(siccd):
 
 
 def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
-        """Parse YYYY-MM-DD or YYYYMM into a Timestamp."""
-        if d is None:
-            return None
-        d = str(d)
-        if len(d) == 6 and d.isdigit():  # YYYYMM
-            ts = pd.to_datetime(d, format="%Y%m")
-            if is_end:
-                # Move to last day of the month
-                ts = ts + pd.offsets.MonthEnd(0)
-            return ts.normalize()
-        return pd.to_datetime(d).normalize()
+    """Parse YYYY-MM-DD or YYYYMM into a Timestamp."""
+    if d is None:
+        return None
+    d = str(d)
+    if len(d) == 6 and d.isdigit():  # YYYYMM
+        ts = pd.to_datetime(d, format="%Y%m")
+        if is_end:
+            # Move to last day of the month
+            ts = ts + pd.offsets.MonthEnd(0)
+        return ts.normalize()
+    return pd.to_datetime(d).normalize()
 
 
 def _validate_dates(
@@ -135,6 +143,20 @@ def _validate_dates(
 
 
 def _format_cusips(cusips):
+    """
+    Format a list of CUSIPs as a parenthesized SQL 'IN' clause.
+
+    Parameters
+    ----------
+    cusips : list of str
+        CUSIP identifiers.
+
+    Returns
+    -------
+    str
+        SQL-ready string of the form "('cusip1', 'cusip2', ...)" or
+        "()" when the input is empty.
+    """
     if not cusips:
         return "()"
 
@@ -143,7 +165,21 @@ def _format_cusips(cusips):
 
 
 def _return_datetime(dates):
-    """Return date without time and change period to timestamp."""
+    """
+    Coerce a date-like series to 'datetime64[ns]' via string round-trip.
+
+    Parameters
+    ----------
+    dates : pd.Series or pd.Index
+        Series whose entries can be cast to string and parsed by
+        'pd.to_datetime' (e.g., 'PeriodIndex', date objects,
+        date strings).
+
+    Returns
+    -------
+    pd.DatetimeIndex
+        Parsed timestamps with no time-of-day component.
+    """
     return pd.to_datetime(dates.astype(str))
 
 
@@ -151,10 +187,19 @@ def _transfrom_to_snake_case(column_name):
     """
     Convert a string to snake_case.
 
-    - Inserts underscores before CamelCase boundaries.
-    - Converts uppercase letters to lowercase.
-    - Replaces spaces and special characters with underscores.
-    - Ensures no multiple underscores.
+    Inserts underscores before CamelCase boundaries, lowercases all
+    letters, replaces spaces and special characters with underscores,
+    and collapses runs of underscores into one.
+
+    Parameters
+    ----------
+    column_name : str
+        Arbitrary identifier-like string.
+
+    Returns
+    -------
+    str
+        Snake_case version of 'column_name'.
     """
     column_name = re.sub(r"(?<!^)(?=[A-Z])", "_", column_name)
     column_name = column_name.replace(" ", "_").replace("-", "_").lower()
@@ -169,11 +214,15 @@ def _transfrom_to_snake_case(column_name):
 
 
 def _get_random_user_agent():
-    """Retrieve a random user agent string.
+    """
+    Retrieve a random User-Agent string.
 
     Returns
     -------
-        str: A random user agent string.
+    str
+        One entry sampled uniformly at random from a fixed list of
+        modern browser User-Agent strings. Used to vary headers in
+        requests that would otherwise be rejected by some endpoints.
     """
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246",
