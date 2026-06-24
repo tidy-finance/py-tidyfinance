@@ -389,7 +389,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     Paper. https://ssrn.com/abstract=2337908
     """
     # Post 2012-02-06
-    ## Trades (trc_st = T) and correction (trc_st = R)
+    # Trades (trc_st = T) and correction (trc_st = R)
     trace_post_TR = trace_all.query("trc_st in ['T', 'R']").query(
         "trd_rpt_dt >= '2012-02-06'"
     )
@@ -413,7 +413,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         .assign(drop=True)
     )
 
-    ## Cleaning corrected and cancelled trades
+    # Cleaning corrected and cancelled trades
     trace_post_TR = (
         trace_post_TR.merge(trace_post_XC, how="left")
         .query("drop != True")
@@ -441,7 +441,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Clean reversals
-    ## Match the orig_msg_seq_nb of Y-message to msg_seq_nb of main message
+    # Match the orig_msg_seq_nb of Y-message to msg_seq_nb of main message
     trace_post = (
         trace_post_TR.merge(trace_post_Y, how="left")
         .query("drop != True")
@@ -450,7 +450,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
     # Enhanced TRACE: Pre 2012-02-06
     # Pre 2012-02-06
-    ## Trades (trc_st = T)
+    # Trades (trc_st = T)
     trace_pre_T = trace_all.query("trd_rpt_dt < '2012-02-06'")
 
     # Cancellations (trc_st = C)
@@ -474,7 +474,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Remove cancellations from trades
-    ## Match orig_msg_seq_nb of C-message to msg_seq_nb of main message
+    # Match orig_msg_seq_nb of C-message to msg_seq_nb of main message
     trace_pre_T = (
         trace_pre_T.merge(trace_pre_C, how="left")
         .query("drop != True")
@@ -487,11 +487,11 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Implement corrections in a loop
-    ## Correction control
+    # Correction control
     correction_control = len(trace_pre_W)
     correction_control_last = len(trace_pre_W)
 
-    ## Correction loop
+    # Correction loop
     while correction_control > 0:
         # Create placeholder
         ## Only identifying columns of trace_pre_T (for joins)
@@ -516,7 +516,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         )
 
         # Create placeholder
-        ## Only identifying columns of trace_pre_W_correcting (for anti-joins)
+        # Only identifying columns of trace_pre_W_correcting (for anti-joins)
         placeholder_trace_pre_W_correcting = (
             trace_pre_W_correcting.get(
                 ["cusip_id", "trd_exctn_dt", "orig_msg_seq_nb"]
@@ -545,19 +545,23 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
             continue
 
     # Reversals (asof_cd = R)
-    ## Record reversals
+    # Record reversals
     trace_pre_R = trace_pre_T.query("asof_cd == 'R'").sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
+        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt",
+         "trd_rpt_tm"
+         ]
     )
 
-    ## Prepare final data
+    # Prepare final data
     trace_pre = trace_pre_T.query(
         "asof_cd == None | asof_cd.isnull() | asof_cd not in ['R', 'X', 'D']"
     ).sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
+        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt",
+         "trd_rpt_tm"
+         ]
     )
 
-    ## Add grouped row numbers
+    # Add grouped row numbers
     trace_pre_R["seq"] = trace_pre_R.groupby(
         [
             "cusip_id",
@@ -580,7 +584,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         ]
     ).cumcount()
 
-    ## Select columns for reversal cleaning
+    # Select columns for reversal cleaning
     trace_pre_R = trace_pre_R.get(
         [
             "cusip_id",
@@ -593,7 +597,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         ]
     ).assign(reversal=True)
 
-    ## Remove reversals and the reversed trade
+    # Remove reversals and the reversed trade
     trace_pre = (
         trace_pre.merge(trace_pre_R, how="left")
         .query("reversal != True")
@@ -733,7 +737,7 @@ def set_wrds_credentials() -> None:
             .lower()
         )
         if overwrite_choice != "yes":
-            print("Aborted. Credentials already exist and are not overwritten.")
+            print("Aborted. Credentials already exist.")
             return
 
     if os.path.exists(gitignore_path):
