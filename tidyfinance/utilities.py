@@ -11,33 +11,37 @@ from sqlalchemy import create_engine, URL
 
 
 def get_wrds_connection() -> object:
-    """
-    Establish a connection to Wharton Research Data Services (WRDS).
+    """Establish a connection to Wharton Research Data Services (WRDS).
 
-    Retrieves WRDS credentials from environment variables (or a .env file)
-    and connects to the WRDS PostgreSQL database using SQLAlchemy.
-    Opens a connection to Wharton Research Data Services (WRDS) via the
-    PostgreSQL backend. Credentials are read first from the 'WRDS_USER'
-    and 'WRDS_PASSWORD' environment variables and, if missing, from a
-    YAML configuration file. The connection uses SSL and a fixed host
-    ('wrds-pgdata.wharton.upenn.edu') on port 9737.
-
-    Parameters
-    ----------
-    config_path : str, default 'config.yaml'
-        Path to a YAML file that may supply 'WRDS_USER' and
-        'WRDS_PASSWORD' when environment variables are absent. The file
-        is expected to contain a top-level 'WRDS' mapping with 'USER'
-        and 'PASSWORD' entries.
+    Opens a SQLAlchemy connection to the WRDS PostgreSQL database. Credentials
+    are read from the 'WRDS_USER' and 'WRDS_PASSWORD' environment variables,
+    which can also be supplied through a '.env' file in the working directory
+    ('load_dotenv' is called before the lookup). The connection uses the
+    'postgresql+psycopg2' driver, requires SSL, and targets
+    'wrds-pgdata.wharton.upenn.edu' on port 9737. Pool pre-ping is enabled so
+    stale connections are detected and recycled automatically.
 
     Returns
     -------
-    object
-        A SQLAlchemy connection object that can be passed to other
-        DBI-compatible helpers (for instance the various
-        'download_data_wrds_*' downloaders) for querying WRDS tables.
-        Disconnect the connection with 'disconnect_connection' when
-        done.
+    sqlalchemy.engine.Connection
+        An open SQLAlchemy connection to the WRDS database. Pass it to any
+        'download_data_wrds_*' helper or use it directly with
+        'pd.read_sql_query'. Close it via 'disconnect_connection' when done.
+
+    Raises
+    ------
+    ValueError
+        If 'WRDS_USER' or 'WRDS_PASSWORD' is not set in the environment or
+        '.env' file. The 'load_wrds_credentials' helper performs this check
+        before the connection is opened.
+    sqlalchemy.exc.OperationalError
+        If the database host is unreachable or the credentials are rejected.
+
+    See Also
+    --------
+    set_wrds_credentials : Interactively prompts for credentials and writes
+        them to a '.env' file in the project or home directory.
+    disconnect_connection : Closes the connection returned by this function.
 
     Examples
     --------
@@ -46,6 +50,7 @@ def get_wrds_connection() -> object:
     >>> os.environ['WRDS_PASSWORD'] = 'your_password'
     >>> from tidyfinance import get_wrds_connection, disconnect_connection
     >>> con = get_wrds_connection()
+    >>> # ... query WRDS via con ...
     >>> disconnect_connection(con)
     """
     wrds_user, wrds_password = load_wrds_credentials()
@@ -332,24 +337,45 @@ def _process_additional_columns(additional_columns):
 
 
 def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
-    """
-    Process TRACE data by filtering trades, handling exception.
+    """Clean Enhanced TRACE trade reports.
+
+    Applies the Dick-Nielsen cleaning protocol to the raw Enhanced
+    TRACE message stream, removing cancellations, corrections, and
+    reversals and producing one observation per executed corporate
+    bond trade.
 
     Parameters
     ----------
-        trace_all (pd.DataFrame): The raw TRACE data.
+    trace_all : pd.DataFrame
+        Raw Enhanced TRACE messages with the message-status columns
+        used by the cleaning protocol ('trc_st', 'msg_seq_nb',
+        'orig_msg_seq_nb', 'trd_rpt_dt', 'trd_exctn_dt',
+        'trd_exctn_tm', 'cusip_id', 'entrd_vol_qt', 'rptd_pr',
+        'rpt_side_cd', 'cntra_mp_id', 'asof_cd').
 
     Returns
     -------
-        pd.DataFrame: The cleaned and processed TRACE data.
+    pd.DataFrame
+        Cleaned trade panel containing only executed trades with
+        cancellations, corrections, and reversals already removed.
 
     Notes
     -----
-    Trades are cleaned under two regimes split by the date the enhanced
-    TRACE message-status format changed (``2012-02-06``; see Dick-Nielsen,
-    2014). Trades reported on or after this date use the post-2012 logic and
-    earlier trades the pre-2012 logic. This matches the cutoff used by the
-    R edition (``download_data_wrds_trace_enhanced`` in r-tidyfinance).
+    Trades are cleaned under two regimes split by 2012-02-06, the date
+    the Enhanced TRACE message-status format changed. Trades reported
+    on or after this cutoff are cleaned with the post-2012 logic
+    (status flags 'T', 'R', 'X', 'C', 'Y'); earlier trades use the
+    pre-2012 logic (status flags 'T', 'C', 'W' plus 'asof_cd'
+    reversals). The cutoff date follows Dick-Nielsen (2014).
+
+    References
+    ----------
+    Dick-Nielsen, J. (2009). Liquidity biases in TRACE. Journal of
+    Fixed Income, 19(2), 43-55.
+    https://doi.org/10.3905/jfi.2009.19.2.043
+
+    Dick-Nielsen, J. (2014). How to clean enhanced TRACE data. Working
+    Paper. https://ssrn.com/abstract=2337908
     """
     # Post 2012-02-06
     ## Trades (trc_st = T) and correction (trc_st = R)
@@ -386,7 +412,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     # Reversals (trc_st = Y)
     trace_post_Y = (
         trace_all.query("trc_st == 'Y'")
-        .query("trd_rpt_dt >= '2012-06-02'")
+        .query("trd_rpt_dt >= '2012-02-06'")
         .get(
             [
                 "cusip_id",
