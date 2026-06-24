@@ -382,11 +382,11 @@ _WRDS_DATASETS = [
 # download_data(domain="pseudo", ...). Annotated with the domain
 # "pseudo".
 _PSEUDO_DATASETS = [
-    {"type": "crsp_monthly", "dataset_name": "pseudo crsp_monthly", "domain": "pseudo"},
-    {"type": "crsp_daily", "dataset_name": "pseudo crsp_daily", "domain": "pseudo"},
-    {"type": "compustat_annual", "dataset_name": "pseudo compustat_annual", "domain": "pseudo"},
-    {"type": "compustat_quarterly", "dataset_name": "pseudo compustat_quarterly", "domain": "pseudo"},
-    {"type": "ccm_links", "dataset_name": "pseudo ccm_links", "domain": "pseudo"},
+    {"type": "crsp_monthly", "dataset_name": "pseudo crsp_monthly", "domain": "Pseudo Data"},
+    {"type": "crsp_daily", "dataset_name": "pseudo crsp_daily", "domain": "Pseudo Data"},
+    {"type": "compustat_annual", "dataset_name": "pseudo compustat_annual", "domain": "Pseudo Data"},
+    {"type": "compustat_quarterly", "dataset_name": "pseudo compustat_quarterly", "domain": "Pseudo Data"},
+    {"type": "ccm_links", "dataset_name": "pseudo ccm_links", "domain": "Pseudo Data"},
 ]
 
 # %% Supported other datasets
@@ -397,10 +397,10 @@ _OTHER_DATASETS = [
     {"type": "constituents", "dataset_name": "various", "domain": "Index Constituents"},
     {"type": "fred", "dataset_name": "various", "domain": "FRED"},
     {"type": "osap", "dataset_name": "Open Source Asset Pricing", "domain": "Open Source Asset Pricing"},
-    {"type": "risk_free", "dataset_name": "Risk-Free Rate", "domain": "tidyfinance"},
-    {"type": "high_frequency_sp500", "dataset_name": "High Frequency S&P 500", "domain": "tidyfinance"},
-    {"type": "factor_library", "dataset_name": "Factor Library", "domain": "tidyfinance"},
-    {"type": "factor_library_grid", "dataset_name": "Factor Library Grid", "domain": "tidyfinance"},
+    {"type": "risk_free", "dataset_name": "Risk-Free Rate", "domain": "Tidy Finance"},
+    {"type": "high_frequency_sp500", "dataset_name": "High Frequency S&P 500", "domain": "Tidy Finance"},
+    {"type": "factor_library", "dataset_name": "Factor Library", "domain": "Tidy Finance"},
+    {"type": "factor_library_grid", "dataset_name": "Factor Library Grid", "domain": "Tidy Finance"},
 ]
 
 
@@ -511,14 +511,30 @@ _DOMAIN_ALIASES: dict[str, str] = {
 
 
 def _resolve_domain_alias(domain: str) -> str:
-    """Map a soft-deprecated domain alias to its canonical name.
+    """
+    Translate a legacy domain alias to its canonical name.
 
-    The machine-readable domain names used in earlier releases (for
-    example '"famafrench"', '"wrds"', '"pseudo"' or
-    '"tidyfinance"') are still accepted but now resolve to the
-    canonical, human-readable names returned by
-    'list_supported_datasets'. Passing an alias emits a
+    Earlier releases used machine-readable domain identifiers such as
+    'famafrench', 'wrds', 'pseudo' or 'tidyfinance'. These are still
+    accepted but now resolve to the canonical, human-readable names
+    returned by 'list_supported_datasets'. Passing an alias emits a
     'DeprecationWarning'. Any other value is returned unchanged.
+
+    Parameters
+    ----------
+    domain : str
+        A domain identifier supplied by the caller.
+
+    Returns
+    -------
+    str
+        The canonical domain name if 'domain' is a known alias,
+        otherwise 'domain' unchanged.
+
+    Warns
+    -----
+    DeprecationWarning
+        Emitted when 'domain' is a recognised legacy alias.
     """
     canonical = _DOMAIN_ALIASES.get(domain)
     if canonical is not None:
@@ -621,13 +637,24 @@ def _parse_type_to_domain_dataset(
 
 
 def _is_legacy_type(x: str) -> bool:
-    """Return 'True' iff 'x' is a legacy 'type' string.
+    """
+    Test whether 'x' is a legacy 'type' string.
 
     A value is considered legacy when '_parse_type_to_domain_dataset'
-    would succeed on it *and* it is not one of the simple domain names
-    listed in :data:'_SIMPLE_DOMAINS' (those are already valid domains in
-    their own right).  'Tidy Finance'-domain "other" datasets such as
+    would succeed on it and it is not one of the simple domain names
+    listed in '_SIMPLE_DOMAINS' (those are already valid domains in
+    their own right). 'Tidy Finance' domain 'other' datasets such as
     'risk_free' or 'factor_library' are not treated as legacy either.
+
+    Parameters
+    ----------
+    x : str
+        Candidate type string to classify.
+
+    Returns
+    -------
+    bool
+        True if 'x' is a recognised legacy type, False otherwise.
     """
     if x in _SIMPLE_DOMAINS:
         return False
@@ -649,9 +676,18 @@ def _is_legacy_type(x: str) -> bool:
 
 
 def _check_supported_domain(domain: str) -> None:
-    """Raise :class:'ValueError' when 'domain' is not supported.
+    """
+    Validate that 'domain' is a supported domain identifier.
 
-    The list of supported domains is exposed via :data:'_SUPPORTED_DOMAINS'.
+    Parameters
+    ----------
+    domain : str
+        Domain identifier to validate.
+
+    Raises
+    ------
+    ValueError
+        If 'domain' is not in '_SUPPORTED_DOMAINS'.
     """
     if domain not in _SUPPORTED_DOMAINS:
         joined = ", ".join(repr(d) for d in _SUPPORTED_DOMAINS)
@@ -661,7 +697,20 @@ def _check_supported_domain(domain: str) -> None:
 
 
 def _is_legacy_type_wrds(x: str) -> bool:
-    """Return True if x is a legacy WRDS type string (starts with 'wrds_')."""
+    """
+    Test whether 'x' is a legacy WRDS 'type' string.
+
+    Parameters
+    ----------
+    x : str
+        Candidate type string to classify.
+
+    Returns
+    -------
+    bool
+        True if 'x' is a string that starts with 'wrds_', False
+        otherwise.
+    """
     return isinstance(x, str) and x.startswith("wrds_")
 
 
@@ -677,7 +726,19 @@ _WRDS_SUPPORTED_DATASETS = (
 
 
 def _check_supported_dataset_wrds(dataset: str) -> None:
-    """Raise ValueError if dataset is not a supported WRDS dataset."""
+    """
+    Validate that 'dataset' is a supported WRDS dataset name.
+
+    Parameters
+    ----------
+    dataset : str
+        WRDS dataset name to validate.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset' is not in '_WRDS_SUPPORTED_DATASETS'.
+    """
     if dataset not in _WRDS_SUPPORTED_DATASETS:
         raise ValueError(
             f"Unsupported WRDS dataset: {dataset!r}. "
@@ -689,7 +750,20 @@ _WRDS_CRSP_SUPPORTED_DATASETS = ("crsp_monthly", "crsp_daily")
 
 
 def _check_supported_dataset_wrds_crsp(dataset: str) -> None:
-    """Raise ValueError if dataset is not a supported CRSP dataset."""
+    """
+    Validate that 'dataset' is a supported CRSP dataset name.
+
+    Parameters
+    ----------
+    dataset : str
+        CRSP dataset name to validate. The supported values are
+        'crsp_monthly' and 'crsp_daily'.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset' is not in '_WRDS_CRSP_SUPPORTED_DATASETS'.
+    """
     if dataset not in _WRDS_CRSP_SUPPORTED_DATASETS:
         raise ValueError(
             f"Unsupported CRSP dataset: {dataset!r}. "
@@ -698,19 +772,65 @@ def _check_supported_dataset_wrds_crsp(dataset: str) -> None:
 
 
 def _is_legacy_type_ff(x: str) -> bool:
-    """Return True if x is a known Fama-French type (current or legacy)."""
+    """
+    Test whether 'x' is a known Fama-French 'type' string.
+
+    The check spans both the current Fama-French types ('_FF_DATASETS')
+    and the legacy ones retained for back-compatibility
+    ('_FF_LEGACY_DATASETS').
+
+    Parameters
+    ----------
+    x : str
+        Candidate type string to classify.
+
+    Returns
+    -------
+    bool
+        True if 'x' is a known Fama-French type, False otherwise.
+    """
     types = {row["type"] for row in _FF_DATASETS}
     types.update(row["type"] for row in _FF_LEGACY_DATASETS)
     return x in types
 
 
 def _is_legacy_type_q(x: str) -> bool:
-    """Return True if x is a known Global Q dataset type."""
+    """
+    Test whether 'x' is a known Global Q 'type' string.
+
+    Parameters
+    ----------
+    x : str
+        Candidate type string to classify.
+
+    Returns
+    -------
+    bool
+        True if 'x' appears in '_Q_DATASETS', False otherwise.
+    """
     return x in {row["type"] for row in _Q_DATASETS}
 
 
 def _determine_frequency_ff(dataset: str) -> str:
-    """Map a Fama-French dataset name to its reporting frequency."""
+    """
+    Infer the reporting frequency of a Fama-French dataset.
+
+    The frequency is read from the suffix in the dataset name: a name
+    containing '[Daily]' is daily, one containing '[Weekly]' is weekly,
+    and everything else is treated as monthly (the default Fama-French
+    cadence).
+
+    Parameters
+    ----------
+    dataset : str
+        Fama-French dataset_name as returned by
+        'list_supported_datasets'.
+
+    Returns
+    -------
+    str
+        One of 'daily', 'weekly' or 'monthly'.
+    """
     if "[Daily]" in dataset:
         return "daily"
     if "[Weekly]" in dataset:
@@ -719,12 +839,49 @@ def _determine_frequency_ff(dataset: str) -> str:
 
 
 def _is_breakpoints_ff(dataset: str) -> bool:
-    """Return True if dataset is a Fama-French breakpoints file."""
+    """
+    Test whether 'dataset' is a Fama-French breakpoints file.
+
+    The check is a substring match for 'Breakpoints' in the dataset
+    name, which is the convention used by the Fama-French data library
+    (for example 'ME Breakpoints', 'BE/ME Breakpoints').
+
+    Parameters
+    ----------
+    dataset : str
+        Fama-French dataset_name.
+
+    Returns
+    -------
+    bool
+        True if 'dataset' is a breakpoints file, False otherwise.
+    """
     return "Breakpoints" in dataset
 
 
 def _determine_frequency_q(dataset: str) -> str:
-    """Map a Global Q dataset name to its reporting frequency."""
+    """
+    Infer the reporting frequency of a Global Q dataset.
+
+    The frequency is read from the first matching keyword in the
+    lowercased dataset name. The keywords checked, in order, are
+    'daily', 'weekly', 'monthly', 'quarterly' and 'annual'.
+
+    Parameters
+    ----------
+    dataset : str
+        Global Q dataset_name.
+
+    Returns
+    -------
+    str
+        The matched frequency keyword.
+
+    Raises
+    ------
+    ValueError
+        If no recognised frequency keyword is present in 'dataset'.
+    """
     lowered = dataset.lower()
     for frequency in ("daily", "weekly", "monthly", "quarterly", "annual"):
         if frequency in lowered:
@@ -735,12 +892,28 @@ def _determine_frequency_q(dataset: str) -> str:
 
 
 def _check_supported_dataset_ff(dataset: str) -> str:
-    """Validate a Fama-French dataset_name and return its source file URL.
+    """
+    Validate a Fama-French dataset_name and return its source URL.
+
+    The lookup spans both the current Fama-French datasets
+    ('_FF_DATASETS') and the legacy ones retained for
+    back-compatibility ('_FF_LEGACY_DATASETS').
+
+    Parameters
+    ----------
+    dataset : str
+        Fama-French dataset_name to validate.
+
+    Returns
+    -------
+    str
+        The 'file_url' associated with 'dataset' in the dataset
+        registry.
 
     Raises
     ------
     ValueError
-        If dataset is not a supported Fama-French dataset_name.
+        If 'dataset' is not a supported Fama-French dataset_name.
     """
     for row in _FF_DATASETS + _FF_LEGACY_DATASETS:
         if row["dataset_name"] == dataset:
@@ -753,7 +926,19 @@ def _check_supported_dataset_ff(dataset: str) -> str:
 
 
 def _check_supported_dataset_q(dataset: str) -> None:
-    """Raise ValueError if dataset is not a supported Global Q dataset_name."""
+    """
+    Validate that 'dataset' is a supported Global Q dataset_name.
+
+    Parameters
+    ----------
+    dataset : str
+        Global Q dataset_name to validate.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset' is not in '_Q_DATASETS'.
+    """
     if dataset not in {row["dataset_name"] for row in _Q_DATASETS}:
         raise ValueError(
             f"Unsupported Global Q dataset: {dataset!r}. "
