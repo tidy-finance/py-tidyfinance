@@ -2060,7 +2060,8 @@ def compute_portfolio_returns(
         For bivariate sorts, provide two variables, where the first
         string refers to the main variable and the second string
         refers to the secondary ('control') variable.
-    sorting_method : {'univariate', 'bivariate-dependent', 'bivariate-independent'}
+    sorting_method : {'univariate', 'bivariate-dependent',
+                      'bivariate-independent'}
         Sorting method to use. For bivariate sorts, the portfolio
         returns are averaged over the controlling sorting variable
         (i.e., the second sorting variable), and only portfolio
@@ -2092,9 +2093,10 @@ def compute_portfolio_returns(
         NaN. A typical value is 5 (the Fama-French convention). Set to
         0 to deactivate the check entirely.
     cap_weight : float, default 0.8
-        Percentile at which market capitalization is capped per date
-        when computing capped value-weighted excess returns (i.e.,
-        'ret_excess_vw_capped'). Must be in [0, 1].
+        Quantile of the cross-sectional 'mktcap_lag' distribution at
+        which market capitalizations are capped per date when computing
+        the capped value-weighted excess return ('ret_excess_vw_capped').
+        Must be in [0, 1].
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'id', 'date',
         'ret_excess', and 'mktcap_lag' elements are used. Uses
@@ -3086,8 +3088,10 @@ def implement_portfolio_sort(
         Cross-sections below the threshold have their returns set to
         NaN. Set to 0 to deactivate the check.
     cap_weight : float, default 0.8
-        Quantile at which portfolio weights are capped for the capped
-        value-weighted return. Must be in [0, 1].
+        Quantile of the cross-sectional 'mktcap_lag' distribution at
+        which market capitalizations are capped per date when computing
+        the capped value-weighted excess return ('ret_excess_vw_capped').
+        Must be in [0, 1].
     data_options : dict, optional
         Column-name mapping (see 'data_options'). All elements are
         forwarded to 'filter_sorting_data' and
