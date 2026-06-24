@@ -1175,7 +1175,7 @@ def create_summary_statistics(
 def estimate_betas(
     data: pd.DataFrame,
     model: str,
-    lookback: pd.Timedelta,
+    lookback: int,
     min_obs: int = None,
     id_col: str = "permno",
 ) -> pd.DataFrame:
@@ -1196,8 +1196,9 @@ def estimate_betas(
         Formula describing the model to be estimated (e.g.,
         'ret_excess ~ mkt_excess + hml + smb').
     lookback : int
-        Window size used when estimating the rolling model. Interpreted
-        as a number of rows in the per-stock time series.
+        Rolling window size in number of consecutive per-stock
+        observations. Passed through to
+        'statsmodels.RollingOLS' as 'window'.
     min_obs : int, optional
         Minimum number of observations required to estimate the model.
         Defaults to 80% of 'lookback'.
@@ -1256,10 +1257,14 @@ def estimate_betas(
 def _ar1_ols_residuals(e: np.ndarray) -> tuple[float, np.ndarray]:
     """Fit an AR(1) by OLS without intercept or demeaning.
 
-    Mirrors R's ``ar(x, order.max = 1, demean = FALSE, aic = FALSE,
-    method = "ols")``, which sandwich uses to prewhiten the estimating
-    functions. Returns the AR(1) coefficient and the prewhitened residuals
-    (length ``len(e) - 1``).
+    Estimates rho in e_t = rho * e_{t-1} + u_t by ordinary least
+    squares (no intercept, no demeaning). Used to prewhiten the
+    estimating functions before forming a Newey-West long-run variance.
+
+    Returns
+    -------
+    tuple
+        (rho, residuals) where 'residuals' has length 'len(e) - 1'.
     """
     x = e[:-1]
     z = e[1:]
@@ -1270,8 +1275,29 @@ def _ar1_ols_residuals(e: np.ndarray) -> tuple[float, np.ndarray]:
 def _newey_west_bandwidth(e: np.ndarray, prewhite: int) -> float:
     """Automatic Newey & West (1994) bandwidth for the Bartlett kernel.
 
-    Replicates ``sandwich::bwNeweyWest`` for the univariate, intercept-only
-    case (the estimating functions are the demeaned series ``e``).
+    Computes the data-dependent truncation lag for a univariate,
+    intercept-only Bartlett-kernel HAC estimator. If 'prewhite > 0',
+    the series is first prewhitened by an AR(1) fit (no intercept).
+    The bandwidth is the optimal one derived in Newey and West (1994).
+
+    Parameters
+    ----------
+    e : np.ndarray
+        The estimating-function series (typically the demeaned
+        per-period coefficient).
+    prewhite : int
+        Order of the prewhitening AR fit. Pass 0 to disable.
+
+    Returns
+    -------
+    float
+        Recommended truncation lag.
+
+    References
+    ----------
+    Newey, W. K., and West, K. D. (1994). Automatic lag selection in
+    covariance matrix estimation. Review of Economic Studies, 61(4),
+    631-653. https://doi.org/10.2307/2297912
     """
     n = e.shape[0]
     m = int(np.floor((3 if prewhite > 0 else 4) * (n / 100.0) ** (2.0 / 9.0)))
@@ -1298,33 +1324,42 @@ def _newey_west_se(
 ) -> float:
     """Newey-West HAC standard error of the mean of a time series.
 
-    Replicates the default behavior of R's ``sandwich::NeweyWest`` applied to
-    an intercept-only regression (``lm(series ~ 1)``): VAR(1) prewhitening
-    (``prewhite=1``), automatic Newey & West (1994) bandwidth selection when
-    ``lag`` is ``None``, a Bartlett kernel, and no finite-sample adjustment
-    (``adjust=False``). This is the estimator the Tidy Finance R edition uses
-    for Fama-MacBeth t-statistics, so the two editions agree numerically.
+    Computes the Newey-West heteroskedasticity- and autocorrelation-
+    consistent standard error of the sample mean of 'series'. The
+    long-run variance is estimated with a Bartlett kernel; when
+    'prewhite > 0', the series is first prewhitened by an AR(1) fit;
+    when 'lag' is None, the truncation lag follows the automatic
+    bandwidth selection of Newey and West (1994).
 
     Parameters
     ----------
     series : np.ndarray
-        The time-ordered series (e.g. a factor's per-period risk premium).
+        Time-ordered series (e.g. a factor's per-period risk premium).
     lag : int, optional
-        Bartlett truncation lag. If ``None`` (default), the automatic
-        Newey & West (1994) bandwidth is used.
+        Bartlett truncation lag. If None, the automatic Newey & West
+        (1994) bandwidth is used.
     prewhite : int, default 1
-        Order of the VAR prewhitening (``1`` matches R's default; ``0``
-        disables prewhitening).
+        Order of the prewhitening AR fit. Pass 0 to disable.
     adjust : bool, default False
-        Apply the ``n / (n - k)`` finite-sample adjustment (R default is
-        ``False``).
+        Apply the 'n / (n - k)' finite-sample degrees-of-freedom
+        correction.
 
-    Notes
-    -----
-    A series with fewer than two (non-NaN) observations returns ``NaN``.
-    Very short series (``n < 3``) are handled more gracefully than R's
-    ``NeweyWest``, which errors on such degenerate input; this never arises
-    in a real Fama-MacBeth run, where each value is a per-period estimate.
+    Returns
+    -------
+    float
+        Newey-West HAC standard error of the sample mean. Returns NaN
+        when 'series' has fewer than two non-NaN observations.
+
+    References
+    ----------
+    Newey, W. K., and West, K. D. (1987). A simple, positive
+    semi-definite, heteroskedasticity and autocorrelation consistent
+    covariance matrix. Econometrica, 55(3), 703-708.
+    https://doi.org/10.2307/1913610
+
+    Newey, W. K., and West, K. D. (1994). Automatic lag selection in
+    covariance matrix estimation. Review of Economic Studies, 61(4),
+    631-653. https://doi.org/10.2307/2297912
     """
     y = np.asarray(series, dtype=float)
     y = y[~np.isnan(y)]
@@ -1371,68 +1406,75 @@ def estimate_fama_macbeth(
 ) -> pd.DataFrame:
     """Estimate Fama-MacBeth regressions.
 
-    Estimates Fama-MacBeth regressions (Fama and MacBeth, 1973) by
-    first running cross-sectional regressions for each time period and
-    then aggregating the results over time to obtain average risk
-    premia and corresponding t-statistics.
+    Runs one cross-sectional ordinary least squares regression per period
+    of 'date_col', then averages the per-period coefficients to obtain
+    risk premia and aggregates them into a single tidy frame.
 
     Parameters
     ----------
-    data (pd.DataFrame): A DataFrame containing the data for the regression.
-    model (str): A formula representing the regression model.
-    vcov (str): Type of standard errors to compute. Options are "iid" or
-        "newey-west".
-    vcov_options (dict, optional): Options for the Newey-West standard
-        errors, mirroring R's ``sandwich::NeweyWest``. Recognized keys are
-        ``lag`` (Bartlett truncation lag; ``None`` selects the automatic
-        Newey & West (1994) bandwidth), ``prewhite`` (VAR order for
-        prewhitening, default ``1``), and ``adjust`` (finite-sample
-        correction, default ``False``). When ``None`` (the default), the
-        estimator matches R's ``sandwich::NeweyWest`` default exactly:
-        VAR(1) prewhitening plus automatic bandwidth selection. The
-        deprecated ``maxlags`` key is accepted as an alias for ``lag`` (with
-        ``prewhite`` defaulting to ``0``, the previous behavior). Only these
-        Bartlett-kernel arguments are honored; other ``sandwich::NeweyWest``
-        options (e.g. ``kernel``) are not supported.
-    date_col (str): Column name representing the time periods.
     data : pd.DataFrame
-        Data frame containing the data for the regression. It must
-        include a column representing the time periods (defaults to
-        'date') and the variables specified in 'model'.
+        Panel containing the dependent and independent variables named in
+        'model' plus a column with the time index. Each (date, unit)
+        combination should appear at most once.
     model : str
-        Formula describing the model to be estimated in each
-        cross-section (e.g., 'ret_excess ~ beta + bm + log_mktcap').
+        Formula describing the cross-sectional regression
+        (e.g., 'ret_excess ~ beta + bm + log_mktcap'). Standard patsy
+        syntax; an intercept is included unless the formula ends in '- 1'.
     vcov : {'iid', 'newey-west'}, default 'newey-west'
-        Type of standard errors to compute. 'iid' assumes independent
-        and identically distributed errors; 'newey-west' applies
-        Newey-West heteroskedasticity- and autocorrelation-consistent
-        standard errors.
+        Standard error treatment for the time-series average of period
+        coefficients. 'iid' assumes independent and identically distributed
+        errors across periods. 'newey-west' applies Newey-West
+        heteroskedasticity- and autocorrelation-consistent standard errors
+        with Bartlett kernel.
     vcov_options : dict, optional
-        Additional arguments forwarded to the Newey-West covariance
-        estimator when 'vcov' is set to 'newey-west'. Typical keys include
-        'maxlags' (the number of lags) and 'prewhite' (whether to apply
-        a prewhitening transformation).
+        Tuning options for the Newey-West estimator. Recognized keys:
+
+        - 'lag' : int, optional
+            Bartlett truncation lag. If None (the default), the
+            automatic bandwidth from Newey & West (1994) is used.
+        - 'prewhite' : int, default 1
+            Order of the VAR prewhitening filter applied before
+            computing the long-run variance. Pass 0 to disable.
+        - 'adjust' : bool, default False
+            Apply a finite-sample degrees-of-freedom correction.
+        - 'maxlags' : int, optional
+            Deprecated alias for 'lag' (with 'prewhite' defaulting
+            to 0). Emits a DeprecationWarning.
     date_col : str, default 'date'
-        Column name representing the time periods.
+        Column in 'data' identifying the time index for cross-sectional
+        regressions.
 
     Returns
     -------
     pd.DataFrame
-        Data frame with columns 'factor', 'risk_premium', and
-        't_statistic', containing the time-series average of the
-        cross-sectional coefficients and their t-statistics computed
-        under the requested 'vcov' specification.
+        One row per term in 'model' with columns:
+
+        - 'factor' : term name (Intercept or regressor)
+        - 'risk_premium' : time-series mean of cross-sectional coefficients
+        - 'standard_error' : SE of the time-series mean under 'vcov'
+        - 't_statistic' : risk_premium / standard_error
+        - 'n' : number of periods used
+
+    Raises
+    ------
+    ValueError
+        If 'vcov' is not 'iid' or 'newey-west', or if 'date_col' is
+        missing from 'data'.
 
     References
     ----------
-    Fama, E. F., and MacBeth, J. D. (1973). Risk, return, and
-    equilibrium: Empirical tests. Journal of Political Economy, 81(3),
-    607-636. https://doi.org/10.1086/260061
+    Fama, E. F., and MacBeth, J. D. (1973). Risk, return, and equilibrium:
+    Empirical tests. Journal of Political Economy, 81(3), 607-636.
+    https://doi.org/10.1086/260061
 
     Newey, W. K., and West, K. D. (1987). A simple, positive
     semi-definite, heteroskedasticity and autocorrelation consistent
     covariance matrix. Econometrica, 55(3), 703-708.
     https://doi.org/10.2307/1913610
+
+    Newey, W. K., and West, K. D. (1994). Automatic lag selection in
+    covariance matrix estimation. Review of Economic Studies, 61(4),
+    631-653. https://doi.org/10.2307/2297912
 
     Examples
     --------
@@ -1449,17 +1491,12 @@ def estimate_fama_macbeth(
     ...     'bm': rng.normal(0.5, 0.1, 600),
     ...     'log_mktcap': rng.normal(10, 1, 600),
     ... })
-    >>> estimate_fama_macbeth(data, 'ret_excess ~ beta + bm + log_mktcap')
-    >>> estimate_fama_macbeth(
+    >>> result = estimate_fama_macbeth(data, 'ret_excess ~ beta+bm+log_mktcap')
+    >>> # Override the Newey-West settings
+    >>> result_iid = estimate_fama_macbeth(
     ...     data,
     ...     'ret_excess ~ beta + bm + log_mktcap',
     ...     vcov='iid',
-    ... )
-    >>> estimate_fama_macbeth(
-    ...     data,
-    ...     'ret_excess ~ beta + bm + log_mktcap',
-    ...     vcov='newey-west',
-    ...     vcov_options={'maxlags': 6},
     ... )
     """
     if vcov not in ["iid", "newey-west"]:
