@@ -3234,8 +3234,8 @@ def _download_data_huggingface_factor_library(
 
 def _download_data_huggingface(
     dataset: str = None,
-    start_date: str | date = "2007-06-27",
-    end_date: str | date = "2007-07-27",
+    start_date: str | date = None,
+    end_date: str | date = None,
     type: str = None,
     **kwargs,
 ) -> pd.DataFrame:
@@ -3299,13 +3299,17 @@ def _download_data_huggingface(
     start_date : str or date, optional
         Start date (inclusive) in 'YYYY-MM-DD' format. Used for
         'high_frequency_sp500' to filter parquet files by date, and
-        forwarded to 'factor_library' as a date-range lower bound.
-        Defaults to '2007-06-27'.
+        forwarded to 'factor_library' as a date-range lower bound. For
+        'high_frequency_sp500' defaults to the available sample's start
+        ('2007-06-27') when not supplied; for 'factor_library', None
+        returns the full history.
     end_date : str or date, optional
         End date (inclusive) in 'YYYY-MM-DD' format. Used for
         'high_frequency_sp500' to filter parquet files by date, and
-        forwarded to 'factor_library' as a date-range upper bound.
-        Defaults to '2007-07-27'.
+        forwarded to 'factor_library' as a date-range upper bound. For
+        'high_frequency_sp500' defaults to the available sample's end
+        ('2007-07-27') when not supplied; for 'factor_library', None
+        returns the full history.
     type : str, optional
         Deprecated. Use 'dataset' instead. If provided, emits a
         DeprecationWarning and strips any leading 'hf_' prefix.
@@ -3391,6 +3395,15 @@ def _download_data_huggingface(
     if dataset == "high_frequency_sp500":
         organization = "voigtstefan"
         dataset_name = "sp500"
+
+        # 'high_frequency_sp500' is hosted as a one-month sample on
+        # HuggingFace. If the caller does not supply a window, default
+        # to the full available range so the function returns sensible
+        # data rather than an empty frame.
+        if start_date is None:
+            start_date = "2007-06-27"
+        if end_date is None:
+            end_date = "2007-07-27"
 
         date_pattern = re.compile(r"date=(\d{4}-\d{2}-\d{2})")
         available_files = _get_available_huggingface_files(
