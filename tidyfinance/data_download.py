@@ -143,12 +143,12 @@ def download_data(
     ----------
     domain : str
         The domain of the dataset to download, given as one of the
-        canonical names returned by ``list_supported_datasets()``:
-        "Fama-French", "Global Q", "Goyal-Welch", "WRDS", "Pseudo Data",
-        "Index Constituents", "FRED", "Stock Prices",
-        "Open Source Asset Pricing", "Tidy Finance". The previous
-        machine-readable names (e.g. "famafrench", "wrds", "pseudo") are
-        deprecated but still accepted.
+        canonical names returned by 'list_supported_datasets()':
+        'Fama-French', 'Global Q', 'Goyal-Welch', 'WRDS', 'Pseudo Data',
+        'Index Constituents', 'FRED', 'Stock Prices',
+        'Open Source Asset Pricing', 'Tidy Finance'. The previous
+        short names (e.g. 'famafrench', 'wrds', 'pseudo') are still
+        accepted but deprecated and will be removed in a future release.
     dataset : str, optional
         The specific dataset to download within the domain.
     start_date : str, optional
@@ -187,30 +187,34 @@ def download_data(
     --------
     >>> from tidyfinance import download_data
     >>> download_data(
-    ...     'famafrench',
+    ...     'Fama-French',
     ...     'Fama/French 5 Factors (2x3) [Daily]',
     ...     '2000-01-01',
     ...     '2020-12-31',
     ... )
-    >>> download_data('macro_predictors', 'monthly', '2000-01-01', '2020-12-31')
-    >>> download_data('constituents', index='DAX')
-    >>> download_data('fred', series=['GDP', 'CPIAUCNS'])
-    >>> download_data('stock_prices', symbols=['AAPL', 'MSFT'])
-    >>> download_data('tidyfinance', 'risk_free', '2020-01-01', '2020-12-31')
     >>> download_data(
-    ...     'tidyfinance',
+    ...     'Goyal-Welch', 'monthly', '2000-01-01', '2020-12-31'
+    ... )
+    >>> download_data('Index Constituents', index='DAX')
+    >>> download_data('FRED', series=['GDP', 'CPIAUCNS'])
+    >>> download_data('Stock Prices', symbols=['AAPL', 'MSFT'])
+    >>> download_data(
+    ...     'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
+    ... )
+    >>> download_data(
+    ...     'Tidy Finance',
     ...     'high_frequency_sp500',
     ...     '2007-07-26',
     ...     '2007-07-27',
     ... )
     >>> download_data(
-    ...     'tidyfinance',
+    ...     'Tidy Finance',
     ...     'factor_library',
     ...     sorting_variable='52w',
     ...     rebalancing='annual',
     ... )
-    >>> download_data('tidyfinance', 'factor_library', ids=[1, 2, 3])
-    >>> download_data('tidyfinance', 'factor_library_grid')
+    >>> download_data('Tidy Finance', 'factor_library', ids=[1, 2, 3])
+    >>> download_data('Tidy Finance', 'factor_library_grid')
     """
     if type is not None:
         warnings.warn(
@@ -298,12 +302,25 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
     ----------
     file_url : str
         Path relative to the Kenneth French data library base URL,
-        matching the file_url column of _FF_DATASETS, e.g.
-        "ftp/F-F_Research_Data_Factors_CSV.zip".
+        matching the 'file_url' column of '_FF_DATASETS' (e.g.,
+        'ftp/F-F_Research_Data_Factors_CSV.zip').
     start_date : str, optional
-        Filter the parsed table to dates >= start_date.
+        Filter the parsed table to dates >= 'start_date'.
     end_date : str, optional
-        Filter the parsed table to dates <= end_date.
+        Filter the parsed table to dates <= 'end_date'.
+
+    Returns
+    -------
+    pd.DataFrame
+        The first parsed table in the archive, indexed by date. Factor
+        files return columns such as 'Mkt-RF', 'SMB', 'HML', 'RF';
+        breakpoint files return one column per percentile bin plus
+        diagnostic columns ('<=0', '>0', 'Count') depending on the
+        file. Returns 'None' implicitly if no table could be parsed.
+        The Fama-French archives often contain several tables
+        (value-weighted, equal-weighted, etc.); only the first is
+        returned. Download the source ZIP directly if you need the
+        others.
     """
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
     datatset_url = ff_url + file_url
@@ -543,10 +560,14 @@ def _download_data_factors_q(
     Parameters
     ----------
     dataset : str
-        The name of the dataset to download (e.g.,
-        'q5_factors_daily_2023', 'q5_factors_monthly_2023'). When the
-        year suffix is omitted the most recent vintage is appended
-        automatically.
+        The name of the dataset to download. Recognized prefixes are
+        'q5_factors_daily', 'q5_factors_weekly', 'q5_factors_weekly_w2w',
+        'q5_factors_monthly', 'q5_factors_quarterly', and
+        'q5_factors_annual'. Pass an explicit year suffix to pin the
+        vintage (e.g., 'q5_factors_daily_2024'). If only the bare
+        prefix is supplied, the 2024 vintage is appended as a default;
+        any other dataset without a recognized prefix raises
+        'ValueError'.
     start_date : str, optional
         A character string or date in 'YYYY-MM-DD' format specifying
         the start date for the data. If not provided, the full dataset
@@ -879,13 +900,20 @@ def _download_data_constituents(
     Parameters
     ----------
     index : str
-        A character string specifying the name of the financial index
-        for which to download constituent data. The index must be one
-        of the supported indexes listed by 'list_supported_indexes'.
+        Name of the financial index for which to download constituent
+        data. Must be one of the supported indexes listed by
+        'list_supported_indexes'.
     dataset : str, optional
         Convenience alias accepted from the unified 'download_data'
         dispatcher. Forwarded to 'index' with a UserWarning when
         'index' is not supplied directly.
+    **kwargs
+        Additional keyword arguments are accepted and silently
+        ignored. They exist so that calls routed through
+        'download_data' (which forwards arguments such as
+        'start_date' and 'end_date' to every downloader) do not fail
+        with a TypeError, even when those arguments are not meaningful
+        for the constituents endpoint.
 
     Returns
     -------
@@ -1609,8 +1637,16 @@ def _download_data_wrds_crsp(
         'v2' (the default) uses the updated second version of CRSP,
         and 'v1' downloads the legacy version of CRSP.
     additional_columns : list of str, optional
-        Additional columns from the CRSP monthly or daily data as a
-        list of strings.
+        Extra column names from the underlying CRSP source table to
+        return alongside the standard output. For 'crsp_monthly' the
+        source is 'crsp.msf_v2' (or 'crsp.msf' joined with
+        'crsp.msenames' under 'version="v1"'); for 'crsp_daily' the
+        source is 'crsp.dsf_v2' (or 'crsp.dsf' for 'v1'). Pass any
+        column from those tables (e.g., 'mthvol', 'mthvolflg' for
+        monthly; 'dlyvol', 'dlyfacprc' for daily). When
+        'adjust_volume=True', the columns required to compute volume
+        adjustments are added automatically and need not be requested
+        explicitly.
     add_ccm_links : bool, optional
         A boolean indicating whether CRSP-Compustat links should be
         added automatically using '_download_data_wrds_ccm_links'.

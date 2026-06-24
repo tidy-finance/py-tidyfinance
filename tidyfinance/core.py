@@ -1730,9 +1730,11 @@ def portfolio_sort_options(
         - 'exclude_negative_earnings' (bool): Whether to exclude
           observations with non-positive earnings. Defaults to False.
 
-    breakpoint_options_main : dict
+    breakpoint_options_main : dict, optional
         Dict produced by 'breakpoint_options', specifying breakpoints
-        for the primary sorting variable. The accepted entries include:
+        for the primary sorting variable, or None (the default) when
+        no primary breakpoints are required. The accepted entries
+        include:
 
         - 'n_portfolios' (int, optional): Number of equally sized
           portfolios. Mutually exclusive with 'percentiles'.
