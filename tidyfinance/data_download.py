@@ -1644,9 +1644,10 @@ def _download_data_wrds_crsp(
         source is 'crsp.dsf_v2' (or 'crsp.dsf' for 'v1'). Pass any
         column from those tables (e.g., 'mthvol', 'mthvolflg' for
         monthly; 'dlyvol', 'dlyfacprc' for daily). When
-        'adjust_volume=True', the columns required to compute volume
-        adjustments are added automatically and need not be requested
-        explicitly.
+        'adjust_volume=True' for 'crsp_daily', this list must include
+        the columns the adjustment needs ('dlyprc', 'dlyvol',
+        'dlyfacprc', 'primaryexch' for 'v2'; 'prc', 'vol', 'cfacpr',
+        'exchcd' for 'v1'); a 'ValueError' is raised otherwise.
     add_ccm_links : bool, optional
         A boolean indicating whether CRSP-Compustat links should be
         added automatically using '_download_data_wrds_ccm_links'.

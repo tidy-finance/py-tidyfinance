@@ -358,6 +358,28 @@ def test_create_summary_statistics_detail(sample_data) -> None:
     )
 
 
+def test_create_summary_statistics_accepts_boolean() -> None:
+    """Test boolean columns are summarized as proportion of True."""
+    df = pd.DataFrame(
+        {
+            "flag": [True, False, True, True],
+            "x": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    result = create_summary_statistics(df, ["flag", "x"])
+    flag_row = result[result["variable"] == "flag"].iloc[0]
+    assert abs(flag_row["mean"] - 0.75) < 1e-12, (
+        "Boolean mean should equal the proportion of True"
+    )
+
+
+def test_create_summary_statistics_rejects_strings() -> None:
+    """Test object dtype columns raise ValueError."""
+    df = pd.DataFrame({"name": ["A", "B", "C"], "x": [1, 2, 3]})
+    with pytest.raises(ValueError, match="not numeric or boolean"):
+        create_summary_statistics(df, ["name", "x"])
+
+
 def sample_data_ls() -> pd.DataFrame:
     np.random.seed(42)
     dates = pd.date_range(start="2020-01-01", periods=10, freq="ME")

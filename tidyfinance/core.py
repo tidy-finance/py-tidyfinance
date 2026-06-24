@@ -1067,16 +1067,17 @@ def create_summary_statistics(
 ) -> pd.DataFrame:
     """Create summary statistics for specified variables.
 
-    Computes a set of summary statistics for numeric and integer
+    Computes a set of summary statistics for numeric and boolean
     variables in a data frame. It allows users to select specific
     variables for summarization and can calculate statistics for the
     whole dataset or within groups specified by the 'by' argument.
     Additional detail levels for quantiles can be included.
 
-    The function first checks that all specified variables are of type
-    numeric, integer, or boolean. If any variables do not meet this
-    criterion, the function raises a ValueError indicating the
-    non-conforming variables.
+    The function first checks that all specified variables are of a
+    numeric dtype (int, float, or bool). If any variables fail this
+    check, a 'ValueError' is raised listing the offending columns.
+    Boolean columns are summarized as their numeric equivalent — for
+    example, the 'mean' of a boolean column is the proportion of True.
 
     The basic set of summary statistics includes the count of non-NaN
     values (n), mean, standard deviation (sd), minimum (min), median
@@ -1090,7 +1091,7 @@ def create_summary_statistics(
         Data frame containing the variables to be summarized.
     variables : list of str
         List of column names in the data frame to summarize. These
-        variables must be numeric, integer, or boolean.
+        variables must be of a numeric dtype (int, float, or bool).
     by : str, optional
         Column name to group the data before summarizing. If None (the
         default), summary statistics are computed across all
@@ -1133,13 +1134,25 @@ def create_summary_statistics(
     non_numeric_vars = [
         var
         for var in variables
-        if not np.issubdtype(data[var].dtype, np.number)
+        if not pd.api.types.is_numeric_dtype(data[var].dtype)
     ]
     if non_numeric_vars:
         raise ValueError(
             "The following columns are not numeric or boolean: "
             f"{', '.join(non_numeric_vars)}"
         )
+
+    # Cast boolean columns to float so they survive `describe()`, which
+    # drops bool dtype by default. The mean of the cast column then
+    # equals the proportion of True in the original.
+    bool_cols = [
+        v for v in variables
+        if pd.api.types.is_bool_dtype(data[v].dtype)
+    ]
+    if bool_cols:
+        data = data.copy()
+        for c in bool_cols:
+            data[c] = data[c].astype(float)
 
     # Drop missing values if specified
     if drop_na:
