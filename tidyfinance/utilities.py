@@ -657,22 +657,29 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
 
 def set_wrds_credentials() -> None:
-    """Set WRDS credentials in the environment.
+    """Set WRDS credentials in a '.env' file.
 
-    Prompts the user for WRDS credentials and stores them in a .env file.
+    Prompts interactively for the WRDS username and password and writes
+    them to a '.env' file as 'WRDS_USER' and 'WRDS_PASSWORD'. The
+    location is chosen at the prompt: 'project' writes to the current
+    working directory, 'home' writes to the user's home directory. If
+    a '.env' file already contains WRDS credentials, the user is asked
+    before overwriting. After saving, the user is offered to append
+    '.env' to a sibling '.gitignore' (recommended).
 
-    The user can choose to store the credentials in the project directory or
-    the home directory. If credentials already exist, the user is prompted for
-    confirmation before overwriting them. Additionally, the user is given an
-    option to add the .env file to .gitignore.
+    The resulting '.env' file is the credentials source consumed by
+    'get_wrds_connection' via 'load_wrds_credentials'.
 
     Returns
     -------
-        - Saves the WRDS credentials in a '.env' file
-        - Optionally adds '.env' to '.gitignore'
     None
-        The function is called for its side effects: writing
-        'config.yaml' and, optionally, updating '.gitignore'.
+        Called for its side effects: writing '.env' and, optionally,
+        updating '.gitignore'.
+
+    See Also
+    --------
+    get_wrds_connection : Opens a WRDS connection using the credentials
+        stored by this function.
 
     Examples
     --------
