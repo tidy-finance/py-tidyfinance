@@ -26,7 +26,7 @@ def test_download_data_factors_invalid_data_set():
 
 def test_download_data_column_ordering():
     df = download_data(
-        domain="stock_prices",
+        domain="Stock Prices",
         symbols="AAPL",
         start_date="2000-01-01",
         end_date="2023-12-31"
@@ -74,10 +74,10 @@ def test_download_data_legacy_type_as_domain_warns():
 
 
 def test_download_data_pseudo_dispatches_to_simulate():
-    """Route domain="pseudo" through _simulate_pseudo_data."""
+    """Route domain="Pseudo Data" through _simulate_pseudo_data."""
     with pytest.warns(UserWarning, match="pseudo"):
         result = download_data(
-            domain="pseudo",
+            domain="Pseudo Data",
             dataset="crsp_monthly",
             start_date="2020-01-01",
             end_date="2020-03-31",
@@ -86,6 +86,20 @@ def test_download_data_pseudo_dispatches_to_simulate():
     assert isinstance(result, pd.DataFrame)
     assert not result.empty
     assert {"permno", "date", "ret"}.issubset(result.columns)
+
+
+def test_download_data_legacy_domain_alias_warns():
+    """Emit DeprecationWarning when a legacy machine-readable domain is used."""
+    with patch(
+        "tidyfinance.data_download._download_data_factors_ff",
+        return_value="sentinel",
+    ):
+        with pytest.warns(DeprecationWarning, match="is deprecated"):
+            result = download_data(
+                domain="famafrench",
+                dataset="Fama/French 3 Factors",
+            )
+    assert result == "sentinel"
 
 
 if __name__ == "__main__":

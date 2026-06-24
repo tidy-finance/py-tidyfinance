@@ -39,6 +39,7 @@ from .supported_datasets import (
     _is_legacy_type_q,
     _is_legacy_type_wrds,
     _parse_type_to_domain_dataset,
+    _resolve_domain_alias,
 )
 from .utilities import (
     _process_additional_columns,
@@ -141,12 +142,13 @@ def download_data(
     Parameters
     ----------
     domain : str
-        The domain of the dataset to download. Supported values are
-        'famafrench', 'globalq', 'macro_predictors', 'wrds', 'pseudo',
-        'constituents', 'fred', 'stock_prices', 'osap', and
-        'tidyfinance'. Use 'pseudo' to obtain pseudo data with the same
-        schema as 'wrds' for testing or rendering without a WRDS
-        subscription.
+        The domain of the dataset to download, given as one of the
+        canonical names returned by ``list_supported_datasets()``:
+        "Fama-French", "Global Q", "Goyal-Welch", "WRDS", "Pseudo Data",
+        "Index Constituents", "FRED", "Stock Prices",
+        "Open Source Asset Pricing", "Tidy Finance". The previous
+        machine-readable names (e.g. "famafrench", "wrds", "pseudo") are
+        deprecated but still accepted.
     dataset : str, optional
         The specific dataset to download within the domain.
     start_date : str, optional
@@ -231,39 +233,41 @@ def download_data(
     if domain is None:
         raise ValueError("Argument 'domain' is required.")
 
+    domain = _resolve_domain_alias(domain)
+
     _check_supported_domain(domain)
 
-    if domain in ["famafrench", "factors_ff"]:
+    if domain == "Fama-French":
         processed_data = _download_data_factors_ff(
             dataset=dataset, start_date=start_date, end_date=end_date
         )
-    elif domain in ["globalq", "factors_q"]:
+    elif domain == "Global Q":
         processed_data = _download_data_factors_q(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "macro_predictors":
+    elif domain == "Goyal-Welch":
         processed_data = _download_data_macro_predictors(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "wrds":
+    elif domain == "WRDS":
         processed_data = _download_data_wrds(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "constituents":
+    elif domain == "Index Constituents":
         processed_data = _download_data_constituents(dataset=dataset, **kwargs)
-    elif domain == "fred":
+    elif domain == "FRED":
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "stock_prices":
+    elif domain == "Stock Prices":
         processed_data = _download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "osap":
+    elif domain == "Open Source Asset Pricing":
         processed_data = _download_data_osap(
             start_date=start_date, end_date=end_date, **kwargs
         )
-    elif domain == "tidyfinance":
+    elif domain == "Tidy Finance":
         if dataset == "risk_free":
             processed_data = _download_data_risk_free(
                 start_date=start_date, end_date=end_date, **kwargs
@@ -275,7 +279,7 @@ def download_data(
                 end_date=end_date,
                 **kwargs,
             )
-    elif domain == "pseudo":
+    elif domain == "Pseudo Data":
         processed_data = _simulate_pseudo_data(
             dataset=dataset,
             start_date=start_date,
@@ -906,9 +910,9 @@ def _download_data_constituents(
     """
     if dataset is not None and index is None:
         warnings.warn(
-            "The 'dataset' argument is not valid for domain='constituents'. "
-            "Use 'index' instead, e.g. download_data(domain='constituents',"
-            " index='DAX').",
+            "The 'dataset' argument is not valid for "
+            "domain='Index Constituents'. Use 'index' instead, e.g. "
+            "download_data(domain='Index Constituents', index='DAX').",
             UserWarning,
             stacklevel=2,
         )
@@ -1934,8 +1938,9 @@ def _download_data_wrds_crsp(
                         },
                     )
                     .assign(shrout=lambda x: x["shrout"] * 1000)
-                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
-                    .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
+                    # listing_age is assigned before mktcap so the output
+                    # column order matches r-tidyfinance (..., siccd,
+                    # listing_age, mktcap, mktcap_lag, ...).
                     .assign(
                         listing_age=lambda df: (
                             (df["date"].dt.year - df["first_crsp_date"].dt.year)
@@ -1949,6 +1954,8 @@ def _download_data_wrds_crsp(
                             ).astype(int)
                         ).clip(lower=0)
                     )
+                    .assign(mktcap=lambda x: x["shrout"] * x["prc"] / 1000000)
+                    .assign(mktcap=lambda x: x["mktcap"].replace(0, np.nan))
                     .drop(columns=["first_crsp_date"])
                 )
 
@@ -2332,36 +2339,22 @@ def _download_data_wrds_ccm_links(
     linktype: list[str] = ["LU", "LC"], linkprim: list[str] = ["P", "C"]
 ) -> pd.DataFrame:
     """
-    Download CCM links from WRDS.
-
-    Downloads data from the WRDS CRSP/Compustat Merged (CCM) links
-    database. It allows users to specify the type of links ('linktype')
-    and the primacy of the link ('linkprim').
+    Download data from the WRDS CRSP/Compustat Merged (CCM) links database.
 
     Parameters
     ----------
     linktype : list of str, optional
-        A character vector indicating the type of link to download.
-        The default is ['LU', 'LC'], where 'LU' stands for 'Link Up'
-        and 'LC' for 'Link CRSP'.
+        A list of strings indicating the types of links to download.
+        Defaults to ["LU", "LC"].
     linkprim : list of str, optional
-        A character vector indicating the primacy of the link. Default
-        is ['P', 'C'], where 'P' indicates primary and 'C' indicates
-        conditional links.
+        A list of strings indicating the primacy of the links.
+        Defaults to ["P", "C"].
 
     Returns
     -------
     pd.DataFrame
-        A data frame with the columns 'permno', 'gvkey', 'linkdt', and
-        'linkenddt', where 'linkenddt' is the end date of the link and
-        missing end dates are replaced with today's date.
-
-    Examples
-    --------
-    >>> from tidyfinance import download_data_wrds_ccm_links
-    >>> ccm_links = download_data_wrds_ccm_links(
-    ...     linktype=['LU'], linkprim=['P']
-    ... )
+        A data frame containing columns permno, gvkey, linkprim, linkdt, and
+        linkenddt (missing end dates replaced with today's date).
     """
     conn = get_wrds_connection()
 

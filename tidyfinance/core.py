@@ -1,5 +1,7 @@
 """Main module for tidyfinance package."""
 
+import warnings
+
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
@@ -28,9 +30,6 @@ def add_lagged_columns(
 ) -> pd.DataFrame:
     """Append lagged columns to a data frame via a join-based approach.
 
-    Appends lagged versions of specified columns to a data frame using a
-    join-based approach.
-
     When 'lag == max_lag' (the default), an equi-join is used: source
     dates are shifted forward by 'lag' and matched exactly. When
     'lag < max_lag', an inequality join is used: for each row, the most
@@ -43,7 +42,7 @@ def add_lagged_columns(
     Parameters
     ----------
     data : pd.DataFrame
-        Data frame containing the variables to lag.
+        DataFrame containing the variables to lag.
     cols : list of str or str
         Names of the columns to lag. Each column produces a new column
         suffixed with '_lag'.
@@ -505,27 +504,27 @@ def data_options(
 
     Parameters
     ----------
-    id : str, default 'permno'
+    id : str, default "permno"
         Entity identifier column.
-    date : str, default 'date'
+    date : str, default "date"
         Date column.
-    exchange : str, default 'exchange'
+    exchange : str, default "exchange"
         Exchange column.
-    mktcap_lag : str, default 'mktcap_lag'
+    mktcap_lag : str, default "mktcap_lag"
         Market capitalization lag column.
-    ret_excess : str, default 'ret_excess'
+    ret_excess : str, default "ret_excess"
         Excess return column.
-    portfolio : str, default 'portfolio'
+    portfolio : str, default "portfolio"
         Portfolio assignment column.
-    siccd : str, default 'siccd'
-        Standard Industrial Classification code column.
-    price : str, default 'prc_adj'
+    siccd : str, default "siccd"
+        SIC code column.
+    price : str, default "prc_adj"
         Adjusted price column.
-    listing_age : str, default 'listing_age'
+    listing_age : str, default "listing_age"
         Listing age column.
-    be : str, default 'be'
+    be : str, default "be"
         Book equity column.
-    earnings : str, default 'ib'
+    earnings : str, default "ib"
         Earnings column (Compustat income before extraordinary items).
     **kwargs
         Any additional column mappings stored verbatim in the dict.
@@ -580,66 +579,34 @@ def assign_portfolio(
     breakpoint_function=None,
     data_options: dict = None,
 ) -> pd.Series:
-    """Assign portfolios based on a sorting variable.
+    """Assign data points to portfolios based on a sorting variable.
 
-    Assigns data points to portfolios based on a specified sorting
-    variable and the selected function to compute breakpoints. Users
-    can specify a function to compute breakpoints. The function must
-    take 'data' and 'sorting_variable' as the first two arguments.
-    Additional arguments are passed with a named dict 'breakpoint_options'.
-    The function needs to return an ascending vector of breakpoints. By
-    default, breakpoints are computed with 'compute_breakpoints'. The
-    default column names can be modified using 'data_options'.
+    Users may pass a custom function to compute breakpoints. The
+    function must take 'data' and 'sorting_variable' as the first two
+    arguments, then 'breakpoint_options' and 'data_options'. The
+    function must return an ascending sequence of breakpoints.
+    Defaults to compute_breakpoints.
 
     Parameters
     ----------
     data : pd.DataFrame
-        Data frame containing the dataset for portfolio assignment.
+        Dataset for portfolio assignment.
     sorting_variable : str
-        Column name in 'data' used for sorting and determining
-        portfolio assignments based on the breakpoints.
+        Column in 'data' used for sorting and portfolio assignment.
     breakpoint_options : dict, optional
         Named arguments passed to 'breakpoint_function'. Typically
-        produced by 'breakpoint_options'.
+        produced by breakpoint_options.
     breakpoint_function : callable, optional
         Function to compute breakpoints. Must return an ascending
-        sequence. Defaults to 'compute_breakpoints'.
+        sequence. Defaults to compute_breakpoints.
     data_options : dict, optional
-        Column-name mapping (see 'data_options'). Passed through to
-        'breakpoint_function'. When using the default
-        'compute_breakpoints', the 'exchange' element specifies the
-        exchange column, and 'mktcap_lag' specifies the market
-        capitalization column. Uses 'data_options' defaults when None:
-        'exchange' -> 'exchange' and 'mktcap_lag' -> 'mktcap_lag'.
+        Column-name mapping (see data_options). Passed through to
+        'breakpoint_function'.
 
     Returns
     -------
     pd.Series
-        Integer portfolio assignments (stored as float) for each row in
-        the input 'data'.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import assign_portfolio, breakpoint_options
-    >>> rng = np.random.default_rng(42)
-    >>> data = pd.DataFrame({
-    ...     'id': range(1, 101),
-    ...     'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
-    ...     'market_cap': range(1, 101),
-    ... })
-    >>> assign_portfolio(
-    ...     data, 'market_cap', breakpoint_options(n_portfolios=5)
-    ... )
-    >>> assign_portfolio(
-    ...     data,
-    ...     'market_cap',
-    ...     breakpoint_options(
-    ...         percentiles=[0.2, 0.4, 0.6, 0.8],
-    ...         breakpoints_exchanges=['NYSE'],
-    ...     ),
-    ... )
+        Portfolio assignments as a float series.
     """
     if breakpoint_function is None:
         breakpoint_function = compute_breakpoints
@@ -859,7 +826,7 @@ def compute_breakpoints(
     Parameters
     ----------
     data : pd.DataFrame
-        Data frame containing the dataset for breakpoint computation.
+        DataFrame with the dataset for breakpoint computation.
     sorting_variable : str
         Column name in 'data' to be used for determining breakpoints.
     breakpoint_options : dict
@@ -1286,11 +1253,120 @@ def estimate_betas(
     return betas_df
 
 
+def _ar1_ols_residuals(e: np.ndarray) -> tuple[float, np.ndarray]:
+    """Fit an AR(1) by OLS without intercept or demeaning.
+
+    Mirrors R's ``ar(x, order.max = 1, demean = FALSE, aic = FALSE,
+    method = "ols")``, which sandwich uses to prewhiten the estimating
+    functions. Returns the AR(1) coefficient and the prewhitened residuals
+    (length ``len(e) - 1``).
+    """
+    x = e[:-1]
+    z = e[1:]
+    rho = float((x @ z) / (x @ x))
+    return rho, z - rho * x
+
+
+def _newey_west_bandwidth(e: np.ndarray, prewhite: int) -> float:
+    """Automatic Newey & West (1994) bandwidth for the Bartlett kernel.
+
+    Replicates ``sandwich::bwNeweyWest`` for the univariate, intercept-only
+    case (the estimating functions are the demeaned series ``e``).
+    """
+    n = e.shape[0]
+    m = int(np.floor((3 if prewhite > 0 else 4) * (n / 100.0) ** (2.0 / 9.0)))
+    if prewhite > 0:
+        _, u = _ar1_ols_residuals(e)
+        n = n - prewhite
+    else:
+        u = e
+    m = min(m, n - 1)
+    sigma = np.array([float(u[: n - j] @ u[j:]) / n for j in range(m + 1)])
+    s0 = sigma[0] + 2.0 * sigma[1:].sum()
+    s1 = 2.0 * np.sum(np.arange(1, m + 1) * sigma[1:])
+    if s0 == 0.0:
+        return 0.0
+    rval = 1.1447 * ((s1 / s0) ** 2) ** (1.0 / 3.0)
+    return rval * (n + prewhite) ** (1.0 / 3.0)
+
+
+def _newey_west_se(
+    series: np.ndarray,
+    lag: int | None = None,
+    prewhite: int = 1,
+    adjust: bool = False,
+) -> float:
+    """Newey-West HAC standard error of the mean of a time series.
+
+    Replicates the default behavior of R's ``sandwich::NeweyWest`` applied to
+    an intercept-only regression (``lm(series ~ 1)``): VAR(1) prewhitening
+    (``prewhite=1``), automatic Newey & West (1994) bandwidth selection when
+    ``lag`` is ``None``, a Bartlett kernel, and no finite-sample adjustment
+    (``adjust=False``). This is the estimator the Tidy Finance R edition uses
+    for Fama-MacBeth t-statistics, so the two editions agree numerically.
+
+    Parameters
+    ----------
+    series : np.ndarray
+        The time-ordered series (e.g. a factor's per-period risk premium).
+    lag : int, optional
+        Bartlett truncation lag. If ``None`` (default), the automatic
+        Newey & West (1994) bandwidth is used.
+    prewhite : int, default 1
+        Order of the VAR prewhitening (``1`` matches R's default; ``0``
+        disables prewhitening).
+    adjust : bool, default False
+        Apply the ``n / (n - k)`` finite-sample adjustment (R default is
+        ``False``).
+
+    Notes
+    -----
+    A series with fewer than two (non-NaN) observations returns ``NaN``.
+    Very short series (``n < 3``) are handled more gracefully than R's
+    ``NeweyWest``, which errors on such degenerate input; this never arises
+    in a real Fama-MacBeth run, where each value is a per-period estimate.
+    """
+    y = np.asarray(series, dtype=float)
+    y = y[~np.isnan(y)]
+    n_obs = y.shape[0]
+    if n_obs < 2:
+        return np.nan
+    e = y - y.mean()
+    if float(e @ e) == 0.0:
+        return 0.0
+
+    if lag is None:
+        lag = int(np.floor(_newey_west_bandwidth(e, prewhite)))
+
+    if prewhite > 0:
+        rho, u = _ar1_ols_residuals(e)
+        recolor = 1.0 / (1.0 - rho)
+        n = n_obs - 1
+    else:
+        u = e
+        recolor = 1.0
+        n = n_obs
+
+    weights = [1.0 - j / (lag + 1.0) for j in range(lag + 2)]
+    utu = weights[0] * float(u @ u)
+    for j in range(1, len(weights)):
+        w = weights[j]
+        if w == 0.0 or j >= n:
+            continue
+        utu += 2.0 * w * float(u[: n - j] @ u[j:])
+    if adjust:
+        utu *= n_obs / (n_obs - 1.0)
+    if prewhite > 0:
+        utu *= recolor * recolor
+    variance = utu / (n_obs * n_obs)
+    return float(np.sqrt(variance))
+
+
 def estimate_fama_macbeth(
     data: pd.DataFrame,
     model: str,
     vcov: str = "newey-west",
-    vcov_options: dict = {"maxlags": 6},
+    vcov_options: dict | None = None,
     date_col: str = "date",
 ) -> pd.DataFrame:
     """Estimate Fama-MacBeth regressions.
@@ -1302,6 +1378,23 @@ def estimate_fama_macbeth(
 
     Parameters
     ----------
+    data (pd.DataFrame): A DataFrame containing the data for the regression.
+    model (str): A formula representing the regression model.
+    vcov (str): Type of standard errors to compute. Options are "iid" or
+        "newey-west".
+    vcov_options (dict, optional): Options for the Newey-West standard
+        errors, mirroring R's ``sandwich::NeweyWest``. Recognized keys are
+        ``lag`` (Bartlett truncation lag; ``None`` selects the automatic
+        Newey & West (1994) bandwidth), ``prewhite`` (VAR order for
+        prewhitening, default ``1``), and ``adjust`` (finite-sample
+        correction, default ``False``). When ``None`` (the default), the
+        estimator matches R's ``sandwich::NeweyWest`` default exactly:
+        VAR(1) prewhitening plus automatic bandwidth selection. The
+        deprecated ``maxlags`` key is accepted as an alias for ``lag`` (with
+        ``prewhite`` defaulting to ``0``, the previous behavior). Only these
+        Bartlett-kernel arguments are honored; other ``sandwich::NeweyWest``
+        options (e.g. ``kernel``) are not supported.
+    date_col (str): Column name representing the time periods.
     data : pd.DataFrame
         Data frame containing the data for the regression. It must
         include a column representing the time periods (defaults to
@@ -1375,6 +1468,22 @@ def estimate_fama_macbeth(
     if date_col not in data.columns:
         raise ValueError(f"The data must contain a {date_col} column.")
 
+    # Parse Newey-West options (mirroring R's sandwich::NeweyWest interface).
+    options = dict(vcov_options or {})
+    if "maxlags" in options:
+        warnings.warn(
+            "vcov_options key 'maxlags' is deprecated; use 'lag' (and "
+            "'prewhite'). The default Newey-West estimator now matches R's "
+            "sandwich::NeweyWest (VAR(1) prewhitening + automatic bandwidth).",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        options.setdefault("lag", options.pop("maxlags"))
+        options.setdefault("prewhite", 0)
+    nw_lag = options.get("lag", None)
+    nw_prewhite = int(options.get("prewhite", 1))
+    nw_adjust = bool(options.get("adjust", False))
+
     # Run cross-sectional regressions
     cross_section_results = []
     for date, group in data.groupby(date_col):
@@ -1401,12 +1510,18 @@ def estimate_fama_macbeth(
 
     # Compute standard errors based on vcov choice
     def compute_t_statistic(x):
-        model = smf.ols("estimate ~ 1", x)
+        x = x.sort_values(date_col)
+        estimate = x["estimate"]
         if vcov == "newey-west":
-            fit = model.fit(cov_type="HAC", cov_kwds=vcov_options)
+            se = _newey_west_se(
+                estimate.to_numpy(),
+                lag=nw_lag,
+                prewhite=nw_prewhite,
+                adjust=nw_adjust,
+            )
         else:
-            fit = model.fit()
-        return x["estimate"].mean() / fit.bse["Intercept"]
+            se = smf.ols("estimate ~ 1", x).fit().bse["Intercept"]
+        return estimate.mean() / se
 
     price_of_risk_t_stat = (
         risk_premiums.melt(

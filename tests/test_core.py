@@ -18,6 +18,7 @@ from tidyfinance.core import (
     create_summary_statistics,
     estimate_betas,
     estimate_fama_macbeth,
+    _newey_west_se,
 )
 
 
@@ -223,6 +224,97 @@ def test_estimate_fama_macbeth_vcov(sample_data: pd.DataFrame) -> None:
     assert "t_statistic" in result.columns, (
         "Output should include t-statistics based on vcov choice"
     )
+
+
+# Fixed series with reference values computed in R via
+# sqrt(as.numeric(sandwich::NeweyWest(lm(y ~ 1), ...))). These lock the
+# Python estimator to R's sandwich::NeweyWest (issue #35).
+_NW_FIXED_SERIES = np.array([
+    0.01, -0.02, 0.015, 0.03, -0.01, 0.005, 0.02, -0.025, 0.01, 0.0,
+    0.018, -0.012, 0.022, -0.008, 0.014, 0.006, -0.019, 0.011, 0.027, -0.003,
+])
+
+
+def test_newey_west_se_matches_r_default() -> None:
+    """Default (prewhite=1, automatic NW1994 bandwidth) matches R sandwich."""
+    se = _newey_west_se(_NW_FIXED_SERIES)  # lag=None, prewhite=1
+    assert se == pytest.approx(0.000646974246259443, rel=1e-9)
+
+
+def test_newey_west_se_matches_r_no_prewhitening() -> None:
+    """prewhite=0 (automatic bandwidth) matches R sandwich."""
+    se = _newey_west_se(_NW_FIXED_SERIES, prewhite=0)
+    assert se == pytest.approx(0.00094140519968821, rel=1e-9)
+
+
+def test_newey_west_se_matches_r_fixed_lag() -> None:
+    """Explicit lag, with and without prewhitening, matches R sandwich."""
+    se_pw0 = _newey_west_se(_NW_FIXED_SERIES, lag=3, prewhite=0)
+    se_pw1 = _newey_west_se(_NW_FIXED_SERIES, lag=3, prewhite=1)
+    assert se_pw0 == pytest.approx(0.00177500880279507, rel=1e-9)
+    assert se_pw1 == pytest.approx(0.00140568050935899, rel=1e-9)
+
+
+def test_newey_west_se_legacy_path_equals_statsmodels_hac() -> None:
+    """The deprecated maxlags=6 path (lag=6, prewhite=0) equals statsmodels'
+    HAC(maxlags=6), the pre-PR behavior. Anchors the legacy path to an
+    absolute reference so it cannot silently regress."""
+    se = _newey_west_se(_NW_FIXED_SERIES, lag=6, prewhite=0)
+    assert se == pytest.approx(0.0012883225527793873, rel=1e-9)
+
+
+def _sample_data_fmb_parity() -> pd.DataFrame:
+    """Deterministic panel; reference values produced by r-tidyfinance's
+    estimate_fama_macbeth (vcov='newey-west') on the identical data."""
+    rng = np.random.default_rng(987654)
+    dates = pd.date_range("2000-01-31", periods=48, freq="ME")
+    recs = []
+    for d in dates:
+        beta = rng.normal(1, 0.3, size=40)
+        bm = rng.normal(0.5, 0.2, size=40)
+        size = rng.normal(10, 1, size=40)
+        eps = rng.normal(0, 0.05, size=40)
+        ret = 0.002 + 0.0015 * beta - 0.003 * bm + 0.0008 * size + eps
+        for p in range(40):
+            recs.append((d, p, ret[p], beta[p], bm[p], size[p]))
+    return pd.DataFrame(
+        recs, columns=["date", "permno", "ret_excess", "beta", "bm", "size"]
+    )
+
+
+def test_estimate_fama_macbeth_newey_west_matches_r() -> None:
+    """End-to-end Fama-MacBeth t-statistics match r-tidyfinance exactly.
+
+    Reference (sandwich::NeweyWest default) rounded to 3 decimals:
+    intercept -0.792, beta 2.301, bm 1.005, size 0.887.
+    """
+    out = estimate_fama_macbeth(
+        _sample_data_fmb_parity(), "ret_excess ~ beta + bm + size"
+    )
+    t = out.set_index("factor")["t_statistic"].to_dict()
+    rp = out.set_index("factor")["risk_premium"].to_dict()
+    # Reference values are rounded to 3 decimals, so compare within half a
+    # unit in the last place (abs=5e-4).
+    assert t["Intercept"] == pytest.approx(-0.792, abs=5e-4)
+    assert t["beta"] == pytest.approx(2.301, abs=5e-4)
+    assert t["bm"] == pytest.approx(1.005, abs=5e-4)
+    assert t["size"] == pytest.approx(0.887, abs=5e-4)
+    assert rp["beta"] == pytest.approx(0.007, abs=5e-4)
+
+
+def test_estimate_fama_macbeth_maxlags_deprecated() -> None:
+    """The legacy 'maxlags' key warns and maps to lag with prewhite=0."""
+    data = sample_data_fmb()
+    with pytest.warns(DeprecationWarning, match="maxlags"):
+        legacy = estimate_fama_macbeth(
+            data, "ret_excess ~ beta + bm + log_mktcap",
+            vcov_options={"maxlags": 6},
+        )
+    explicit = estimate_fama_macbeth(
+        data, "ret_excess ~ beta + bm + log_mktcap",
+        vcov_options={"lag": 6, "prewhite": 0},
+    )
+    pd.testing.assert_frame_equal(legacy, explicit)
 
 
 def sample_data_summary() -> pd.DataFrame:

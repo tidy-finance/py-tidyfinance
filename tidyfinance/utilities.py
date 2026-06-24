@@ -6,14 +6,16 @@ import re
 
 import numpy as np
 import pandas as pd
-import yaml
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values, set_key
 from sqlalchemy import create_engine, URL
 
 
-def get_wrds_connection(config_path: str = "config.yaml") -> object:
-    """Establish a connection to the WRDS database.
+def get_wrds_connection() -> object:
+    """
+    Establish a connection to Wharton Research Data Services (WRDS).
 
+    Retrieves WRDS credentials from environment variables (or a .env file)
+    and connects to the WRDS PostgreSQL database using SQLAlchemy.
     Opens a connection to Wharton Research Data Services (WRDS) via the
     PostgreSQL backend. Credentials are read first from the 'WRDS_USER'
     and 'WRDS_PASSWORD' environment variables and, if missing, from a
@@ -46,7 +48,7 @@ def get_wrds_connection(config_path: str = "config.yaml") -> object:
     >>> con = get_wrds_connection()
     >>> disconnect_connection(con)
     """
-    wrds_user, wrds_password = load_wrds_credentials(config_path)
+    wrds_user, wrds_password = load_wrds_credentials()
     url = URL.create(
         drivername="postgresql+psycopg2",
         username=wrds_user,
@@ -237,14 +239,9 @@ def list_tidy_finance_chapters() -> list:
     ]
 
 
-def load_wrds_credentials(config_path: str = "./config.yaml") -> tuple:
+def load_wrds_credentials() -> tuple:
     """
-    Load WRDS credentials from a config.yaml file if env variables are not set.
-
-    Parameters
-    ----------
-        config_path (str): Path to the configuration file.
-        Default is "config.yaml".
+    Load WRDS credentials from environment variables or a .env file.
 
     Returns
     -------
@@ -256,17 +253,10 @@ def load_wrds_credentials(config_path: str = "./config.yaml") -> tuple:
     wrds_password: str = os.getenv("WRDS_PASSWORD")
 
     if not wrds_user or not wrds_password:
-        if os.path.exists(config_path):
-            with open(config_path, "r") as file:
-                config = yaml.safe_load(file)
-                wrds_user = config.get("WRDS", {}).get("USER", "")
-                wrds_password = config.get("WRDS", {}).get("PASSWORD", "")
-
-    if not wrds_user or not wrds_password:
         raise ValueError(
             "WRDS credentials not found. Please set 'WRDS_USER' "
-            "and 'WRDS_PASSWORD' as environment variables or "
-            "in config.yaml."
+            "and 'WRDS_PASSWORD' as environment variables, e.g. via a "
+            ".env file."
         )
 
     return wrds_user, wrds_password
@@ -352,17 +342,25 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     Returns
     -------
         pd.DataFrame: The cleaned and processed TRACE data.
+
+    Notes
+    -----
+    Trades are cleaned under two regimes split by the date the enhanced
+    TRACE message-status format changed (``2012-02-06``; see Dick-Nielsen,
+    2014). Trades reported on or after this date use the post-2012 logic and
+    earlier trades the pre-2012 logic. This matches the cutoff used by the
+    R edition (``download_data_wrds_trace_enhanced`` in r-tidyfinance).
     """
-    # Post 2012-06-02
+    # Post 2012-02-06
     ## Trades (trc_st = T) and correction (trc_st = R)
     trace_post_TR = trace_all.query("trc_st in ['T', 'R']").query(
-        "trd_rpt_dt >= '2012-06-02'"
+        "trd_rpt_dt >= '2012-02-06'"
     )
 
     # Cancellations (trc_st = X) and correction cancellations (trc_st = C)
     trace_post_XC = (
         trace_all.query("trc_st in ['X', 'C']")
-        .query("trd_rpt_dt >= '2012-06-02'")
+        .query("trd_rpt_dt >= '2012-02-06'")
         .get(
             [
                 "cusip_id",
@@ -413,15 +411,15 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         .drop(columns="drop")
     )
 
-    # Enhanced TRACE: Pre 06-02-2012
-    # Pre 06-02-12
+    # Enhanced TRACE: Pre 2012-02-06
+    # Pre 2012-02-06
     ## Trades (trc_st = T)
-    trace_pre_T = trace_all.query("trd_rpt_dt < '2012-06-02'")
+    trace_pre_T = trace_all.query("trd_rpt_dt < '2012-02-06'")
 
     # Cancellations (trc_st = C)
     trace_pre_C = (
         trace_all.query("trc_st == 'C'")
-        .query("trd_rpt_dt < '2012-06-02'")
+        .query("trd_rpt_dt < '2012-02-06'")
         .get(
             [
                 "cusip_id",
@@ -448,7 +446,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
     # Corrections (trc_st = W)
     trace_pre_W = trace_all.query("trc_st == 'W'").query(
-        "trd_rpt_dt < '2012-06-02'"
+        "trd_rpt_dt < '2012-02-06'"
     )
 
     # Implement corrections in a loop
@@ -633,18 +631,19 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
 
 def set_wrds_credentials() -> None:
-    """Interactively store WRDS credentials.
+    """Set WRDS credentials in the environment.
 
-    Prompts for a WRDS username and password and writes them into a
-    'config.yaml' file. The file may live in the project directory or
-    the user's home directory. When the configuration already contains
-    WRDS credentials, the user is asked whether to overwrite them.
-    When a '.gitignore' file is found in the chosen location, the user
-    is offered the option to append 'config.yaml' so credentials are
-    not committed.
+    Prompts the user for WRDS credentials and stores them in a .env file.
+
+    The user can choose to store the credentials in the project directory or
+    the home directory. If credentials already exist, the user is prompted for
+    confirmation before overwriting them. Additionally, the user is given an
+    option to add the .env file to .gitignore.
 
     Returns
     -------
+        - Saves the WRDS credentials in a '.env' file
+        - Optionally adds '.env' to '.gitignore'
     None
         The function is called for its side effects: writing
         'config.yaml' and, optionally, updating '.gitignore'.
@@ -658,7 +657,7 @@ def set_wrds_credentials() -> None:
     wrds_password = input("Enter your WRDS password: ")
     location_choice = (
         input(
-            "Where do you want to store the config.yaml "
+            "Where do you want to store the .env "
             "file? Enter 'project' for project directory or "
             "'home' for home directory: "
         )
@@ -667,10 +666,10 @@ def set_wrds_credentials() -> None:
     )
 
     if location_choice == "project":
-        config_path = os.path.join(os.getcwd(), "config.yaml")
+        env_path = os.path.join(os.getcwd(), ".env")
         gitignore_path = os.path.join(os.getcwd(), ".gitignore")
     elif location_choice == "home":
-        config_path = os.path.join(os.path.expanduser("~"), "config.yaml")
+        env_path = os.path.join(os.path.expanduser("~"), ".env")
         gitignore_path = os.path.join(os.path.expanduser("~"), ".gitignore")
     else:
         print(
@@ -678,16 +677,9 @@ def set_wrds_credentials() -> None:
         )
         return
 
-    config: dict = {}
-    if os.path.exists(config_path):
-        with open(config_path, "r") as file:
-            config = yaml.safe_load(file) or {}
+    existing = dotenv_values(env_path) if os.path.exists(env_path) else {}
 
-    if (
-        "WRDS" in config
-        and "USER" in config["WRDS"]
-        and "PASSWORD" in config["WRDS"]
-    ):
+    if existing.get("WRDS_USER") and existing.get("WRDS_PASSWORD"):
         overwrite_choice = (
             input(
                 "Credentials already exist. Do you want to "
@@ -703,7 +695,7 @@ def set_wrds_credentials() -> None:
     if os.path.exists(gitignore_path):
         add_gitignore = (
             input(
-                "Do you want to add config.yaml to .gitignore? "
+                "Do you want to add .env to .gitignore? "
                 "It is highly recommended! "
                 "Enter 'yes' or 'no': "
             )
@@ -713,23 +705,21 @@ def set_wrds_credentials() -> None:
         if add_gitignore == "yes":
             with open(gitignore_path, "r") as file:
                 gitignore_lines = file.readlines()
-            if "config.yaml\n" not in gitignore_lines:
+            if ".env\n" not in gitignore_lines:
                 with open(gitignore_path, "a") as file:
-                    file.write("config.yaml\n")
-                print("config.yaml added to .gitignore.")
+                    file.write(".env\n")
+                print(".env added to .gitignore.")
         elif add_gitignore == "no":
-            print("config.yaml NOT added to .gitignore.")
+            print(".env NOT added to .gitignore.")
         else:
             print("Invalid choice. Please start again and enter 'yes' or 'no'.")
             return
 
-    config["WRDS"] = {"USER": wrds_user, "PASSWORD": wrds_password}
-
-    with open(config_path, "w") as file:
-        yaml.safe_dump(config, file)
+    set_key(env_path, "WRDS_USER", wrds_user)
+    set_key(env_path, "WRDS_PASSWORD", wrds_password)
 
     print(
-        "WRDS credentials have been set and saved in config.yaml in your "
+        "WRDS credentials have been set and saved in .env in your "
         f"{location_choice} directory."
     )
 
