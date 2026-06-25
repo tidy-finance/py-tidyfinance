@@ -283,19 +283,21 @@ def _download_data_pseudo_crsp(
 
     Examples
     --------
-    >>> from tidyfinance._pseudo import _download_data_pseudo_crsp
-    >>> monthly = _download_data_pseudo_crsp(
-    ...     'crsp_monthly',
-    ...     start_date='2020-01-01',
-    ...     end_date='2024-12-31',
-    ...     n_assets=20,
-    ... )
-    >>> daily = _download_data_pseudo_crsp(
-    ...     'crsp_daily',
-    ...     start_date='2020-01-01',
-    ...     end_date='2020-03-31',
-    ...     n_assets=20,
-    ... )
+    ```python
+    from tidyfinance._pseudo import _download_data_pseudo_crsp
+    monthly = _download_data_pseudo_crsp(
+        'crsp_monthly',
+        start_date='2020-01-01',
+        end_date='2024-12-31',
+        n_assets=20,
+    )
+    daily = _download_data_pseudo_crsp(
+        'crsp_daily',
+        start_date='2020-01-01',
+        end_date='2020-03-31',
+        n_assets=20,
+    )
+    ```
     """
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -546,19 +548,21 @@ def _download_data_pseudo_compustat(
 
     Examples
     --------
-    >>> from tidyfinance._pseudo import _download_data_pseudo_compustat
-    >>> annual = _download_data_pseudo_compustat(
-    ...     'compustat_annual',
-    ...     start_date='2020-01-01',
-    ...     end_date='2024-12-31',
-    ...     n_assets=20,
-    ... )
-    >>> quarterly = _download_data_pseudo_compustat(
-    ...     'compustat_quarterly',
-    ...     start_date='2020-01-01',
-    ...     end_date='2024-12-31',
-    ...     n_assets=20,
-    ... )
+    ```python
+    from tidyfinance._pseudo import _download_data_pseudo_compustat
+    annual = _download_data_pseudo_compustat(
+        'compustat_annual',
+        start_date='2020-01-01',
+        end_date='2024-12-31',
+        n_assets=20,
+    )
+    quarterly = _download_data_pseudo_compustat(
+        'compustat_quarterly',
+        start_date='2020-01-01',
+        end_date='2024-12-31',
+        n_assets=20,
+    )
+    ```
     """
     _ = only_usd  # kept for API parity
     if dataset is None:
@@ -832,8 +836,10 @@ def _download_data_pseudo_ccm_links(
 
     Examples
     --------
-    >>> from tidyfinance._pseudo import _download_data_pseudo_ccm_links
-    >>> links = _download_data_pseudo_ccm_links(n_assets=10)
+    ```python
+    from tidyfinance._pseudo import _download_data_pseudo_ccm_links
+    links = _download_data_pseudo_ccm_links(n_assets=10)
+    ```
     """
     _ = (linktype, linkprim)
     identifiers = _simulate_pseudo_identifiers(

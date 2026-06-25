@@ -185,36 +185,38 @@ def download_data(
 
     Examples
     --------
-    >>> from tidyfinance import download_data
-    >>> download_data(
-    ...     'Fama-French',
-    ...     'Fama/French 5 Factors (2x3) [Daily]',
-    ...     '2000-01-01',
-    ...     '2020-12-31',
-    ... )
-    >>> download_data(
-    ...     'Goyal-Welch', 'monthly', '2000-01-01', '2020-12-31'
-    ... )
-    >>> download_data('Index Constituents', index='DAX')
-    >>> download_data('FRED', series=['GDP', 'CPIAUCNS'])
-    >>> download_data('Stock Prices', symbols=['AAPL', 'MSFT'])
-    >>> download_data(
-    ...     'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data(
-    ...     'Tidy Finance',
-    ...     'high_frequency_sp500',
-    ...     '2007-07-26',
-    ...     '2007-07-27',
-    ... )
-    >>> download_data(
-    ...     'Tidy Finance',
-    ...     'factor_library',
-    ...     sorting_variable='52w',
-    ...     rebalancing='annual',
-    ... )
-    >>> download_data('Tidy Finance', 'factor_library', ids=[1, 2, 3])
-    >>> download_data('Tidy Finance', 'factor_library_grid')
+    ```python
+    from tidyfinance import download_data
+    download_data(
+        'Fama-French',
+        'Fama/French 5 Factors (2x3) [Daily]',
+        '2000-01-01',
+        '2020-12-31',
+    )
+    download_data(
+        'Goyal-Welch', 'monthly', '2000-01-01', '2020-12-31'
+    )
+    download_data('Index Constituents', index='DAX')
+    download_data('FRED', series=['GDP', 'CPIAUCNS'])
+    download_data('Stock Prices', symbols=['AAPL', 'MSFT'])
+    download_data(
+        'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
+    )
+    download_data(
+        'Tidy Finance',
+        'high_frequency_sp500',
+        '2007-07-26',
+        '2007-07-27',
+    )
+    download_data(
+        'Tidy Finance',
+        'factor_library',
+        sorting_variable='52w',
+        rebalancing='annual',
+    )
+    download_data('Tidy Finance', 'factor_library', ids=[1, 2, 3])
+    download_data('Tidy Finance', 'factor_library_grid')
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -465,13 +467,15 @@ def _download_data_factors_ff(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_factors_ff
-    >>> download_data_factors_ff(
-    ...     'Fama/French 3 Factors', '2000-01-01', '2020-12-31'
-    ... )
-    >>> download_data_factors_ff(
-    ...     '10 Industry Portfolios', '2000-01-01', '2020-12-31'
-    ... )
+    ```python
+    from tidyfinance import download_data_factors_ff
+    download_data_factors_ff(
+        'Fama/French 3 Factors', '2000-01-01', '2020-12-31'
+    )
+    download_data_factors_ff(
+        '10 Industry Portfolios', '2000-01-01', '2020-12-31'
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -592,11 +596,13 @@ def _download_data_factors_q(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_factors_q
-    >>> download_data_factors_q(
-    ...     'q5_factors_daily_2024', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data_factors_q('q5_factors_annual_2024')
+    ```python
+    from tidyfinance import download_data_factors_q
+    download_data_factors_q(
+        'q5_factors_daily_2024', '2020-01-01', '2020-12-31'
+    )
+    download_data_factors_q('q5_factors_annual_2024')
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -738,11 +744,13 @@ def _download_data_macro_predictors(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_macro_predictors
-    >>> download_data_macro_predictors('monthly')
-    >>> download_data_macro_predictors(
-    ...     'quarterly', '2000-01-01', '2020-12-31'
-    ... )
+    ```python
+    from tidyfinance import download_data_macro_predictors
+    download_data_macro_predictors('monthly')
+    download_data_macro_predictors(
+        'quarterly', '2000-01-01', '2020-12-31'
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -933,8 +941,10 @@ def _download_data_constituents(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_constituents
-    >>> download_data_constituents('DAX')
+    ```python
+    from tidyfinance import download_data_constituents
+    download_data_constituents('DAX')
+    ```
     """
     if dataset is not None and index is None:
         warnings.warn(
@@ -1106,9 +1116,11 @@ def _download_data_fred(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_fred
-    >>> download_data_fred('CPIAUCNS')
-    >>> download_data_fred(['GDP', 'CPIAUCNS'], '2010-01-01', '2010-12-31')
+    ```python
+    from tidyfinance import download_data_fred
+    download_data_fred('CPIAUCNS')
+    download_data_fred(['GDP', 'CPIAUCNS'], '2010-01-01', '2010-12-31')
+    ```
     """
     if isinstance(series, str):
         series = [series]
@@ -1219,9 +1231,11 @@ def _download_data_stock_prices(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_stock_prices
-    >>> download_data_stock_prices(['AAPL', 'MSFT'])
-    >>> download_data_stock_prices('GOOGL', '2021-01-01', '2022-01-01')
+    ```python
+    from tidyfinance import download_data_stock_prices
+    download_data_stock_prices(['AAPL', 'MSFT'])
+    download_data_stock_prices('GOOGL', '2021-01-01', '2022-01-01')
+    ```
     """
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -1349,10 +1363,12 @@ def _download_data_osap(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_osap
-    >>> osap = download_data_osap(
-    ...     start_date='2020-01-01', end_date='2020-06-30'
-    ... )
+    ```python
+    from tidyfinance import download_data_osap
+    osap = download_data_osap(
+        start_date='2020-01-01', end_date='2020-06-30'
+    )
+    ```
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -1456,11 +1472,13 @@ def _download_data_risk_free(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_risk_free
-    >>> download_data_risk_free('2020-01-01', '2020-12-31')
-    >>> download_data_risk_free(
-    ...     '2020-01-01', '2020-12-31', frequency='daily'
-    ... )
+    ```python
+    from tidyfinance import download_data_risk_free
+    download_data_risk_free('2020-01-01', '2020-12-31')
+    download_data_risk_free(
+        '2020-01-01', '2020-12-31', frequency='daily'
+    )
+    ```
     """
     if frequency not in ("monthly", "daily"):
         raise ValueError("frequency must be 'monthly' or 'daily'.")
@@ -1538,18 +1556,20 @@ def _download_data_wrds(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds
-    >>> crsp_monthly = download_data_wrds(
-    ...     'crsp_monthly', '2020-01-01', '2020-12-31'
-    ... )
-    >>> compustat_annual = download_data_wrds(
-    ...     'compustat_annual', '2020-01-01', '2020-12-31'
-    ... )
-    >>> ccm_links = download_data_wrds('ccm_links')
-    >>> fisd = download_data_wrds('fisd')
-    >>> trace_enhanced = download_data_wrds(
-    ...     'trace_enhanced', cusips=['00101JAH9']
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds
+    crsp_monthly = download_data_wrds(
+        'crsp_monthly', '2020-01-01', '2020-12-31'
+    )
+    compustat_annual = download_data_wrds(
+        'compustat_annual', '2020-01-01', '2020-12-31'
+    )
+    ccm_links = download_data_wrds('ccm_links')
+    fisd = download_data_wrds('fisd')
+    trace_enhanced = download_data_wrds(
+        'trace_enhanced', cusips=['00101JAH9']
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -1674,19 +1694,21 @@ def _download_data_wrds_crsp(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_crsp
-    >>> crsp_monthly = download_data_wrds_crsp(
-    ...     'crsp_monthly', '2020-11-01', '2020-12-31'
-    ... )
-    >>> crsp_daily = download_data_wrds_crsp(
-    ...     'crsp_daily', '2020-12-01', '2020-12-31'
-    ... )
-    >>> download_data_wrds_crsp(
-    ...     'crsp_monthly',
-    ...     '2020-11-01',
-    ...     '2020-12-31',
-    ...     additional_columns=['mthvol', 'mthvolflg'],
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_crsp
+    crsp_monthly = download_data_wrds_crsp(
+        'crsp_monthly', '2020-11-01', '2020-12-31'
+    )
+    crsp_daily = download_data_wrds_crsp(
+        'crsp_daily', '2020-12-01', '2020-12-31'
+    )
+    download_data_wrds_crsp(
+        'crsp_monthly',
+        '2020-11-01',
+        '2020-12-31',
+        additional_columns=['mthvol', 'mthvolflg'],
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -2477,16 +2499,18 @@ def _download_data_wrds_compustat(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_compustat
-    >>> download_data_wrds_compustat(
-    ...     'compustat_annual', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data_wrds_compustat(
-    ...     'compustat_quarterly', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data_wrds_compustat(
-    ...     'compustat_annual', additional_columns=['aodo', 'aldo']
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_compustat
+    download_data_wrds_compustat(
+        'compustat_annual', '2020-01-01', '2020-12-31'
+    )
+    download_data_wrds_compustat(
+        'compustat_quarterly', '2020-01-01', '2020-12-31'
+    )
+    download_data_wrds_compustat(
+        'compustat_annual', additional_columns=['aodo', 'aldo']
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -2694,11 +2718,13 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_fisd
-    >>> fisd = download_data_wrds_fisd()
-    >>> fisd_extended = download_data_wrds_fisd(
-    ...     additional_columns=['asset_backed', 'defeased']
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_fisd
+    fisd = download_data_wrds_fisd()
+    fisd_extended = download_data_wrds_fisd(
+        additional_columns=['asset_backed', 'defeased']
+    )
+    ```
     """
     wrds_connection = get_wrds_connection()
 
@@ -2828,10 +2854,12 @@ def _download_data_wrds_trace_enhanced(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_trace_enhanced
-    >>> download_data_wrds_trace_enhanced(
-    ...     ['00101JAH9'], '2019-01-01', '2021-12-31'
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_trace_enhanced
+    download_data_wrds_trace_enhanced(
+        ['00101JAH9'], '2019-01-01', '2021-12-31'
+    )
+    ```
     """
     if not all(isinstance(cusip, str) and len(cusip) == 9 for cusip in cusips):
         raise ValueError("All CUSIPs must be 9-character strings.")
@@ -2896,8 +2924,10 @@ def _get_available_huggingface_files(
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _get_available_huggingface_files
-    >>> _get_available_huggingface_files('voigtstefan', 'sp500')
+    ```python
+    from tidyfinance.data_download import _get_available_huggingface_files
+    _get_available_huggingface_files('voigtstefan', 'sp500')
+    ```
     """
     api_url = (
         f"https://huggingface.co/api/datasets/{organization}/{dataset}"
@@ -2948,8 +2978,10 @@ def _download_factor_library_grid() -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _download_factor_library_grid
-    >>> _download_factor_library_grid()
+    ```python
+    from tidyfinance.data_download import _download_factor_library_grid
+    _download_factor_library_grid()
+    ```
     """
     available = _get_available_huggingface_files(
         "tidy-finance", "factor-library-grid"
@@ -3113,8 +3145,10 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _download_factor_library_ids
-    >>> _download_factor_library_ids([1, 2, 3])
+    ```python
+    from tidyfinance.data_download import _download_factor_library_ids
+    _download_factor_library_ids([1, 2, 3])
+    ```
     """
     if not ids:
         raise ValueError(
@@ -3380,25 +3414,27 @@ def _download_data_huggingface(
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _download_data_huggingface
-    >>> _download_data_huggingface(
-    ...     'high_frequency_sp500', '2007-07-26', '2007-07-27'
-    ... )
-    >>> _download_data_huggingface(
-    ...     'factor_library',
-    ...     sorting_variable='52w',
-    ...     rebalancing='annual',
-    ... )
-    >>> _download_data_huggingface(
-    ...     'factor_library', sorting_variable='ag', fill_all=True
-    ... )
-    >>> _download_data_huggingface(
-    ...     'factor_library',
-    ...     sorting_variable='me',
-    ...     start_date='2000-01-01',
-    ...     end_date='2020-12-31',
-    ... )
-    >>> _download_data_huggingface('factor_library', ids=[1, 2, 3])
+    ```python
+    from tidyfinance.data_download import _download_data_huggingface
+    _download_data_huggingface(
+        'high_frequency_sp500', '2007-07-26', '2007-07-27'
+    )
+    _download_data_huggingface(
+        'factor_library',
+        sorting_variable='52w',
+        rebalancing='annual',
+    )
+    _download_data_huggingface(
+        'factor_library', sorting_variable='ag', fill_all=True
+    )
+    _download_data_huggingface(
+        'factor_library',
+        sorting_variable='me',
+        start_date='2000-01-01',
+        end_date='2020-12-31',
+    )
+    _download_data_huggingface('factor_library', ids=[1, 2, 3])
+    ```
     """
     if type is not None:
         warnings.warn(

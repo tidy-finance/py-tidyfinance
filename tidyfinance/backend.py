@@ -9,11 +9,13 @@ internally), so results from one call can be fed straight into the next.
 
 Examples
 --------
->>> import tidyfinance as tf
->>> tf.set_backend("polars")
->>> data = tf.download_data("Fama-French", "factors_ff_3_monthly")
->>> tf.estimate_model(data, "mkt_excess ~ smb + hml")
->>> tf.set_backend("pandas")  # back to the default
+```python
+import tidyfinance as tf
+tf.set_backend("polars")
+data = tf.download_data("Fama-French", "factors_ff_3_monthly")
+tf.estimate_model(data, "mkt_excess ~ smb + hml")
+tf.set_backend("pandas")  # back to the default
+```
 """
 
 import functools

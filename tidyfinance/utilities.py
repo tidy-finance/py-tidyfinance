@@ -45,13 +45,15 @@ def get_wrds_connection() -> object:
 
     Examples
     --------
-    >>> import os
-    >>> os.environ['WRDS_USER'] = 'your_username'
-    >>> os.environ['WRDS_PASSWORD'] = 'your_password'
-    >>> from tidyfinance import get_wrds_connection, disconnect_connection
-    >>> con = get_wrds_connection()
-    >>> # ... query WRDS via con ...
-    >>> disconnect_connection(con)
+    ```python
+    import os
+    os.environ['WRDS_USER'] = 'your_username'
+    os.environ['WRDS_PASSWORD'] = 'your_password'
+    from tidyfinance import get_wrds_connection, disconnect_connection
+    con = get_wrds_connection()
+    # ... query WRDS via con ...
+    disconnect_connection(con)
+    ```
     """
     wrds_user, wrds_password = load_wrds_credentials()
     url = URL.create(
@@ -91,9 +93,11 @@ def disconnect_connection(connection: object) -> bool:
 
     Examples
     --------
-    >>> from tidyfinance import get_wrds_connection, disconnect_connection
-    >>> con = get_wrds_connection()
-    >>> disconnect_connection(con)
+    ```python
+    from tidyfinance import get_wrds_connection, disconnect_connection
+    con = get_wrds_connection()
+    disconnect_connection(con)
+    ```
     """
     try:
         connection.close()
@@ -121,9 +125,11 @@ def list_supported_indexes() -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance import list_supported_indexes
-    >>> supported_indexes = list_supported_indexes()
-    >>> print(supported_indexes)
+    ```python
+    from tidyfinance import list_supported_indexes
+    supported_indexes = list_supported_indexes()
+    print(supported_indexes)
+    ```
     """
     data = [
         (
@@ -210,8 +216,10 @@ def list_tidy_finance_chapters() -> list:
 
     Examples
     --------
-    >>> from tidyfinance import list_tidy_finance_chapters
-    >>> list_tidy_finance_chapters()
+    ```python
+    from tidyfinance import list_tidy_finance_chapters
+    list_tidy_finance_chapters()
+    ```
     """
     return [
         "setting-up-your-environment",
@@ -300,9 +308,11 @@ def open_tidy_finance_website(chapter: str = None) -> None:
 
     Examples
     --------
-    >>> from tidyfinance import open_tidy_finance_website
-    >>> open_tidy_finance_website()
-    >>> open_tidy_finance_website('beta-estimation')
+    ```python
+    from tidyfinance import open_tidy_finance_website
+    open_tidy_finance_website()
+    open_tidy_finance_website('beta-estimation')
+    ```
     """
     base_url = "https://www.tidy-finance.org/python/"
 
@@ -698,8 +708,10 @@ def set_wrds_credentials() -> None:
 
     Examples
     --------
-    >>> from tidyfinance import set_wrds_credentials
-    >>> set_wrds_credentials()
+    ```python
+    from tidyfinance import set_wrds_credentials
+    set_wrds_credentials()
+    ```
     """
     wrds_user = input("Enter your WRDS username: ")
     wrds_password = input("Enter your WRDS password: ")
@@ -797,11 +809,13 @@ def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
 
     Examples
     --------
-    >>> import numpy as np
-    >>> from tidyfinance import winsorize
-    >>> rng = np.random.default_rng(123)
-    >>> data = rng.standard_normal(100)
-    >>> winsorized = winsorize(data, 0.05)
+    ```python
+    import numpy as np
+    from tidyfinance import winsorize
+    rng = np.random.default_rng(123)
+    data = rng.standard_normal(100)
+    winsorized = winsorize(data, 0.05)
+    ```
     """
     if not isinstance(x, np.ndarray):
         x = np.array(x)
@@ -842,11 +856,13 @@ def trim(x: np.ndarray, cut: float) -> np.ndarray:
 
     Examples
     --------
-    >>> import numpy as np
-    >>> from tidyfinance import trim
-    >>> rng = np.random.default_rng(123)
-    >>> data = rng.standard_normal(100)
-    >>> trimmed = trim(data, 0.05)
+    ```python
+    import numpy as np
+    from tidyfinance import trim
+    rng = np.random.default_rng(123)
+    data = rng.standard_normal(100)
+    trimmed = trim(data, 0.05)
+    ```
     """
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")

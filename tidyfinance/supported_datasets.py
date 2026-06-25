@@ -434,10 +434,12 @@ def list_supported_datasets(
 
     Examples
     --------
-    >>> from tidyfinance import list_supported_datasets
-    >>> list_supported_datasets()
-    >>> list_supported_datasets(domain='WRDS')
-    >>> list_supported_datasets(as_vector=True)
+    ```python
+    from tidyfinance import list_supported_datasets
+    list_supported_datasets()
+    list_supported_datasets(domain='WRDS')
+    list_supported_datasets(as_vector=True)
+    ```
     """
     rows = (
         _Q_DATASETS
