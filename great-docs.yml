@@ -77,46 +77,6 @@ authors:
 # - Use 'members: false' to exclude methods from documentation
 # - Add 'desc:' to sections for descriptions
 
-reference:
-  - title: Functions
-    desc: Utility functions
-    contents:
-      - _download_data_constituents
-      - _download_data_factors_ff
-      - _download_data_factors_q
-      - _download_data_macro_predictors
-      - _download_data_osap
-      - _download_data_risk_free
-      - _download_data_stock_prices
-      - _download_data_wrds
-      - add_lagged_columns
-      - assign_portfolio
-      - breakpoint_options
-      - compute_breakpoints
-      - compute_long_short_returns
-      - compute_portfolio_returns
-      - compute_rolling_value
-      - create_summary_statistics
-      - data_options
-      - download_data
-      - estimate_betas
-      - estimate_fama_macbeth
-      - estimate_model
-      - filter_options
-      - filter_sorting_data
-      - get_available_famafrench_datasets
-      - get_wrds_connection
-      - implement_portfolio_sort
-      - join_lagged_values
-      - list_supported_datasets
-      - list_supported_indexes
-      - list_tidy_finance_chapters
-      - open_tidy_finance_website
-      - portfolio_sort_options
-      - set_wrds_credentials
-      - trim
-      - winsorize
-
 # Site URL
 # --------
 # Canonical address of the deployed documentation site.
