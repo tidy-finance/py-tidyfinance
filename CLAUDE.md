@@ -1,7 +1,6 @@
 # CLAUDE.md
 
-Guidance for working in this repository (`tidyfinance`, the Python companion
-package to the *Tidy Finance with Python* book).
+Guidance for working in this repository.
 
 ## Project layout
 
@@ -19,11 +18,9 @@ package to the *Tidy Finance with Python* book).
   - `data_download.py` — `download_data` and the WRDS / Fama-French / FRED /
     OSAP / Hugging Face download helpers.
   - `backend.py` — `set_backend` / `get_backend` and the internal
-    `_use_backend` decorator (private — must stay underscore-prefixed so it
-    is not re-exported or documented).
+    `_use_backend` decorator.
   - `utilities.py`, `supported_datasets.py` — helpers and dataset metadata.
-  - `_internal.py`, `_pseudo.py` — private modules (leading underscore =
-    not scanned for the public API).
+  - `_internal.py`, `_pseudo.py` — private modules.
 
 ## Conventions
 
@@ -90,6 +87,3 @@ uv run great-docs preview --port 3000   # local preview (auto-rebuilds)
 uv run great-docs scan        # preview what will be discovered as public API
 ```
 
-- The navbar version badge comes from the latest **GitHub Release**, not
-  `pyproject.toml` — there is no option to read it from `pyproject.toml`.
-  Publish a release to update it.
