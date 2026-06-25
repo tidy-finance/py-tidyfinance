@@ -1116,6 +1116,13 @@ def create_summary_statistics(
     computes the 1st, 5th, 10th, 25th, 75th, 90th, 95th, and 99th
     percentiles.
 
+    For each selected variable the function reports the number of
+    observations (count), mean, standard deviation (std), minimum,
+    median (50%), and maximum. When ``detail`` is True, the additional
+    quantiles 1%, 5%, 10%, 25%, 75%, 90%, 95%, and 99% are included.
+    Statistics are computed for the whole dataset, or separately for
+    each group when ``by`` is supplied.
+
     Parameters
     ----------
     data : pd.DataFrame
@@ -2160,8 +2167,9 @@ def compute_portfolio_returns(
         variable. Defaults to 'compute_breakpoints'.
     min_portfolio_size : int, default 1
         Minimum number of firms required in the reported portfolio
-        cross-section on a given date. The threshold is applied to the
-        firm count per (portfolio, date) of the reported cross-section.
+        cross-section on a given date. For univariate sorts that is
+        firms per portfolio-date; for bivariate sorts that is firms
+        per main-portfolio-date summed across the secondary buckets.
         Cross-sections below the threshold have their returns set to
         NaN. A typical value is 5 (the Fama-French convention). Set to
         0 to deactivate the check entirely.
