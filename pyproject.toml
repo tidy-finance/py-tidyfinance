@@ -5,7 +5,8 @@ build-backend = "hatchling.build"
 [project]
 name = "tidyfinance"
 authors = [{name = "Christoph Frey", email = "christoph.frey@gmail.com"},
-	   {name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"}
+	   {name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"},
+       {name = "Stefan Voigt", email = "stefan.voigt@econ.ku.dk"}
            ]
 version = "0.3.0"
 description = "Tidy Finance Helper Functions"
