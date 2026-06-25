@@ -167,8 +167,8 @@ def download_data(
     **kwargs
         Additional arguments passed to specific download functions
         depending on 'domain'. For instance, if 'domain' is
-        'constituents', arguments are passed to
-        '_download_data_constituents'. If 'domain' is 'tidyfinance' and
+        'Index Constituents', arguments are passed to
+        '_download_data_constituents'. If 'domain' is 'Tidy Finance' and
         'dataset' is 'factor_library', arguments are either filter
         inputs (e.g., 'sorting_variable', 'rebalancing', 'fill_all') or
         an explicit 'ids' vector that bypasses the grid filter and
