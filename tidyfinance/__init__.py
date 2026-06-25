@@ -63,4 +63,34 @@ if "__path__" in globals():
             __all__.append(name)
             _seen.add(name)
 
-del _seen
+# Wrap the public, data-bearing API at the boundary so it honors the
+# active backend (see tidyfinance.set_backend). The wrapped functions
+# accept polars or pandas input and return the active backend's data
+# frame type. Internal calls between core functions are left untouched,
+# since they reference the original (undecorated) functions in their
+# defining modules.
+from .backend import use_backend  # noqa: E402
+
+_BACKEND_WRAPPED = (
+    "add_lagged_columns",
+    "assign_portfolio",
+    "compute_breakpoints",
+    "compute_portfolio_returns",
+    "compute_long_short_returns",
+    "compute_rolling_value",
+    "create_summary_statistics",
+    "estimate_betas",
+    "estimate_fama_macbeth",
+    "estimate_model",
+    "join_lagged_values",
+    "filter_sorting_data",
+    "implement_portfolio_sort",
+    "download_data",
+    "list_supported_datasets",
+    "list_supported_indexes",
+)
+for _name in _BACKEND_WRAPPED:
+    if _name in globals():
+        globals()[_name] = use_backend(globals()[_name])
+
+del _seen, _name
