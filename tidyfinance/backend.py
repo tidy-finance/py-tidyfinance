@@ -118,7 +118,7 @@ def _convert_output(obj):
     return pl.from_pandas(obj, include_index=include_index)
 
 
-def use_backend(func):
+def _use_backend(func):
     """Wrap a public function so it honors the active backend.
 
     Polars data frames passed as arguments are converted to pandas

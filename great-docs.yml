@@ -25,6 +25,12 @@ dynamic: true
 #   - InternalClass
 #   - helper_function
 
+# Force-include modules that Great Docs auto-excludes as generic
+# "re-export" names. Our analytics functions live in 'core', which is
+# on that blocklist, so it must be re-included for them to be documented.
+auto_include:
+  - core
+
 # Logo & Favicon
 # ---------------
 # Point to a single logo file (replaces the text title in the navbar):
