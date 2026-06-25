@@ -880,7 +880,7 @@ def _download_data_macro_predictors(
     if start_date and end_date:
         raw_data = raw_data.query("@start_date <= date <= @end_date")
 
-    return raw_data
+    return raw_data.reset_index(drop=True)
 
 
 def _download_data_constituents(
@@ -1387,7 +1387,7 @@ def _download_data_osap(
     if start_date and end_date:
         raw_data = raw_data.query("@start_date <= date <= @end_date")
 
-    return raw_data
+    return raw_data.reset_index(drop=True)
 
 
 def _download_data_risk_free(
@@ -2597,7 +2597,7 @@ def _download_data_wrds_compustat(
             .sort_values("datadate")
             .groupby(["gvkey", "year"])
             .tail(1)
-            .reset_index()
+            .reset_index(drop=True)
         )
         # Compute Investment (inv)
         compustat_lag = (
@@ -2781,7 +2781,7 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
 
     disconnect_connection(wrds_connection)
 
-    return fisd
+    return fisd.reset_index(drop=True)
 
 
 def _download_data_wrds_trace_enhanced(
