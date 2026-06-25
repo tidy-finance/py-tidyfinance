@@ -23,6 +23,38 @@ You can install the development version from GitHub:
 pip install "git+https://github.com/tidy-finance/py-tidyfinance"
 ```
 
+To use the optional [polars](https://pola.rs/) backend (see below), install the `polars` extra:
+
+```
+pip install "tidyfinance[polars]"
+```
+
+## Choosing a Data Frame Backend
+
+By default, the public `tidyfinance` API returns [pandas](https://pandas.pydata.org/) data frames. If you prefer [polars](https://pola.rs/), switch the global backend with `set_backend()`:
+
+```python
+import tidyfinance as tf
+
+tf.set_backend("polars")
+
+# Returns a polars DataFrame
+data = tf.download_data(
+  domain="Fama-French",
+  dataset="factors_ff_3_monthly",
+  start_date="2000-01-01",
+  end_date="2020-12-31"
+)
+
+# Subsequent calls also return polars
+tf.estimate_model(data, "mkt_excess ~ smb + hml")
+tf.set_backend("pandas")  # back to the default
+```
+
+The setting applies to the whole public API, so any data-bearing function honors it. Polars data frames are also accepted as input regardless of the active backend (they are converted to pandas internally), so results from one call can be fed straight into the next. You can check the current setting with `tf.get_backend()`.
+
+> **Note:** The default backend is currently `pandas`, but we expect to switch the default to `polars` from version 1.0.0 onwards. To keep your code working across that change, set the backend explicitly via `tf.set_backend(...)`.
+
 ## Download Open Source Data
 
 The main functionality of the `tidyfinance` package centers around data download. You can download most of the data that we used in Tidy Finance with R using the `download_data()` function or its children.

@@ -2599,8 +2599,14 @@ dependencies = [
     { name = "statsmodels" },
 ]
 
+[package.optional-dependencies]
+polars = [
+    { name = "polars" },
+]
+
 [package.dev-dependencies]
 dev = [
+    { name = "polars" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-httpx" },
@@ -2616,15 +2622,18 @@ requires-dist = [
     { name = "lxml", specifier = ">=5.3.1" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.2.0" },
+    { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pyarrow", specifier = ">=19.0.1" },
     { name = "requests", specifier = ">=2.32.4" },
     { name = "sqlalchemy", specifier = ">=2.0.21" },
     { name = "statsmodels", specifier = ">=0.14.0" },
 ]
+provides-extras = ["polars"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "polars", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-httpx", specifier = ">=0.35.0" },
