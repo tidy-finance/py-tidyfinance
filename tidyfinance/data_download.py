@@ -2387,7 +2387,7 @@ def _download_data_wrds_ccm_links(
     Returns
     -------
     pd.DataFrame
-        A data frame containing columns permno, gvkey, linkprim, linkdt, and
+        A data frame containing columns permno, gvkey, linkdt, and
         linkenddt (missing end dates replaced with today's date).
     """
     conn = get_wrds_connection()

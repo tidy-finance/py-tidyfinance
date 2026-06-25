@@ -78,51 +78,67 @@ authors:
 # - Add 'desc:' to sections for descriptions
 
 reference:
-  - title: Functions
-    desc: Utility functions
+  - title: Data download
+    desc: Download and discover datasets.
     contents:
-      - _download_data_constituents
-      - _download_data_factors_ff
-      - _download_data_factors_q
-      - _download_data_macro_predictors
-      - _download_data_osap
-      - _download_data_risk_free
-      - _download_data_stock_prices
-      - _download_data_wrds
-      - add_lagged_columns
-      - assign_portfolio
-      - breakpoint_options
-      - compute_breakpoints
-      - compute_long_short_returns
-      - compute_portfolio_returns
-      - compute_rolling_value
-      - create_summary_statistics
-      - data_options
-      - download_data
-      - estimate_betas
-      - estimate_fama_macbeth
-      - estimate_model
-      - filter_options
-      - filter_sorting_data
-      - get_available_famafrench_datasets
-      - get_wrds_connection
-      - implement_portfolio_sort
-      - join_lagged_values
-      - list_supported_datasets
-      - list_supported_indexes
-      - list_tidy_finance_chapters
-      - open_tidy_finance_website
-      - portfolio_sort_options
-      - set_wrds_credentials
-      - trim
-      - winsorize
+      - data_download.download_data
+      - data_download.get_available_famafrench_datasets
+  - title: Portfolio sorts
+    desc: Construct breakpoints, assign portfolios, and compute sorted returns.
+    contents:
+      - core.assign_portfolio
+      - core.compute_breakpoints
+      - core.breakpoint_options
+      - core.portfolio_sort_options
+      - core.filter_options
+      - core.filter_sorting_data
+      - core.implement_portfolio_sort
+      - core.compute_portfolio_returns
+      - core.compute_long_short_returns
+      - core.data_options
+  - title: Model estimation
+    desc: Estimate linear, rolling-beta, and Fama-MacBeth models.
+    contents:
+      - core.estimate_model
+      - core.estimate_betas
+      - core.estimate_fama_macbeth
+  - title: Data transformation
+    desc: Lag, roll, summarize, and clean variables.
+    contents:
+      - core.add_lagged_columns
+      - core.join_lagged_values
+      - core.compute_rolling_value
+      - core.create_summary_statistics
+      - utilities.winsorize
+      - utilities.trim
+  - title: WRDS access
+    desc: Connect to WRDS and manage credentials.
+    contents:
+      - utilities.get_wrds_connection
+      - utilities.disconnect_connection
+      - utilities.set_wrds_credentials
+      - utilities.load_wrds_credentials
+      - utilities.process_trace_data
+  - title: Backend
+    desc: Switch the data-frame backend between pandas and polars.
+    contents:
+      - backend.set_backend
+      - backend.get_backend
+      - backend.use_backend
+  - title: Catalog and resources
+    desc: List supported datasets and open Tidy Finance resources.
+    contents:
+      - supported_datasets.list_supported_datasets
+      - utilities.list_supported_indexes
+      - utilities.list_tidy_finance_chapters
+      - utilities.open_tidy_finance_website
 
 # Site URL
 # --------
 # Canonical address of the deployed documentation site.
 # Required for subdirectory deployments, skills page install commands,
 # .well-known/ discovery, and sitemaps.
-# site_url: "https://your-org.github.io/your-package/"
+site_url: "https://library.tidy-finance.org/"
 
 # Site Settings
 # -------------
