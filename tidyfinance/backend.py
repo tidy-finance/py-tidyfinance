@@ -69,8 +69,7 @@ def set_backend(backend: str) -> None:
 
 
 def get_backend() -> str:
-    """Return the active data frame backend ('"pandas"' or
-    '"polars"')."""
+    """Return the active data frame backend ('"pandas"' or '"polars"')."""
     return _BACKEND
 
 

@@ -11,13 +11,13 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 from tidyfinance.core import (
+    _newey_west_se,
     add_lagged_columns,
     breakpoint_options,
     compute_breakpoints,
     create_summary_statistics,
     estimate_betas,
     estimate_fama_macbeth,
-    _newey_west_se,
 )  # noqa: E402
 
 
@@ -228,10 +228,30 @@ def test_estimate_fama_macbeth_vcov(sample_data: pd.DataFrame) -> None:
 # Fixed series with reference values computed in R via
 # sqrt(as.numeric(sandwich::NeweyWest(lm(y ~ 1), ...))). These lock the
 # Python estimator to R's sandwich::NeweyWest (issue #35).
-_NW_FIXED_SERIES = np.array([
-    0.01, -0.02, 0.015, 0.03, -0.01, 0.005, 0.02, -0.025, 0.01, 0.0,
-    0.018, -0.012, 0.022, -0.008, 0.014, 0.006, -0.019, 0.011, 0.027, -0.003,
-])
+_NW_FIXED_SERIES = np.array(
+    [
+        0.01,
+        -0.02,
+        0.015,
+        0.03,
+        -0.01,
+        0.005,
+        0.02,
+        -0.025,
+        0.01,
+        0.0,
+        0.018,
+        -0.012,
+        0.022,
+        -0.008,
+        0.014,
+        0.006,
+        -0.019,
+        0.011,
+        0.027,
+        -0.003,
+    ]
+)
 
 
 def test_newey_west_se_matches_r_default() -> None:
@@ -306,11 +326,13 @@ def test_estimate_fama_macbeth_maxlags_deprecated() -> None:
     data = sample_data_fmb()
     with pytest.warns(DeprecationWarning, match="maxlags"):
         legacy = estimate_fama_macbeth(
-            data, "ret_excess ~ beta + bm + log_mktcap",
+            data,
+            "ret_excess ~ beta + bm + log_mktcap",
             vcov_options={"maxlags": 6},
         )
     explicit = estimate_fama_macbeth(
-        data, "ret_excess ~ beta + bm + log_mktcap",
+        data,
+        "ret_excess ~ beta + bm + log_mktcap",
         vcov_options={"lag": 6, "prewhite": 0},
     )
     pd.testing.assert_frame_equal(legacy, explicit)
@@ -441,9 +463,7 @@ def test_compute_breakpoints_n_portfolios(
     )
 
 
-def test_compute_breakpoints_percentiles(
-    sample_data=sample_data_breakpoints()
-):
+def test_compute_breakpoints_percentiles(sample_data=sample_data_breakpoints()):
     breakpoints = compute_breakpoints(
         sample_data, "market_cap", {"percentiles": [0.2, 0.4, 0.6, 0.8]}
     )

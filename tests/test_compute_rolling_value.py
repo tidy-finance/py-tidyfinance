@@ -18,9 +18,7 @@ def make_df(n_months=24, seed=42):
     """Construct a monthly panel for tests."""
     rng = np.random.default_rng(seed)
     dates = pd.date_range("2020-01-01", periods=n_months, freq="MS")
-    return pd.DataFrame(
-        {"date": dates, "value": rng.standard_normal(n_months)}
-    )
+    return pd.DataFrame({"date": dates, "value": rng.standard_normal(n_months)})
 
 
 # %% validation tests
@@ -35,7 +33,9 @@ def test_errors_when_data_has_no_date_column():
 
 def test_errors_when_date_column_is_not_date_class():
     """Test errors when date column is not datetime dtype."""
-    df = pd.DataFrame({"date": ["2020-01-01", "2020-02-01"], "value": [1.0, 2.0]})
+    df = pd.DataFrame(
+        {"date": ["2020-01-01", "2020-02-01"], "value": [1.0, 2.0]}
+    )
     with pytest.raises(ValueError, match="datetime"):
         compute_rolling_value(df, lambda x: x["value"].mean())
 
@@ -239,7 +239,10 @@ def test_works_with_multiple_columns():
 def test_single_row_data_frame_works():
     """Test single-row data frame works."""
     df = pd.DataFrame(
-        {"date": pd.date_range("2020-01-01", periods=1, freq="MS"), "value": [1.0]}
+        {
+            "date": pd.date_range("2020-01-01", periods=1, freq="MS"),
+            "value": [1.0],
+        }
     )
     out = compute_rolling_value(
         df, lambda x: x["value"].mean(), period="month", periods=1
@@ -250,7 +253,10 @@ def test_single_row_data_frame_works():
 def test_single_row_data_frame_returns_nan_when_min_obs_gt_1():
     """Test single-row data frame returns NaN when min_obs > 1."""
     df = pd.DataFrame(
-        {"date": pd.date_range("2020-01-01", periods=1, freq="MS"), "value": [1.0]}
+        {
+            "date": pd.date_range("2020-01-01", periods=1, freq="MS"),
+            "value": [1.0],
+        }
     )
     out = compute_rolling_value(
         df,

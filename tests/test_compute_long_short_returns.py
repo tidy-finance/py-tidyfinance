@@ -18,9 +18,7 @@ def make_portfolio_panel(n_portfolios=5, n_months=12, seed=42):
     """Construct a portfolio-return panel for tests."""
     rng = np.random.default_rng(seed)
     dates = pd.date_range(start="2020-01-01", periods=n_months, freq="MS")
-    rows = [
-        (p, d) for d in dates for p in range(1, n_portfolios + 1)
-    ]
+    rows = [(p, d) for d in dates for p in range(1, n_portfolios + 1)]
     df = pd.DataFrame(rows, columns=["portfolio", "date"])
     n = len(df)
     df["ret_excess_ew"] = rng.normal(0, 0.05, n)
@@ -64,9 +62,7 @@ def test_compute_long_short_returns_handles_a_single_per_date_long_leg():
     """Test compute_long_short_returns handles a single per-date long leg."""
     panel = make_portfolio_panel(n_portfolios=2, n_months=4)
     first_date = panel["date"].iloc[0]
-    panel = panel[
-        ~((panel["date"] == first_date) & (panel["portfolio"] == 2))
-    ]
+    panel = panel[~((panel["date"] == first_date) & (panel["portfolio"] == 2))]
     out = compute_long_short_returns(panel)
     assert len(out) == 4
     assert pd.isna(out.loc[out["date"] == first_date, "ret_excess_ew"].iloc[0])

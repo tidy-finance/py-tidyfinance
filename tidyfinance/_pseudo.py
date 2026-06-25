@@ -16,7 +16,6 @@ import pandas as pd
 
 from ._internal import _validate_dates
 
-
 # %% Pseudo identifier universe
 # Industry and exchange mixes calibrated to the empirical frequencies of
 # the real CRSP universe; SIC codes are drawn from the conventional
@@ -97,22 +96,27 @@ def _simulate_pseudo_identifiers(
 
     exchange = rng.choice(exchanges, size=n_assets, p=exchange_probs)
     industry = rng.choice(industries, size=n_assets, p=industry_probs)
-    siccd = np.array([
-        rng.integers(_SIC_RANGES[ind][0], _SIC_RANGES[ind][1] + 1)
-        for ind in industry
-    ])
+    siccd = np.array(
+        [
+            rng.integers(_SIC_RANGES[ind][0], _SIC_RANGES[ind][1] + 1)
+            for ind in industry
+        ]
+    )
 
-    return pd.DataFrame({
-        "permno": np.arange(1, n_assets + 1),
-        "permco": np.arange(1, n_assets + 1),
-        "gvkey": [f"{i + 10000:06d}" for i in range(1, n_assets + 1)],
-        "exchange": exchange,
-        "industry": industry,
-        "siccd": siccd,
-    })
+    return pd.DataFrame(
+        {
+            "permno": np.arange(1, n_assets + 1),
+            "permco": np.arange(1, n_assets + 1),
+            "gvkey": [f"{i + 10000:06d}" for i in range(1, n_assets + 1)],
+            "exchange": exchange,
+            "industry": industry,
+            "siccd": siccd,
+        }
+    )
 
 
 # %% Router
+
 
 def _check_supported_dataset_pseudo(dataset: str) -> None:
     """
@@ -214,6 +218,7 @@ def _simulate_pseudo_data(
 
 # %% Pseudo CRSP
 
+
 def _download_data_pseudo_crsp(
     dataset: Optional[str] = None,
     start_date: Optional[str] = None,
@@ -311,9 +316,7 @@ def _download_data_pseudo_crsp(
         start_date, end_date, use_default_range=True
     )
 
-    identifiers = _simulate_pseudo_identifiers(
-        n_assets=n_assets, seed=seed
-    )
+    identifiers = _simulate_pseudo_identifiers(n_assets=n_assets, seed=seed)
 
     if dataset == "crsp_monthly":
         panel = _simulate_pseudo_crsp_monthly(
@@ -402,9 +405,7 @@ def _simulate_pseudo_crsp_monthly(
         mktcap_lag=panel.groupby("permno")["mktcap"].shift(1),
     )
     panel = panel.assign(
-        ret_excess=np.maximum(
-            panel["ret"] - rng.uniform(0, 0.004, size=n), -1
-        )
+        ret_excess=np.maximum(panel["ret"] - rng.uniform(0, 0.004, size=n), -1)
     )
 
     additional_columns = additional_columns or []
@@ -413,9 +414,20 @@ def _simulate_pseudo_crsp_monthly(
             panel[col] = rng.normal(size=n)
 
     base_cols = [
-        "permno", "date", "calculation_date", "ret", "shrout", "prc",
-        "primaryexch", "siccd", "listing_age", "mktcap", "mktcap_lag",
-        "exchange", "industry", "ret_excess",
+        "permno",
+        "date",
+        "calculation_date",
+        "ret",
+        "shrout",
+        "prc",
+        "primaryexch",
+        "siccd",
+        "listing_age",
+        "mktcap",
+        "mktcap_lag",
+        "exchange",
+        "industry",
+        "ret_excess",
     ]
     extra_cols = [c for c in additional_columns if c not in base_cols]
     return panel[base_cols + extra_cols]
@@ -472,9 +484,7 @@ def _simulate_pseudo_crsp_daily(
         ret=rng.normal(0.0004, 0.02, size=n),
     )
     panel = panel.assign(
-        ret_excess=np.maximum(
-            panel["ret"] - rng.uniform(0, 0.0002, size=n), -1
-        )
+        ret_excess=np.maximum(panel["ret"] - rng.uniform(0, 0.0002, size=n), -1)
     )
 
     additional_columns = additional_columns or []
@@ -488,6 +498,7 @@ def _simulate_pseudo_crsp_daily(
 
 
 # %% Pseudo Compustat
+
 
 def _download_data_pseudo_compustat(
     dataset: Optional[str] = None,
@@ -578,9 +589,7 @@ def _download_data_pseudo_compustat(
         start_date, end_date, use_default_range=True
     )
 
-    identifiers = _simulate_pseudo_identifiers(
-        n_assets=n_assets, seed=seed
-    )
+    identifiers = _simulate_pseudo_identifiers(n_assets=n_assets, seed=seed)
 
     if dataset == "compustat_annual":
         return _simulate_pseudo_compustat_annual(
@@ -693,9 +702,9 @@ def _simulate_pseudo_compustat_annual(
             panel["seq"]
             .combine_first(panel["ceq"] + panel["pstk"])
             .combine_first(panel["at"] - panel["lt"])
-            + panel["txditc"].combine_first(
-                panel["txdb"] + panel["itcb"]
-            ).fillna(0)
+            + panel["txditc"]
+            .combine_first(panel["txdb"] + panel["itcb"])
+            .fillna(0)
             - panel["pstkrv"]
             .combine_first(panel["pstkl"])
             .combine_first(panel["pstk"])
@@ -708,7 +717,8 @@ def _simulate_pseudo_compustat_annual(
             - panel["cogs"].fillna(0)
             - panel["xsga"].fillna(0)
             - panel["xint"].fillna(0)
-        ) / panel["be"]
+        )
+        / panel["be"]
     )
 
     lag = (
@@ -801,6 +811,7 @@ def _simulate_pseudo_compustat_quarterly(
 
 # %% Pseudo CCM links
 
+
 def _download_data_pseudo_ccm_links(
     n_assets: int = 1000,
     seed: int = 1234,
@@ -842,9 +853,7 @@ def _download_data_pseudo_ccm_links(
     ```
     """
     _ = (linktype, linkprim)
-    identifiers = _simulate_pseudo_identifiers(
-        n_assets=n_assets, seed=seed
-    )
+    identifiers = _simulate_pseudo_identifiers(n_assets=n_assets, seed=seed)
     return identifiers[["permno", "gvkey"]].assign(
         linkdt=pd.Timestamp("1925-12-31"),
         linkenddt=pd.Timestamp("2099-12-31"),

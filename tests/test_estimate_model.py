@@ -129,9 +129,7 @@ def test_tstats_output_returns_t_statistics_as_dataframe():
     import statsmodels.formula.api as smf
 
     fit = smf.ols("ret_excess ~ mkt_excess + smb", data=df).fit()
-    assert (
-        abs(result["mkt_excess"].iloc[0] - fit.tvalues["mkt_excess"]) < 1e-12
-    )
+    assert abs(result["mkt_excess"].iloc[0] - fit.tvalues["mkt_excess"]) < 1e-12
 
 
 # %% residuals
@@ -140,9 +138,7 @@ def test_tstats_output_returns_t_statistics_as_dataframe():
 def test_residuals_output_returns_numeric_vector_of_correct_length():
     """Test residuals output returns numeric vector of correct length."""
     df = make_test_data()
-    result = estimate_model(
-        df, "ret_excess ~ mkt_excess", output="residuals"
-    )
+    result = estimate_model(df, "ret_excess ~ mkt_excess", output="residuals")
     assert isinstance(result, np.ndarray)
     assert len(result) == len(df)
 
@@ -162,9 +158,7 @@ def test_residuals_match_statsmodels_residuals():
 def test_residuals_are_na_where_data_has_missing_values():
     """Test residuals are NaN where data has missing values."""
     df = make_test_data_with_na()
-    result = estimate_model(
-        df, "ret_excess ~ mkt_excess", output="residuals"
-    )
+    result = estimate_model(df, "ret_excess ~ mkt_excess", output="residuals")
     assert len(result) == len(df)
     assert np.isnan(result[:10]).all()
     assert not np.isnan(result[10:]).any()
@@ -248,9 +242,7 @@ def test_model_with_multiple_independent_variables_works():
 
 def test_min_obs_1_works_with_minimal_data():
     """Test min_obs = 1 works with minimal data."""
-    tiny = pd.DataFrame(
-        {"ret_excess": [1.0, 2.0], "mkt_excess": [1.0, 2.0]}
-    )
+    tiny = pd.DataFrame({"ret_excess": [1.0, 2.0], "mkt_excess": [1.0, 2.0]})
     result = estimate_model(tiny, "ret_excess ~ mkt_excess", min_obs=1)
     assert isinstance(result, pd.DataFrame)
 
@@ -302,9 +294,7 @@ def test_invalid_output_raises_an_error():
 
 def test_column_named_intercept_in_model_raises_an_error():
     """Test column named 'intercept' in model raises an error."""
-    d = pd.DataFrame(
-        {"y": np.arange(1, 11), "intercept": np.arange(1, 11)}
-    )
+    d = pd.DataFrame({"y": np.arange(1, 11), "intercept": np.arange(1, 11)})
     with pytest.raises(ValueError):
         estimate_model(d, "y ~ intercept")
 
@@ -325,6 +315,7 @@ def test_single_output_is_returned_directly_not_wrapped_in_a_list():
 def test_model_without_intercept_skips_column_rename():
     """Test model without intercept skips column rename."""
     import warnings as _w
+
     with _w.catch_warnings():
         _w.simplefilter("ignore")
         result = estimate_model(_df, "y ~ x - 1", output="tstats")
@@ -348,6 +339,7 @@ def test_residuals_are_na_for_rows_with_missing_values_non_na_elsewhere():
 def test_multiple_outputs_returns_a_named_dict_minimal():
     """Test multiple outputs returns a named dict (minimal data)."""
     import warnings as _w
+
     with _w.catch_warnings():
         _w.simplefilter("ignore")
         result = estimate_model(
@@ -359,9 +351,7 @@ def test_multiple_outputs_returns_a_named_dict_minimal():
 
 def test_insufficient_obs_returns_na_for_all_three_outputs():
     """Test insufficient observations returns NaN for all three outputs."""
-    d = pd.DataFrame(
-        {"y": np.arange(1.0, 6.0), "x": np.arange(1.0, 6.0)}
-    )
+    d = pd.DataFrame({"y": np.arange(1.0, 6.0), "x": np.arange(1.0, 6.0)})
     result = estimate_model(
         d, "y ~ x", min_obs=10, output=["coefficients", "tstats", "residuals"]
     )

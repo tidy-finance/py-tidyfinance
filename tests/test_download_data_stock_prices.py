@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -67,9 +67,7 @@ def test_downloads_data_replaces_null_and_warns_on_failures():
             resp.json.return_value = success_body
         return resp
 
-    with patch(
-        "tidyfinance.data_download.requests.get", side_effect=fake_get
-    ):
+    with patch("tidyfinance.data_download.requests.get", side_effect=fake_get):
         with pytest.warns(
             UserWarning, match="Failed to retrieve data for symbol FAIL"
         ):

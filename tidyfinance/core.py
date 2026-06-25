@@ -1,21 +1,21 @@
 """Main module for tidyfinance package."""
 
+import re
 import warnings
 
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
-import warnings
-import re
 
 from ._internal import (
-    _to_offset,
     _check_new_col,
+    _to_offset,
     _validate_column_name,
     _validate_flag,
     _validate_optional_number,
 )
+
 
 def add_lagged_columns(
     data: pd.DataFrame,
@@ -121,9 +121,7 @@ def add_lagged_columns(
     max_lag_offset = _to_offset(max_lag if max_lag is not None else lag)
 
     if date_col not in data.columns:
-        raise ValueError(
-            f"'data' must contain the date column '{date_col}'."
-        )
+        raise ValueError(f"'data' must contain the date column '{date_col}'.")
 
     ref = pd.Timestamp("2020-01-01")
     lag_end = ref + lag_offset
@@ -136,9 +134,7 @@ def add_lagged_columns(
 
     missing_cols = [c for c in cols if c not in data.columns]
     if missing_cols:
-        raise ValueError(
-            f"'data' is missing column(s): {missing_cols}."
-        )
+        raise ValueError(f"'data' is missing column(s): {missing_cols}.")
 
     if by_list:
         missing_by = [c for c in by_list if c not in data.columns]
@@ -150,11 +146,10 @@ def add_lagged_columns(
     join_cols = by_list + [date_col]
     if data[join_cols].duplicated().any():
         raise ValueError(
-            "The combination of 'by' and date columns must be unique "
-            "in 'data'."
+            "The combination of 'by' and date columns must be unique in 'data'."
         )
 
-    exact_lag = (lag_end == max_lag_end)
+    exact_lag = lag_end == max_lag_end
     result = data.copy()
 
     if not exact_lag:
@@ -178,9 +173,7 @@ def add_lagged_columns(
             grp_cols = by_list + ["_yr"]
             lagged = lagged.assign(_yr=lagged[date_col].dt.year)
             max_dates = lagged.groupby(grp_cols)[date_col].transform("max")
-            lagged = lagged[lagged[date_col] == max_dates].drop(
-                columns="_yr"
-            )
+            lagged = lagged[lagged[date_col] == max_dates].drop(columns="_yr")
 
         if exact_lag:
             lagged[date_col] = lagged[date_col] + lag_offset
@@ -249,9 +242,7 @@ def _window_lag_join(
     _check_new_col(result, "_orig_idx")
     _check_new_col(lagged, "_src_date")
     result = result.assign(_orig_idx=np.arange(len(result)))
-    lagged = lagged.rename(
-        columns={date_col: "_src_date", col: lag_col_name}
-    )
+    lagged = lagged.rename(columns={date_col: "_src_date", col: lag_col_name})
 
     left_sorted = result.sort_values("_upper", kind="mergesort")
     right_sorted = lagged.sort_values("_src_date", kind="mergesort")
@@ -279,9 +270,9 @@ def _window_lag_join(
     merged.loc[~mask, lag_col_name] = np.nan
 
     merged = merged.sort_values("_orig_idx", kind="mergesort")
-    merged = merged.drop(
-        columns=["_orig_idx", "_src_date"]
-    ).reset_index(drop=True)
+    merged = merged.drop(columns=["_orig_idx", "_src_date"]).reset_index(
+        drop=True
+    )
     return merged
 
 
@@ -376,24 +367,17 @@ def join_lagged_values(
             f"'original_data' must contain the column '{date_col}'."
         )
     if date_col not in new_data.columns:
-        raise ValueError(
-            f"'new_data' must contain the column '{date_col}'."
-        )
+        raise ValueError(f"'new_data' must contain the column '{date_col}'.")
 
-    missing_original = [
-        k for k in id_keys if k not in original_data.columns
-    ]
+    missing_original = [k for k in id_keys if k not in original_data.columns]
     if missing_original:
         raise ValueError(
-            f"'original_data' is missing id column(s): "
-            f"{missing_original}."
+            f"'original_data' is missing id column(s): {missing_original}."
         )
 
     missing_new = [k for k in id_keys if k not in new_data.columns]
     if missing_new:
-        raise ValueError(
-            f"'new_data' is missing id column(s): {missing_new}."
-        )
+        raise ValueError(f"'new_data' is missing id column(s): {missing_new}.")
 
     new_column_names = [
         c for c in new_data.columns if c not in id_keys + [date_col]
@@ -405,12 +389,9 @@ def join_lagged_values(
         )
 
     original_non_key = [
-        c for c in original_data.columns
-        if c not in id_keys + [date_col]
+        c for c in original_data.columns if c not in id_keys + [date_col]
     ]
-    duplicate_cols = [
-        c for c in new_column_names if c in original_non_key
-    ]
+    duplicate_cols = [c for c in new_column_names if c in original_non_key]
     if duplicate_cols:
         raise ValueError(
             f"Column(s) in 'new_data' already exist in "
@@ -470,9 +451,7 @@ def join_lagged_values(
             direction="backward",
         )
 
-        mask = merged["_lower"].notna() & (
-            merged[date_col] <= merged["_upper"]
-        )
+        mask = merged["_lower"].notna() & (merged[date_col] <= merged["_upper"])
         merged.loc[~mask, col] = np.nan
 
         merged = merged.sort_values("_orig_idx", kind="mergesort")
@@ -549,9 +528,7 @@ def data_options(
     _validate_column_name(id, "id", "entity")
     _validate_column_name(date, "date", "date")
     _validate_column_name(exchange, "exchange", "exchange")
-    _validate_column_name(
-        mktcap_lag, "mktcap_lag", "market capitalization lag"
-    )
+    _validate_column_name(mktcap_lag, "mktcap_lag", "market capitalization lag")
     _validate_column_name(ret_excess, "ret_excess", "excess return")
     _validate_column_name(portfolio, "portfolio", "portfolio")
     _validate_column_name(
@@ -943,9 +920,7 @@ def compute_breakpoints(
     ```
     """
     if not isinstance(breakpoint_options, dict):
-        raise ValueError(
-            "Please provide a dictionary with breakpoint options."
-        )
+        raise ValueError("Please provide a dictionary with breakpoint options.")
 
     n_portfolios = breakpoint_options.get("n_portfolios")
     percentiles = breakpoint_options.get("percentiles")
@@ -960,8 +935,7 @@ def compute_breakpoints(
 
     if n_portfolios is not None and percentiles is not None:
         raise ValueError(
-            "Please provide either 'n_portfolios' or 'percentiles', "
-            "not both."
+            "Please provide either 'n_portfolios' or 'percentiles', not both."
         )
     if n_portfolios is None and percentiles is None:
         raise ValueError(
@@ -1004,9 +978,7 @@ def compute_breakpoints(
         all_mktcap = data[mktcap_col].values
         above_size = (~pd.isna(all_mktcap)) & (all_mktcap > size_cutoff)
         combined_mask = (
-            keep_mask & above_size
-            if keep_mask is not None
-            else above_size
+            keep_mask & above_size if keep_mask is not None else above_size
         )
         sorting_values = data[sorting_variable].values[combined_mask]
 
@@ -1037,9 +1009,7 @@ def compute_breakpoints(
             and breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
         )
         lower_edge = breakpoints[0] == breakpoints[1]
-        upper_edge = (
-            breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
-        )
+        upper_edge = breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
 
         if both_edges:
             if percentiles is not None:
@@ -1076,9 +1046,7 @@ def compute_breakpoints(
             ]
             probs_new = np.linspace(0, 1, n_portfolios)
             breakpoints_new = np.quantile(sorting_values_new, probs_new)
-            breakpoints = np.concatenate(
-                [[breakpoints[0]], breakpoints_new]
-            )
+            breakpoints = np.concatenate([[breakpoints[0]], breakpoints_new])
         elif upper_edge:
             if percentiles is not None:
                 warnings.warn(
@@ -1198,8 +1166,7 @@ def create_summary_statistics(
     # drops bool dtype by default. The mean of the cast column then
     # equals the proportion of True in the original.
     bool_cols = [
-        v for v in variables
-        if pd.api.types.is_bool_dtype(data[v].dtype)
+        v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)
     ]
     if bool_cols:
         data = data.copy()
@@ -1663,10 +1630,9 @@ def estimate_fama_macbeth(
         .reset_index()
     )
 
-    result_df = (
-        price_of_risk.merge(price_of_risk_se_t_n, on="factor")
-        [["factor", "risk_premium", "standard_error", "t_statistic", "n"]]
-    )
+    result_df = price_of_risk.merge(price_of_risk_se_t_n, on="factor")[
+        ["factor", "risk_premium", "standard_error", "t_statistic", "n"]
+    ]
 
     return result_df
 
@@ -1734,9 +1700,7 @@ def filter_options(
     """
     _validate_flag(exclude_financials, "exclude_financials")
     _validate_flag(exclude_utilities, "exclude_utilities")
-    _validate_flag(
-        exclude_negative_book_equity, "exclude_negative_book_equity"
-    )
+    _validate_flag(exclude_negative_book_equity, "exclude_negative_book_equity")
     _validate_flag(exclude_negative_earnings, "exclude_negative_earnings")
 
     _validate_optional_number(
@@ -1747,8 +1711,7 @@ def filter_options(
     )
     _validate_optional_number(
         min_size_quantile,
-        "min_size_quantile must be a single numeric strictly between "
-        "0 and 1.",
+        "min_size_quantile must be a single numeric strictly between 0 and 1.",
         min=0,
         max=1,
         min_strict=True,
@@ -1890,9 +1853,7 @@ def portfolio_sort_options(
 
     if not (
         isinstance(breakpoint_options_main, dict)
-        and _BREAKPOINT_OPTIONS_KEYS.issubset(
-            breakpoint_options_main.keys()
-        )
+        and _BREAKPOINT_OPTIONS_KEYS.issubset(breakpoint_options_main.keys())
     ):
         raise ValueError(
             "breakpoint_options_main must be a dict produced by "
@@ -2039,9 +2000,7 @@ def _aggregate_bivariate_returns(
     )
 
     avg_returns = (
-        cell_returns.groupby(
-            ["portfolio_main", date_col], as_index=False
-        )
+        cell_returns.groupby(["portfolio_main", date_col], as_index=False)
         .agg(
             ret_excess_vw=("ret_excess_vw", "mean"),
             ret_excess_ew=("ret_excess_ew", "mean"),
@@ -2050,9 +2009,7 @@ def _aggregate_bivariate_returns(
         .rename(columns={"portfolio_main": "portfolio"})
     )
 
-    n_renamed = n_per_main.rename(
-        columns={"portfolio_main": "portfolio"}
-    )
+    n_renamed = n_per_main.rename(columns={"portfolio_main": "portfolio"})
     result = avg_returns.merge(
         n_renamed, on=["portfolio", date_col], how="left"
     )
@@ -2101,6 +2058,7 @@ def _join_rebalanced_portfolios(
         'data' with the portfolio columns joined from 'portfolio_data'
         (NaN where no rebalancing window matches).
     """
+
     def _window_year(d):
         return d.year if d.month >= rebalancing_month else d.year - 1
 
@@ -2111,9 +2069,7 @@ def _join_rebalanced_portfolios(
     pd_w["_window_year"] = pd_w[date_col].dt.year
     pd_w = pd_w.drop(columns=date_col)
 
-    merged = data_w.merge(
-        pd_w, on=[id_col, "_window_year"], how="left"
-    )
+    merged = data_w.merge(pd_w, on=[id_col, "_window_year"], how="left")
     return merged.drop(columns="_window_year")
 
 
@@ -2306,8 +2262,7 @@ def compute_portfolio_returns(
         and breakpoint_options_secondary is None
     ):
         warnings.warn(
-            "No 'breakpoint_options_secondary' specified in bivariate "
-            "sort.",
+            "No 'breakpoint_options_secondary' specified in bivariate sort.",
             UserWarning,
             stacklevel=2,
         )
@@ -2334,13 +2289,9 @@ def compute_portfolio_returns(
         date_col,
         ret_col,
     ]
-    missing_columns = [
-        c for c in required_columns if c not in data.columns
-    ]
+    missing_columns = [c for c in required_columns if c not in data.columns]
     if missing_columns:
-        raise ValueError(
-            f"Missing columns: {', '.join(missing_columns)}."
-        )
+        raise ValueError(f"Missing columns: {', '.join(missing_columns)}.")
 
     mktcap_lag_missing = w_col not in data.columns
     data = data.copy()
@@ -2394,6 +2345,7 @@ def compute_portfolio_returns(
         sv = sorting_variables[0]
 
         if rebalancing_month is None:
+
             def _assigner(g):
                 return assign_portfolio(
                     g,
@@ -2403,14 +2355,12 @@ def compute_portfolio_returns(
                     data_options=data_options,
                 )
 
-            data["portfolio"] = data.groupby(
-                date_col, group_keys=False
-            ).apply(_assigner, include_groups=False)
+            data["portfolio"] = data.groupby(date_col, group_keys=False).apply(
+                _assigner, include_groups=False
+            )
             portfolio_returns = data
         else:
-            filtered_data = data[
-                data[date_col].dt.month == rebalancing_month
-            ]
+            filtered_data = data[data[date_col].dt.month == rebalancing_month]
             if len(filtered_data) == 0:
                 raise ValueError(
                     f"No observations match 'rebalancing_month' = "
@@ -2431,9 +2381,7 @@ def compute_portfolio_returns(
             portfolio_data["portfolio"] = portfolio_data.groupby(
                 date_col, group_keys=False
             ).apply(_assigner, include_groups=False)
-            portfolio_data = portfolio_data[
-                [id_col, date_col, "portfolio"]
-            ]
+            portfolio_data = portfolio_data[[id_col, date_col, "portfolio"]]
             portfolio_returns = _join_rebalanced_portfolios(
                 data,
                 portfolio_data,
@@ -2485,20 +2433,16 @@ def compute_portfolio_returns(
             ).apply(_assign_main, include_groups=False)
             portfolio_returns = data
         else:
-            filtered_data = data[
-                data[date_col].dt.month == rebalancing_month
-            ]
+            filtered_data = data[data[date_col].dt.month == rebalancing_month]
             if len(filtered_data) == 0:
                 raise ValueError(
                     f"No observations match 'rebalancing_month' = "
                     f"{rebalancing_month}."
                 )
             portfolio_data = filtered_data.copy()
-            portfolio_data["portfolio_secondary"] = (
-                portfolio_data.groupby(date_col, group_keys=False).apply(
-                    _assign_sec, include_groups=False
-                )
-            )
+            portfolio_data["portfolio_secondary"] = portfolio_data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_sec, include_groups=False)
             portfolio_data["portfolio_main"] = portfolio_data.groupby(
                 [date_col, "portfolio_secondary"], group_keys=False
             ).apply(_assign_main, include_groups=False)
@@ -2561,20 +2505,16 @@ def compute_portfolio_returns(
             ).apply(_assign_main, include_groups=False)
             portfolio_returns = data
         else:
-            filtered_data = data[
-                data[date_col].dt.month == rebalancing_month
-            ]
+            filtered_data = data[data[date_col].dt.month == rebalancing_month]
             if len(filtered_data) == 0:
                 raise ValueError(
                     f"No observations match 'rebalancing_month' = "
                     f"{rebalancing_month}."
                 )
             portfolio_data = filtered_data.copy()
-            portfolio_data["portfolio_secondary"] = (
-                portfolio_data.groupby(date_col, group_keys=False).apply(
-                    _assign_sec, include_groups=False
-                )
-            )
+            portfolio_data["portfolio_secondary"] = portfolio_data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_sec, include_groups=False)
             portfolio_data["portfolio_main"] = portfolio_data.groupby(
                 date_col, group_keys=False
             ).apply(_assign_main, include_groups=False)
@@ -2609,9 +2549,7 @@ def compute_portfolio_returns(
 
     if rebalancing_month is not None:
         matching_dates = [
-            d
-            for d in all_dates
-            if pd.Timestamp(d).month == rebalancing_month
+            d for d in all_dates if pd.Timestamp(d).month == rebalancing_month
         ]
         if not matching_dates:
             raise ValueError(
@@ -2621,9 +2559,7 @@ def compute_portfolio_returns(
         first_rebalancing_date = min(matching_dates)
         all_dates = [d for d in all_dates if d >= first_rebalancing_date]
 
-    all_portfolios = (
-        portfolio_returns["portfolio"].dropna().unique().tolist()
-    )
+    all_portfolios = portfolio_returns["portfolio"].dropna().unique().tolist()
     complete_panel = pd.MultiIndex.from_product(
         [all_portfolios, all_dates], names=["portfolio", date_col]
     ).to_frame(index=False)
@@ -2852,23 +2788,17 @@ def compute_rolling_value(
         )
 
     if date_col not in data.columns:
-        raise ValueError(
-            f"'data' must contain a '{date_col}' column."
-        )
+        raise ValueError(f"'data' must contain a '{date_col}' column.")
 
     if not pd.api.types.is_datetime64_any_dtype(data[date_col]):
-        raise ValueError(
-            f"The '{date_col}' column must be of datetime dtype."
-        )
+        raise ValueError(f"The '{date_col}' column must be of datetime dtype.")
 
     if not isinstance(period, str):
         raise ValueError("'period' must be a single string.")
 
     period_freq_map = {"month": "M", "quarter": "Q", "year": "Y"}
     if period not in period_freq_map:
-        raise ValueError(
-            "'period' must be one of 'month', 'quarter', 'year'."
-        )
+        raise ValueError("'period' must be one of 'month', 'quarter', 'year'.")
 
     buckets = data[date_col].dt.to_period(period_freq_map[period])
 
@@ -2878,9 +2808,7 @@ def compute_rolling_value(
     for i in range(n):
         anchor_bucket = buckets.iloc[i]
         start_bucket = anchor_bucket - (periods - 1)
-        in_window = (buckets >= start_bucket) & (
-            buckets <= anchor_bucket
-        )
+        in_window = (buckets >= start_bucket) & (buckets <= anchor_bucket)
         window_data = data[in_window].dropna()
         if len(window_data) >= min_obs:
             result[i] = f(window_data)
@@ -2888,15 +2816,14 @@ def compute_rolling_value(
     return result
 
 
-def _require_column(data: pd.DataFrame, col: str, arg: str, info: str = None
+def _require_column(
+    data: pd.DataFrame, col: str, arg: str, info: str = None
 ) -> None:
     """Raise ValueError if col is not in data.columns."""
     if col not in data.columns:
         if info is None:
             info = f"Set {arg} to the correct column name."
-        raise ValueError(
-            f"Column '{col}' not found in 'data'. {info}"
-        )
+        raise ValueError(f"Column '{col}' not found in 'data'. {info}")
 
 
 def _filter_with_log(
@@ -3038,17 +2965,13 @@ def filter_sorting_data(
             keep = data[col_siccd].isna() | ~(
                 (data[col_siccd] >= 6000) & (data[col_siccd] <= 6799)
             )
-            data = _filter_with_log(
-                data, keep, "exclude_financials", quiet
-            )
+            data = _filter_with_log(data, keep, "exclude_financials", quiet)
 
         if filter_options.get("exclude_utilities"):
             keep = data[col_siccd].isna() | ~(
                 (data[col_siccd] >= 4900) & (data[col_siccd] <= 4999)
             )
-            data = _filter_with_log(
-                data, keep, "exclude_utilities", quiet
-            )
+            data = _filter_with_log(data, keep, "exclude_utilities", quiet)
 
     # min_stock_price
     if filter_options.get("min_stock_price") is not None:
@@ -3064,9 +2987,7 @@ def filter_sorting_data(
         col_mktcap_lag = data_options["mktcap_lag"]
         col_date = data_options["date"]
         col_exchange = data_options["exchange"]
-        _require_column(
-            data, col_mktcap_lag, "data_options['mktcap_lag']"
-        )
+        _require_column(data, col_mktcap_lag, "data_options['mktcap_lag']")
         _require_column(data, col_date, "data_options['date']")
         _require_column(
             data,
@@ -3118,9 +3039,7 @@ def filter_sorting_data(
     # min_listing_age
     if filter_options.get("min_listing_age") is not None:
         col_listing_age = data_options["listing_age"]
-        _require_column(
-            data, col_listing_age, "data_options['listing_age']"
-        )
+        _require_column(data, col_listing_age, "data_options['listing_age']")
         keep = data[col_listing_age].notna() & (
             data[col_listing_age] >= filter_options["min_listing_age"]
         )
@@ -3140,9 +3059,7 @@ def filter_sorting_data(
         col_earn = data_options["earnings"]
         _require_column(data, col_earn, "data_options['earnings']")
         keep = data[col_earn].notna() & (data[col_earn] > 0)
-        data = _filter_with_log(
-            data, keep, "exclude_negative_earnings", quiet
-        )
+        data = _filter_with_log(data, keep, "exclude_negative_earnings", quiet)
 
     return data
 
@@ -3270,8 +3187,7 @@ def implement_portfolio_sort(
         and _data_options_keys.issubset(data_options.keys())
     ):
         raise ValueError(
-            "'data_options' must be None or a dict produced by "
-            "data_options()."
+            "'data_options' must be None or a dict produced by data_options()."
         )
 
     _portfolio_sort_options_keys = {
@@ -3281,9 +3197,7 @@ def implement_portfolio_sort(
     }
     if not (
         isinstance(portfolio_sort_options, dict)
-        and _portfolio_sort_options_keys.issubset(
-            portfolio_sort_options.keys()
-        )
+        and _portfolio_sort_options_keys.issubset(portfolio_sort_options.keys())
     ):
         raise ValueError(
             "'portfolio_sort_options' must be a dict produced by "
@@ -3291,9 +3205,7 @@ def implement_portfolio_sort(
         )
 
     filter_opts = portfolio_sort_options["filter_options"]
-    breakpoint_options_main = portfolio_sort_options[
-        "breakpoint_options_main"
-    ]
+    breakpoint_options_main = portfolio_sort_options["breakpoint_options_main"]
     breakpoint_options_secondary = portfolio_sort_options[
         "breakpoint_options_secondary"
     ]
@@ -3422,9 +3334,7 @@ def estimate_model(
     dep_var = parts[0].strip()
     rhs = parts[1].strip()
     tokens = re.split(r"[\s+]+", rhs)
-    independent_vars = [
-        t for t in tokens if t and t not in ("-", "1")
-    ]
+    independent_vars = [t for t in tokens if t and t not in ("-", "1")]
 
     if "intercept" in independent_vars:
         raise ValueError(
@@ -3432,9 +3342,7 @@ def estimate_model(
             "Please rename the column and try again."
         )
 
-    missing_vars = [
-        v for v in independent_vars if v not in data.columns
-    ]
+    missing_vars = [v for v in independent_vars if v not in data.columns]
     if missing_vars:
         raise ValueError(
             "The following independent variables are missing in the "
@@ -3458,9 +3366,7 @@ def estimate_model(
 
     def to_df(series):
         renamed = series.rename({"Intercept": "intercept"})
-        return pd.DataFrame(
-            [renamed.values], columns=list(renamed.index)
-        )
+        return pd.DataFrame([renamed.values], columns=list(renamed.index))
 
     def na_df():
         if len(independent_vars) == 0:

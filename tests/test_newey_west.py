@@ -17,7 +17,9 @@ from tidyfinance.core import (  # noqa: E402
 )
 
 
-def make_ar1_series(rho: float = 0.7, n: int = 1000, seed: int = 0) -> np.ndarray:
+def make_ar1_series(
+    rho: float = 0.7, n: int = 1000, seed: int = 0
+) -> np.ndarray:
     """Construct an AR(1) series x_t = rho * x_{t-1} + eps_t."""
     rng = np.random.default_rng(seed)
     x = np.zeros(n)

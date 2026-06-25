@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -25,9 +25,7 @@ def test_downloads_filtered_fisd_data_for_usa_issuers():
             "dated_date": pd.to_datetime(["2020-01-02", "2020-02-02"]),
             "interest_frequency": ["2", "2"],
             "coupon": [5, 6],
-            "last_interest_date": pd.to_datetime(
-                ["2029-12-31", "2030-12-31"]
-            ),
+            "last_interest_date": pd.to_datetime(["2029-12-31", "2030-12-31"]),
             "issue_id": [1, 2],
             "issuer_id": [1, 2],
         }
@@ -55,16 +53,21 @@ def test_downloads_filtered_fisd_data_for_usa_issuers():
     def fake_disconnect(conn):
         disconnected["value"] = True
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection",
-        side_effect=fake_disconnect,
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        side_effect=fake_read_sql_query,
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch(
+            "tidyfinance.data_download.disconnect_connection",
+            side_effect=fake_disconnect,
+        ),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+        patch(
+            "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+        ),
     ):
         result = _download_data_wrds_fisd()
 
@@ -123,15 +126,18 @@ def test_returns_requested_additional_columns():
     def fake_read_sql_query(sql=None, con=None, *a, **kw):
         return fake_read_sql(sql, con)
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        side_effect=fake_read_sql_query,
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+        patch(
+            "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+        ),
     ):
         result = _download_data_wrds_fisd(
             additional_columns=["asset_backed", "defeased"]

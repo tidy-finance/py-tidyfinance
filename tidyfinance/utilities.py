@@ -1,13 +1,13 @@
 """Utility functions module for tidyfinance."""
 
 import os
-import webbrowser
 import re
+import webbrowser
 
 import numpy as np
 import pandas as pd
-from dotenv import load_dotenv, dotenv_values, set_key
-from sqlalchemy import create_engine, URL
+from dotenv import dotenv_values, load_dotenv, set_key
+from sqlalchemy import URL, create_engine
 
 
 def get_wrds_connection() -> object:
@@ -351,8 +351,9 @@ def _process_additional_columns(additional_columns):
     """
     if not additional_columns:
         return ""
-    if not all(re.match(r'^[a-z_][a-z0-9_]*$', col)
-               for col in additional_columns):
+    if not all(
+        re.match(r"^[a-z_][a-z0-9_]*$", col) for col in additional_columns
+    ):
         raise ValueError("Column names must be valid SQL identifiers.")
     return ", " + ", ".join(additional_columns)
 
@@ -557,18 +558,14 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     # Reversals (asof_cd = R)
     # Record reversals
     trace_pre_R = trace_pre_T.query("asof_cd == 'R'").sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt",
-         "trd_rpt_tm"
-         ]
+        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
     )
 
     # Prepare final data
     trace_pre = trace_pre_T.query(
         "asof_cd == None | asof_cd.isnull() | asof_cd not in ['R', 'X', 'D']"
     ).sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt",
-         "trd_rpt_tm"
-         ]
+        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
     )
 
     # Add grouped row numbers

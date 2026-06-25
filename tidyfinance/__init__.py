@@ -13,13 +13,14 @@ Set both to False for a strictly public API. Set both to True to mirror
 the previous behaviour where '_download_data_*' helpers and internal
 utilities were importable directly from 'tidyfinance'.
 """
+
 import importlib
 import pkgutil
 import types
 
 # Toggle these to control auto-discovery scope.
-_INCLUDE_PRIVATE_MODULES = False   # scan '_internal', '_pseudo', etc.
-_INCLUDE_PRIVATE_NAMES = False      # expose '_download_data_*' etc.
+_INCLUDE_PRIVATE_MODULES = False  # scan '_internal', '_pseudo', etc.
+_INCLUDE_PRIVATE_NAMES = False  # expose '_download_data_*' etc.
 
 # Names to never expose, even if the filters above would include them.
 # Use this for things like '__future__' re-imports or sentinel objects.
@@ -35,9 +36,7 @@ if "__path__" in globals():
         if _module_name.startswith("_") and not _INCLUDE_PRIVATE_MODULES:
             continue
 
-        _module = importlib.import_module(
-            f".{_module_name}", package=__name__
-        )
+        _module = importlib.import_module(f".{_module_name}", package=__name__)
 
         for _name in dir(_module):
             if _name.startswith("__") and _name.endswith("__"):
@@ -88,7 +87,7 @@ _BACKEND_WRAPPED = (
     "download_data",
     "list_supported_datasets",
     "list_supported_indexes",
-    "process_trace_data"
+    "process_trace_data",
 )
 for _name in _BACKEND_WRAPPED:
     if _name not in globals():
@@ -107,7 +106,12 @@ for _name in _BACKEND_WRAPPED:
 del importlib, pkgutil, types, _use_backend
 del _seen
 for _leaked in (
-    "_finder", "_ispkg", "_module_name", "_module",
-    "_name", "_obj", "_leaked",
+    "_finder",
+    "_ispkg",
+    "_module_name",
+    "_module",
+    "_name",
+    "_obj",
+    "_leaked",
 ):
     globals().pop(_leaked, None)

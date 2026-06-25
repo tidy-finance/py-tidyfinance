@@ -18,9 +18,7 @@ def test_normal_join_adds_lagged_columns_for_matching_date_windows():
     orig = pd.DataFrame(
         {
             "id": [1, 1, 1],
-            "date": pd.to_datetime(
-                ["2023-02-01", "2023-04-01", "2023-05-01"]
-            ),
+            "date": pd.to_datetime(["2023-02-01", "2023-04-01", "2023-05-01"]),
         }
     )
     new = pd.DataFrame(
@@ -106,9 +104,7 @@ def test_non_default_date_col_uses_specified_column():
 
 def test_error_when_id_keys_is_not_a_character_vector():
     """Test error when id_keys is not a string or list of strings."""
-    orig = pd.DataFrame(
-        {"id": [1], "date": [pd.Timestamp("2023-01-01")]}
-    )
+    orig = pd.DataFrame({"id": [1], "date": [pd.Timestamp("2023-01-01")]})
     new = pd.DataFrame(
         {
             "id": [1],
@@ -148,9 +144,7 @@ def test_error_when_date_column_missing_from_original_data():
 
 def test_error_when_date_column_missing_from_new_data():
     """Test error when date column missing from new_data."""
-    orig = pd.DataFrame(
-        {"id": [1], "date": [pd.Timestamp("2023-01-01")]}
-    )
+    orig = pd.DataFrame({"id": [1], "date": [pd.Timestamp("2023-01-01")]})
     new = pd.DataFrame({"id": [1], "other": [1]})
     with pytest.raises(ValueError, match="new_data"):
         join_lagged_values(
@@ -164,9 +158,7 @@ def test_error_when_date_column_missing_from_new_data():
 
 def test_error_when_id_keys_column_missing_from_original_data():
     """Test error when id_keys column missing from original_data."""
-    orig = pd.DataFrame(
-        {"date": [pd.Timestamp("2023-01-01")], "val": [1.0]}
-    )
+    orig = pd.DataFrame({"date": [pd.Timestamp("2023-01-01")], "val": [1.0]})
     new = pd.DataFrame(
         {
             "id": [1],
@@ -186,12 +178,8 @@ def test_error_when_id_keys_column_missing_from_original_data():
 
 def test_error_when_id_keys_column_missing_from_new_data():
     """Test error when id_keys column missing from new_data."""
-    orig = pd.DataFrame(
-        {"id": [1], "date": [pd.Timestamp("2023-01-01")]}
-    )
-    new = pd.DataFrame(
-        {"date": [pd.Timestamp("2023-01-01")], "x": [1.0]}
-    )
+    orig = pd.DataFrame({"id": [1], "date": [pd.Timestamp("2023-01-01")]})
+    new = pd.DataFrame({"date": [pd.Timestamp("2023-01-01")], "x": [1.0]})
     with pytest.raises(ValueError, match="new_data"):
         join_lagged_values(
             orig,
@@ -204,12 +192,8 @@ def test_error_when_id_keys_column_missing_from_new_data():
 
 def test_error_when_new_data_has_no_columns_besides_id_keys_and_date():
     """Test error when new_data has no columns besides id_keys and date."""
-    orig = pd.DataFrame(
-        {"id": [1], "date": [pd.Timestamp("2023-01-01")]}
-    )
-    new = pd.DataFrame(
-        {"id": [1], "date": [pd.Timestamp("2023-01-01")]}
-    )
+    orig = pd.DataFrame({"id": [1], "date": [pd.Timestamp("2023-01-01")]})
+    new = pd.DataFrame({"id": [1], "date": [pd.Timestamp("2023-01-01")]})
     with pytest.raises(ValueError, match="columns besides"):
         join_lagged_values(
             orig,
@@ -249,6 +233,7 @@ def test_error_when_new_data_column_already_exists_in_original_data():
 def test_data_options_specifies_date_column_name():
     """Test data_options dict specifies the date column name."""
     from tidyfinance.core import data_options
+
     orig = pd.DataFrame(
         {
             "id": [1, 1],
