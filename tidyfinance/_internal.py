@@ -7,15 +7,18 @@ import re
 
 def _assign_exchange(primaryexch):
     """
-    Assign exchange for CRSP data.
+    Map a CRSP primary-exchange code to a readable label.
 
     Parameters
     ----------
-        primaryexch (str): A string of exchange letter.
+    primaryexch : str
+        Single-letter primary-exchange code from CRSP CIZ
+        ('stksecurityinfohist.primaryexch').
 
     Returns
     -------
-        str: Exchange name.
+    str
+        'NYSE', 'AMEX', 'NASDAQ', or 'Other'.
     """
     if primaryexch == "N":
         return "NYSE"
@@ -29,15 +32,20 @@ def _assign_exchange(primaryexch):
 
 def _assign_industry(siccd):
     """
-    Assign industry for CRSP data.
+    Map a Standard Industrial Classification code to a coarse industry label.
 
     Parameters
     ----------
-        siccd (int): An integer to present the siccd.
+    siccd : int
+        Four-digit SIC code (CRSP 'siccd' or Compustat 'sich').
 
     Returns
     -------
-        str: Industry name.
+    str
+        One of 'Agriculture', 'Mining', 'Construction',
+        'Manufacturing', 'Transportation', 'Utilities', 'Wholesale',
+        'Retail', 'Finance', 'Services', 'Public', or 'Missing'
+        (when the SIC code is outside the documented ranges).
     """
     if 1 <= siccd <= 999:
         return "Agriculture"
@@ -66,17 +74,36 @@ def _assign_industry(siccd):
 
 
 def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
-        """Parse YYYY-MM-DD or YYYYMM into a Timestamp."""
-        if d is None:
-            return None
-        d = str(d)
-        if len(d) == 6 and d.isdigit():  # YYYYMM
-            ts = pd.to_datetime(d, format="%Y%m")
-            if is_end:
-                # Move to last day of the month
-                ts = ts + pd.offsets.MonthEnd(0)
-            return ts.normalize()
-        return pd.to_datetime(d).normalize()
+    """
+    Parse a date-like string into a normalized 'pd.Timestamp'.
+
+    Parameters
+    ----------
+    d : str or None
+        Date string in one of two supported formats: 'YYYY-MM-DD'
+        (any pandas-parseable date) or 'YYYYMM' (year-month, six
+        digits). 'None' returns 'None'.
+    is_end : bool, default False
+        Only relevant for the 'YYYYMM' form. When 'True', shift the
+        parsed timestamp to the last day of that month; when 'False',
+        the timestamp is the first day of the month.
+
+    Returns
+    -------
+    pd.Timestamp or None
+        Normalized timestamp at midnight (time component stripped),
+        or 'None' if 'd' was 'None'.
+    """
+    if d is None:
+        return None
+    d = str(d)
+    if len(d) == 6 and d.isdigit():  # YYYYMM
+        ts = pd.to_datetime(d, format="%Y%m")
+        if is_end:
+            # Move to last day of the month
+            ts = ts + pd.offsets.MonthEnd(0)
+        return ts.normalize()
+    return pd.to_datetime(d).normalize()
 
 
 def _validate_dates(
@@ -103,8 +130,9 @@ def _validate_dates(
     """
     if start_date is None and end_date is None:
         if use_default_range:
-            end_date = pd.Timestamp.today().normalize()
-            start_date = end_date - pd.DateOffset(years=2)
+            today = pd.Timestamp.today().normalize()
+            start_date = today - pd.DateOffset(years=2)
+            end_date = today - pd.DateOffset(years=1)
             print(
                 "No start_date or end_date provided. Using the range "
                 f"{start_date.date()} to {end_date.date()} to avoid "
@@ -134,6 +162,20 @@ def _validate_dates(
 
 
 def _format_cusips(cusips):
+    """
+    Format a list of CUSIPs as a parenthesized SQL 'IN' clause.
+
+    Parameters
+    ----------
+    cusips : list of str
+        CUSIP identifiers.
+
+    Returns
+    -------
+    str
+        SQL-ready string of the form "('cusip1', 'cusip2', ...)" or
+        "()" when the input is empty.
+    """
     if not cusips:
         return "()"
 
@@ -142,7 +184,21 @@ def _format_cusips(cusips):
 
 
 def _return_datetime(dates):
-    """Return date without time and change period to timestamp."""
+    """
+    Coerce a date-like series to 'datetime64[ns]' via string round-trip.
+
+    Parameters
+    ----------
+    dates : pd.Series or pd.Index
+        Series whose entries can be cast to string and parsed by
+        'pd.to_datetime' (e.g., 'PeriodIndex', date objects,
+        date strings).
+
+    Returns
+    -------
+    pd.DatetimeIndex
+        Parsed timestamps with no time-of-day component.
+    """
     return pd.to_datetime(dates.astype(str))
 
 
@@ -150,10 +206,19 @@ def _transfrom_to_snake_case(column_name):
     """
     Convert a string to snake_case.
 
-    - Inserts underscores before CamelCase boundaries.
-    - Converts uppercase letters to lowercase.
-    - Replaces spaces and special characters with underscores.
-    - Ensures no multiple underscores.
+    Inserts underscores before CamelCase boundaries, lowercases all
+    letters, replaces spaces and special characters with underscores,
+    and collapses runs of underscores into one.
+
+    Parameters
+    ----------
+    column_name : str
+        Arbitrary identifier-like string.
+
+    Returns
+    -------
+    str
+        Snake_case version of 'column_name'.
     """
     column_name = re.sub(r"(?<!^)(?=[A-Z])", "_", column_name)
     column_name = column_name.replace(" ", "_").replace("-", "_").lower()
@@ -168,11 +233,15 @@ def _transfrom_to_snake_case(column_name):
 
 
 def _get_random_user_agent():
-    """Retrieve a random user agent string.
+    """
+    Retrieve a random User-Agent string.
 
     Returns
     -------
-        str: A random user agent string.
+    str
+        One entry sampled uniformly at random from a fixed list of
+        modern browser User-Agent strings. Used to vary headers in
+        requests that would otherwise be rejected by some endpoints.
     """
     user_agents = [
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246",
@@ -196,7 +265,27 @@ def _get_random_user_agent():
 
 
 def _to_offset(x):
-    """Coerce int to pd.Timedelta; pass through pd.Timedelta/pd.DateOffset."""
+    """
+    Normalize a lag specification to a pandas time offset.
+
+    Parameters
+    ----------
+    x : int, pd.Timedelta, or pd.DateOffset
+        Lag value. Integers are interpreted as a number of days.
+        'pd.Timedelta' and 'pd.DateOffset' instances are returned
+        unchanged.
+
+    Returns
+    -------
+    pd.Timedelta or pd.DateOffset
+        An offset object suitable for date arithmetic.
+
+    Raises
+    ------
+    TypeError
+        If 'x' is not one of the supported types (booleans are
+        rejected even though they subclass 'int').
+    """
     if isinstance(x, int) and not isinstance(x, bool):
         return pd.Timedelta(days=x)
     if isinstance(x, (pd.Timedelta, pd.tseries.offsets.BaseOffset)):
@@ -208,11 +297,25 @@ def _to_offset(x):
 
 
 def _check_new_col(data: pd.DataFrame, names) -> None:
-    """Raise ValueError if any names already exist in data.columns.
+    """
+    Guard against overwriting user columns with internal helpers.
 
-    Mirrors R's check_new_col: prevents silent overwrite of user
-    columns when the function plans to introduce temporary helpers
-    like _upper / _lower / _src_date.
+    Raises 'ValueError' if any of 'names' already exist in
+    'data.columns'. Used before adding temporary columns like
+    '_upper', '_lower', '_src_date' inside lagging functions, so
+    user data is never silently clobbered.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Input frame whose columns are checked.
+    names : str or iterable of str
+        Column name(s) the caller intends to introduce.
+
+    Raises
+    ------
+    ValueError
+        If any name in 'names' is already a column of 'data'.
     """
     if isinstance(names, str):
         names = [names]
@@ -226,7 +329,25 @@ def _check_new_col(data: pd.DataFrame, names) -> None:
 
 
 def _validate_column_name(value, arg: str, description: str) -> None:
-    """Raise ValueError if value is not a single non-empty string."""
+    """
+    Validate that 'value' is a single string usable as a column name.
+
+    Parameters
+    ----------
+    value : Any
+        Value to check.
+    arg : str
+        Name of the argument being validated, used in the error
+        message.
+    description : str
+        Short description of what the column represents, used in
+        the error message (e.g., 'date', 'sorting').
+
+    Raises
+    ------
+    ValueError
+        If 'value' is not a string.
+    """
     if not isinstance(value, str):
         raise ValueError(
             f"'{arg}' must be a string indicating the column name "
@@ -235,7 +356,26 @@ def _validate_column_name(value, arg: str, description: str) -> None:
 
 
 def _validate_flag(value, arg: str, message: str | None = None) -> None:
-    """Raise ValueError if value is not a single bool."""
+    """
+    Validate that 'value' is a Python bool.
+
+    Parameters
+    ----------
+    value : Any
+        Value to check. Numeric 0 or 1 are rejected; only actual
+        'bool' instances pass.
+    arg : str
+        Name of the argument being validated, used in the default
+        error message when 'message' is not supplied.
+    message : str, optional
+        Custom error message. If 'None' (the default), a generic
+        "'<arg>' must be a single boolean." message is raised.
+
+    Raises
+    ------
+    ValueError
+        If 'value' is not a 'bool'.
+    """
     if not isinstance(value, bool):
         if message is None:
             message = f"'{arg}' must be a single boolean."
@@ -250,7 +390,34 @@ def _validate_optional_number(
     min_strict: bool = False,
     max_strict: bool = False,
 ) -> None:
-    """Raise ValueError unless value is None or a single number in bounds."""
+    """
+    Validate that 'value' is None or a finite number within bounds.
+
+    Accepts 'None' as a way to signal "not supplied". When 'value' is
+    a number, it must be an 'int' or 'float' (booleans are rejected),
+    must not be 'NaN', and must lie within the requested range.
+
+    Parameters
+    ----------
+    value : None, int, or float
+        Value to check.
+    message : str
+        Error message raised on any validation failure.
+    min : float, default '-inf'
+        Lower bound for 'value'.
+    max : float, default '+inf'
+        Upper bound for 'value'.
+    min_strict : bool, default False
+        If 'True', require 'value > min' rather than 'value >= min'.
+    max_strict : bool, default False
+        If 'True', require 'value < max' rather than 'value <= max'.
+
+    Raises
+    ------
+    ValueError
+        If 'value' is not 'None', not numeric, is 'NaN', or lies
+        outside the requested bounds.
+    """
     if value is None:
         return
     if isinstance(value, bool) or not isinstance(value, (int, float)):

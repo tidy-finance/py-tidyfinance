@@ -12,14 +12,13 @@ sys.path.insert(
 )
 from tidyfinance.core import (
     add_lagged_columns,
-    join_lagged_values,
     breakpoint_options,
     compute_breakpoints,
     create_summary_statistics,
     estimate_betas,
     estimate_fama_macbeth,
     _newey_west_se,
-)
+)  # noqa: E402
 
 
 # %% Helper function to create test data
@@ -358,6 +357,28 @@ def test_create_summary_statistics_detail(sample_data) -> None:
     )
 
 
+def test_create_summary_statistics_accepts_boolean() -> None:
+    """Test boolean columns are summarized as proportion of True."""
+    df = pd.DataFrame(
+        {
+            "flag": [True, False, True, True],
+            "x": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    result = create_summary_statistics(df, ["flag", "x"])
+    flag_row = result[result["variable"] == "flag"].iloc[0]
+    assert abs(flag_row["mean"] - 0.75) < 1e-12, (
+        "Boolean mean should equal the proportion of True"
+    )
+
+
+def test_create_summary_statistics_rejects_strings() -> None:
+    """Test object dtype columns raise ValueError."""
+    df = pd.DataFrame({"name": ["A", "B", "C"], "x": [1, 2, 3]})
+    with pytest.raises(ValueError, match="not numeric or boolean"):
+        create_summary_statistics(df, ["name", "x"])
+
+
 def sample_data_ls() -> pd.DataFrame:
     np.random.seed(42)
     dates = pd.date_range(start="2020-01-01", periods=10, freq="ME")
@@ -370,27 +391,6 @@ def sample_data_ls() -> pd.DataFrame:
         }
     )
     return data
-
-
-# def test_compute_long_short_returns_basic(sample_data) -> None:
-#     result = compute_long_short_returns(sample_data_ls())
-#     assert not result.empty, "Result should not be empty"
-#     assert "long_short_return" in result.columns, (
-#         "Output should include long-short return calculation"
-#     )
-
-
-# def test_compute_long_short_returns_direction(sample_data) -> None:
-#     result_top_bottom = compute_long_short_returns(
-#         sample_data_ls(), direction="top_minus_bottom"
-#     )
-#     result_bottom_top = compute_long_short_returns(
-#         sample_data_ls(), direction="bottom_minus_top"
-#     )
-#     assert (
-#         result_top_bottom["long_short_return"]
-#         == -result_bottom_top["long_short_return"]
-#     ).all(), "Reversing direction should invert returns"
 
 
 def test_breakpoint_options_default():
@@ -441,7 +441,9 @@ def test_compute_breakpoints_n_portfolios(
     )
 
 
-def test_compute_breakpoints_percentiles(sample_data=sample_data_breakpoints()):
+def test_compute_breakpoints_percentiles(
+    sample_data=sample_data_breakpoints()
+):
     breakpoints = compute_breakpoints(
         sample_data, "market_cap", {"percentiles": [0.2, 0.4, 0.6, 0.8]}
     )

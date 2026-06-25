@@ -1,79 +1,66 @@
-from .core import (
-    add_lagged_columns,
-    assign_portfolio,
-    breakpoint_options,
-    compute_breakpoints,
-    compute_portfolio_returns,
-    portfolio_sort_options,
-    compute_long_short_returns,
-    compute_rolling_value,
-    create_summary_statistics,
-    data_options,
-    estimate_betas,
-    estimate_fama_macbeth,
-    estimate_model,
-    filter_options,
-    join_lagged_values,
-    filter_sorting_data,
-    implement_portfolio_sort,
-)
-from .data_download import (
-    _download_data_constituents,
-    _download_data_factors_ff,
-    _download_data_factors_q,
-    _download_data_macro_predictors,
-    _download_data_osap,
-    _download_data_risk_free,
-    _download_data_stock_prices,
-    _download_data_wrds,
-    download_data,
-    get_available_famafrench_datasets,
-)
-from .utilities import (
-    get_wrds_connection,
-    list_supported_indexes,
-    list_tidy_finance_chapters,
-    open_tidy_finance_website,
-    set_wrds_credentials,
-    trim,
-    winsorize,
-)
-from .supported_datasets import list_supported_datasets
+"""tidyfinance public API.
 
-__all__ = [
-    "download_data",
-    "get_available_famafrench_datasets",
-    "_download_data_factors_ff",
-    "_download_data_factors_q",
-    "_download_data_macro_predictors",
-    "_download_data_wrds",
-    "_download_data_constituents",
-    "_download_data_stock_prices",
-    "_download_data_osap",
-    "_download_data_risk_free",
-    "list_supported_indexes",
-    "list_tidy_finance_chapters",
-    "open_tidy_finance_website",
-    "trim",
-    "winsorize",
-    "assign_portfolio",
-    "compute_breakpoints",
-    "estimate_betas",
-    "estimate_fama_macbeth",
-    "estimate_model",
-    "set_wrds_credentials",
-    "create_summary_statistics",
-    "add_lagged_columns",
-    "compute_portfolio_returns",
-    "compute_long_short_returns",
-    "compute_rolling_value",
-    "portfolio_sort_options",
-    "data_options",
-    "filter_options",
-    "breakpoint_options",
-    "join_lagged_values",
-    "get_wrds_connection",
-    "list_supported_datasets",
-    "filter_sorting_data",
-    "implement_portfolio_sort",
-]
+Symbols are discovered automatically from this package's submodules.
+Two toggles control what is exposed:
+
+- INCLUDE_PRIVATE_MODULES: scan submodules whose name starts with '_'
+  (e.g. '_internal', '_pseudo') in addition to public ones.
+- INCLUDE_PRIVATE_NAMES: within each scanned module, expose attributes
+  whose name starts with '_' (e.g. '_download_data_wrds_crsp') in
+  addition to the public ones.
+
+Set both to False for a strictly public API. Set both to True to mirror
+the previous behaviour where '_download_data_*' helpers and internal
+utilities were importable directly from 'tidyfinance'.
+"""
+import importlib
+import pkgutil
+import types
+
+# Toggle these to control auto-discovery scope.
+INCLUDE_PRIVATE_MODULES = False   # scan '_internal', '_pseudo', etc.
+INCLUDE_PRIVATE_NAMES = True      # expose '_download_data_*' etc.
+
+# Names to never expose, even if the filters above would include them.
+# Use this for things like '__future__' re-imports or sentinel objects.
+_EXCLUDE = {
+    "annotations",
+}
+
+__all__ = []
+_seen = set()
+
+if "__path__" in globals():
+    for _finder, module_name, _ispkg in pkgutil.iter_modules(__path__):
+        if module_name.startswith("_") and not INCLUDE_PRIVATE_MODULES:
+            continue
+
+        module = importlib.import_module(
+            f".{module_name}", package=__name__
+        )
+
+        for name in dir(module):
+            if name.startswith("__") and name.endswith("__"):
+                # Skip dunders unconditionally.
+                continue
+            if name.startswith("_") and not INCLUDE_PRIVATE_NAMES:
+                continue
+            if name in _EXCLUDE or name in _seen:
+                continue
+
+            obj = getattr(module, name)
+            # Re-export only functions and classes. Skip module
+            # re-exports (e.g. 'import os') and constants.
+            if not isinstance(obj, (types.FunctionType, type)):
+                continue
+            # Skip objects imported from third-party packages (e.g.
+            # 'create_engine', 'ThreadPoolExecutor'); only expose
+            # symbols defined within this package.
+            if not getattr(obj, "__module__", "").startswith(__name__):
+                continue
+
+            globals()[name] = obj
+            __all__.append(name)
+            _seen.add(name)
+
+del _seen

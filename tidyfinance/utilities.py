@@ -11,15 +11,47 @@ from sqlalchemy import create_engine, URL
 
 
 def get_wrds_connection() -> object:
-    """
-    Establish a connection to Wharton Research Data Services (WRDS).
+    """Establish a connection to Wharton Research Data Services (WRDS).
 
-    Retrieves WRDS credentials from environment variables (or a .env file)
-    and connects to the WRDS PostgreSQL database using SQLAlchemy.
+    Opens a SQLAlchemy connection to the WRDS PostgreSQL database. Credentials
+    are read from the 'WRDS_USER' and 'WRDS_PASSWORD' environment variables,
+    which can also be supplied through a '.env' file in the working directory
+    ('load_dotenv' is called before the lookup). The connection uses the
+    'postgresql+psycopg2' driver, requires SSL, and targets
+    'wrds-pgdata.wharton.upenn.edu' on port 9737. Pool pre-ping is enabled so
+    stale connections are detected and recycled automatically.
 
     Returns
     -------
-        object: A connection object to interact with the WRDS database.
+    sqlalchemy.engine.Connection
+        An open SQLAlchemy connection to the WRDS database. Pass it to any
+        'download_data_wrds_*' helper or use it directly with
+        'pd.read_sql_query'. Close it via 'disconnect_connection' when done.
+
+    Raises
+    ------
+    ValueError
+        If 'WRDS_USER' or 'WRDS_PASSWORD' is not set in the environment or
+        '.env' file. The 'load_wrds_credentials' helper performs this check
+        before the connection is opened.
+    sqlalchemy.exc.OperationalError
+        If the database host is unreachable or the credentials are rejected.
+
+    See Also
+    --------
+    set_wrds_credentials : Interactively prompts for credentials and writes
+        them to a '.env' file in the project or home directory.
+    disconnect_connection : Closes the connection returned by this function.
+
+    Examples
+    --------
+    >>> import os
+    >>> os.environ['WRDS_USER'] = 'your_username'
+    >>> os.environ['WRDS_PASSWORD'] = 'your_password'
+    >>> from tidyfinance import get_wrds_connection, disconnect_connection
+    >>> con = get_wrds_connection()
+    >>> # ... query WRDS via con ...
+    >>> disconnect_connection(con)
     """
     wrds_user, wrds_password = load_wrds_credentials()
     url = URL.create(
@@ -39,15 +71,29 @@ def get_wrds_connection() -> object:
 
 
 def disconnect_connection(connection: object) -> bool:
-    """Close the database connection.
+    """Close an open WRDS database connection safely.
+
+    Attempts to close the supplied connection. Any exception raised by
+    the underlying driver is swallowed so the call can be used in
+    'finally' blocks without masking the original error.
 
     Parameters
     ----------
-        connection (object): The active database connection to be closed.
+    connection : object
+        The connection object to close. Typically the value returned by
+        'get_wrds_connection'.
 
     Returns
     -------
-        bool: True if disconnection was successful, False otherwise.
+    bool
+        'True' on successful disconnection, 'False' if the close call
+        raised an exception.
+
+    Examples
+    --------
+    >>> from tidyfinance import get_wrds_connection, disconnect_connection
+    >>> con = get_wrds_connection()
+    >>> disconnect_connection(con)
     """
     try:
         connection.close()
@@ -57,20 +103,27 @@ def disconnect_connection(connection: object) -> bool:
 
 
 def list_supported_indexes() -> pd.DataFrame:
-    """
-    Return a DataFrame containing information on supported financial indexes.
+    """Return a DataFrame of supported financial indexes.
 
-    Each index is associated with a URL pointing to a CSV file containing
-    the holdings of the index and a 'skip' value indicating the number of
-    lines to skip when reading the CSV.
+    Each row corresponds to one index and pairs the index name with the
+    URL of an iShares CSV holdings file plus the number of header rows
+    to skip when parsing it. This table powers
+    'download_data_constituents'.
 
     Returns
     -------
-        pd.DataFrame: A DataFrame with three columns:
-            - index (str): The name of the financial index
-            (e.g., "DAX", "S&P 500").
-            - url (str): The URL to the CSV file containing holdings data.
-            - skip (int): The number of lines to skip when reading CSV file.
+    pandas.DataFrame
+        A DataFrame with three columns:
+
+        - 'index': name of the financial index (e.g. 'DAX', 'S&P 500').
+        - 'url': URL of the CSV file with constituent holdings.
+        - 'skip': number of leading rows to skip when reading the CSV.
+
+    Examples
+    --------
+    >>> from tidyfinance import list_supported_indexes
+    >>> supported_indexes = list_supported_indexes()
+    >>> print(supported_indexes)
     """
     data = [
         (
@@ -143,13 +196,22 @@ def list_supported_indexes() -> pd.DataFrame:
 
 
 def list_tidy_finance_chapters() -> list:
-    """
-    Return a list of available chapters in the Tidy Finance resource.
+    """Return the chapter slugs of the Tidy Finance book.
+
+    Provides the URL-safe identifiers used to address chapters on the
+    Tidy Finance website. The list can be passed to
+    'open_tidy_finance_website' or formatted into other links.
 
     Returns
     -------
-        list: A list where each element is the name of a chapter available in
-        the Tidy Finance resource.
+    list of str
+        Chapter slugs in the order they appear in the book. Each slug
+        corresponds to a chapter page on https://www.tidy-finance.org.
+
+    Examples
+    --------
+    >>> from tidyfinance import list_tidy_finance_chapters
+    >>> list_tidy_finance_chapters()
     """
     return [
         "setting-up-your-environment",
@@ -183,12 +245,23 @@ def list_tidy_finance_chapters() -> list:
 
 
 def load_wrds_credentials() -> tuple:
-    """
-    Load WRDS credentials from environment variables or a .env file.
+    """Load WRDS credentials from environment variables or a '.env' file.
+
+    Reads 'WRDS_USER' and 'WRDS_PASSWORD' from the process environment.
+    If neither is set, also looks for a '.env' file in the working
+    directory via 'load_dotenv'.
 
     Returns
     -------
-        tuple: A tuple containing (wrds_user (str), wrds_password (str)).
+    tuple of (str, str)
+        '(wrds_user, wrds_password)' pair suitable for building a
+        SQLAlchemy connection URL.
+
+    Raises
+    ------
+    ValueError
+        If either 'WRDS_USER' or 'WRDS_PASSWORD' is missing after the
+        '.env' file has been loaded.
     """
     load_dotenv()
 
@@ -206,15 +279,30 @@ def load_wrds_credentials() -> tuple:
 
 
 def open_tidy_finance_website(chapter: str = None) -> None:
-    """Open the Tidy Finance website or a specific chapter in a browser.
+    """Open the Tidy Finance website or a specific chapter.
+
+    If 'chapter' is omitted, the main landing page of the Python
+    edition of Tidy Finance is opened. Otherwise the URL for the
+    requested chapter is constructed and opened. An unknown chapter
+    name falls back to the main page.
 
     Parameters
     ----------
-        chapter (str, optional): Name of the chapter to open. Defaults to None.
+    chapter : str, optional
+        Slug of the chapter to open (e.g. 'beta-estimation'). Must
+        match an entry returned by 'list_tidy_finance_chapters'.
 
     Returns
     -------
-        None
+    None
+        The function is called for its side effect of launching the
+        default browser at the appropriate URL.
+
+    Examples
+    --------
+    >>> from tidyfinance import open_tidy_finance_website
+    >>> open_tidy_finance_website()
+    >>> open_tidy_finance_website('beta-estimation')
     """
     base_url = "https://www.tidy-finance.org/python/"
 
@@ -260,27 +348,48 @@ def _process_additional_columns(additional_columns):
 
 
 def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
-    """
-    Process TRACE data by filtering trades, handling exception.
+    """Clean Enhanced TRACE trade reports.
+
+    Applies the Dick-Nielsen cleaning protocol to the raw Enhanced
+    TRACE message stream, removing cancellations, corrections, and
+    reversals and producing one observation per executed corporate
+    bond trade.
 
     Parameters
     ----------
-        trace_all (pd.DataFrame): The raw TRACE data.
+    trace_all : pd.DataFrame
+        Raw Enhanced TRACE messages with the message-status columns
+        used by the cleaning protocol ('trc_st', 'msg_seq_nb',
+        'orig_msg_seq_nb', 'trd_rpt_dt', 'trd_exctn_dt',
+        'trd_exctn_tm', 'cusip_id', 'entrd_vol_qt', 'rptd_pr',
+        'rpt_side_cd', 'cntra_mp_id', 'asof_cd').
 
     Returns
     -------
-        pd.DataFrame: The cleaned and processed TRACE data.
+    pd.DataFrame
+        Cleaned trade panel containing only executed trades with
+        cancellations, corrections, and reversals already removed.
 
     Notes
     -----
-    Trades are cleaned under two regimes split by the date the enhanced
-    TRACE message-status format changed (``2012-02-06``; see Dick-Nielsen,
-    2014). Trades reported on or after this date use the post-2012 logic and
-    earlier trades the pre-2012 logic. This matches the cutoff used by the
-    R edition (``download_data_wrds_trace_enhanced`` in r-tidyfinance).
+    Trades are cleaned under two regimes split by 2012-02-06, the date
+    the Enhanced TRACE message-status format changed. Trades reported
+    on or after this cutoff are cleaned with the post-2012 logic
+    (status flags 'T', 'R', 'X', 'C', 'Y'); earlier trades use the
+    pre-2012 logic (status flags 'T', 'C', 'W' plus 'asof_cd'
+    reversals). The cutoff date follows Dick-Nielsen (2014).
+
+    References
+    ----------
+    Dick-Nielsen, J. (2009). Liquidity biases in TRACE. Journal of
+    Fixed Income, 19(2), 43-55.
+    https://doi.org/10.3905/jfi.2009.19.2.043
+
+    Dick-Nielsen, J. (2014). How to clean enhanced TRACE data. Working
+    Paper. https://ssrn.com/abstract=2337908
     """
     # Post 2012-02-06
-    ## Trades (trc_st = T) and correction (trc_st = R)
+    # Trades (trc_st = T) and correction (trc_st = R)
     trace_post_TR = trace_all.query("trc_st in ['T', 'R']").query(
         "trd_rpt_dt >= '2012-02-06'"
     )
@@ -304,7 +413,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         .assign(drop=True)
     )
 
-    ## Cleaning corrected and cancelled trades
+    # Cleaning corrected and cancelled trades
     trace_post_TR = (
         trace_post_TR.merge(trace_post_XC, how="left")
         .query("drop != True")
@@ -332,7 +441,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Clean reversals
-    ## Match the orig_msg_seq_nb of Y-message to msg_seq_nb of main message
+    # Match the orig_msg_seq_nb of Y-message to msg_seq_nb of main message
     trace_post = (
         trace_post_TR.merge(trace_post_Y, how="left")
         .query("drop != True")
@@ -341,7 +450,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
     # Enhanced TRACE: Pre 2012-02-06
     # Pre 2012-02-06
-    ## Trades (trc_st = T)
+    # Trades (trc_st = T)
     trace_pre_T = trace_all.query("trd_rpt_dt < '2012-02-06'")
 
     # Cancellations (trc_st = C)
@@ -365,7 +474,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Remove cancellations from trades
-    ## Match orig_msg_seq_nb of C-message to msg_seq_nb of main message
+    # Match orig_msg_seq_nb of C-message to msg_seq_nb of main message
     trace_pre_T = (
         trace_pre_T.merge(trace_pre_C, how="left")
         .query("drop != True")
@@ -378,11 +487,11 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     )
 
     # Implement corrections in a loop
-    ## Correction control
+    # Correction control
     correction_control = len(trace_pre_W)
     correction_control_last = len(trace_pre_W)
 
-    ## Correction loop
+    # Correction loop
     while correction_control > 0:
         # Create placeholder
         ## Only identifying columns of trace_pre_T (for joins)
@@ -407,7 +516,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         )
 
         # Create placeholder
-        ## Only identifying columns of trace_pre_W_correcting (for anti-joins)
+        # Only identifying columns of trace_pre_W_correcting (for anti-joins)
         placeholder_trace_pre_W_correcting = (
             trace_pre_W_correcting.get(
                 ["cusip_id", "trd_exctn_dt", "orig_msg_seq_nb"]
@@ -436,19 +545,23 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
             continue
 
     # Reversals (asof_cd = R)
-    ## Record reversals
+    # Record reversals
     trace_pre_R = trace_pre_T.query("asof_cd == 'R'").sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
+        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt",
+         "trd_rpt_tm"
+         ]
     )
 
-    ## Prepare final data
+    # Prepare final data
     trace_pre = trace_pre_T.query(
         "asof_cd == None | asof_cd.isnull() | asof_cd not in ['R', 'X', 'D']"
     ).sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
+        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt",
+         "trd_rpt_tm"
+         ]
     )
 
-    ## Add grouped row numbers
+    # Add grouped row numbers
     trace_pre_R["seq"] = trace_pre_R.groupby(
         [
             "cusip_id",
@@ -471,7 +584,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         ]
     ).cumcount()
 
-    ## Select columns for reversal cleaning
+    # Select columns for reversal cleaning
     trace_pre_R = trace_pre_R.get(
         [
             "cusip_id",
@@ -484,7 +597,7 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
         ]
     ).assign(reversal=True)
 
-    ## Remove reversals and the reversed trade
+    # Remove reversals and the reversed trade
     trace_pre = (
         trace_pre.merge(trace_pre_R, how="left")
         .query("reversal != True")
@@ -559,19 +672,34 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
 
 
 def set_wrds_credentials() -> None:
-    """Set WRDS credentials in the environment.
+    """Set WRDS credentials in a '.env' file.
 
-    Prompts the user for WRDS credentials and stores them in a .env file.
+    Prompts interactively for the WRDS username and password and writes
+    them to a '.env' file as 'WRDS_USER' and 'WRDS_PASSWORD'. The
+    location is chosen at the prompt: 'project' writes to the current
+    working directory, 'home' writes to the user's home directory. If
+    a '.env' file already contains WRDS credentials, the user is asked
+    before overwriting. After saving, the user is offered to append
+    '.env' to a sibling '.gitignore' (recommended).
 
-    The user can choose to store the credentials in the project directory or
-    the home directory. If credentials already exist, the user is prompted for
-    confirmation before overwriting them. Additionally, the user is given an
-    option to add the .env file to .gitignore.
+    The resulting '.env' file is the credentials source consumed by
+    'get_wrds_connection' via 'load_wrds_credentials'.
 
     Returns
     -------
-        - Saves the WRDS credentials in a '.env' file
-        - Optionally adds '.env' to '.gitignore'
+    None
+        Called for its side effects: writing '.env' and, optionally,
+        updating '.gitignore'.
+
+    See Also
+    --------
+    get_wrds_connection : Opens a WRDS connection using the credentials
+        stored by this function.
+
+    Examples
+    --------
+    >>> from tidyfinance import set_wrds_credentials
+    >>> set_wrds_credentials()
     """
     wrds_user = input("Enter your WRDS username: ")
     wrds_password = input("Enter your WRDS password: ")
@@ -609,7 +737,7 @@ def set_wrds_credentials() -> None:
             .lower()
         )
         if overwrite_choice != "yes":
-            print("Aborted. Credentials already exist and are not overwritten.")
+            print("Aborted. Credentials already exist.")
             return
 
     if os.path.exists(gitignore_path):
@@ -645,22 +773,35 @@ def set_wrds_credentials() -> None:
 
 
 def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
-    """Winsorize a numeric vector by replacing extreme values.
+    """Winsorize a numeric vector at symmetric quantiles.
+
+    Replaces values below the lower 'cut' quantile and above the upper
+    '1 - cut' quantile with the corresponding quantile boundaries. The
+    length of the vector is preserved.
 
     Parameters
     ----------
-    x : np.ndarray
-        Numeric vector to winsorize.
+    x : numpy.ndarray
+        A numeric vector to winsorize. Inputs that are not already
+        arrays are coerced via 'numpy.array'.
     cut : float
-        Proportion of data to replace at both ends (must be between
-        [0, 0.5]). For example, 0.05 replaces the lowest and highest
-        5% of values with the corresponding quantiles.
+        Proportion of observations replaced at each tail. For example,
+        'cut=0.05' clips the lowest and highest five percent. Must lie
+        in '[0, 0.5]'.
 
     Returns
     -------
-    np.ndarray
-        Winsorized vector with extreme values replaced by the
-        corresponding quantile values.
+    numpy.ndarray
+        Vector with the same length as 'x' in which extreme values have
+        been replaced by the lower and upper quantile cutoffs.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from tidyfinance import winsorize
+    >>> rng = np.random.default_rng(123)
+    >>> data = rng.standard_normal(100)
+    >>> winsorized = winsorize(data, 0.05)
     """
     if not isinstance(x, np.ndarray):
         x = np.array(x)
@@ -679,18 +820,33 @@ def winsorize(x: np.ndarray, cut: float) -> np.ndarray:
 
 
 def trim(x: np.ndarray, cut: float) -> np.ndarray:
-    """
-    Remove values in a numeric vector beyond the specified quantiles.
+    """Trim a numeric vector by removing extreme observations.
+
+    Drops values below the lower 'cut' quantile and above the upper
+    '1 - cut' quantile. The returned vector is therefore shorter than
+    the input.
 
     Parameters
     ----------
-        x (np.ndarray): A numeric array to be trimmed.
-        cut (float): The proportion of data to be trimmed from both ends
-        (must be between [0, 0.5]).
+    x : numpy.ndarray
+        A numeric vector to trim.
+    cut : float
+        Proportion of observations removed at each tail. For example,
+        'cut=0.05' removes the lowest and highest five percent. Must
+        lie in '[0, 0.5]'.
 
     Returns
     -------
-        np.ndarray: A numeric array with extreme values removed.
+    numpy.ndarray
+        Vector with the extreme observations removed.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from tidyfinance import trim
+    >>> rng = np.random.default_rng(123)
+    >>> data = rng.standard_normal(100)
+    >>> trimmed = trim(data, 0.05)
     """
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")

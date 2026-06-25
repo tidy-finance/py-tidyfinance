@@ -28,17 +28,16 @@ def add_lagged_columns(
     date_col: str = "date",
     data_options: dict | None = None,
 ) -> pd.DataFrame:
-    """Append lagged versions of specified columns to a DataFrame using
-    a join-based approach.
+    """Append lagged columns to a data frame via a join-based approach.
 
-    When lag == max_lag (the default), an equi-join is used: source
-    dates are shifted forward by lag and matched exactly. When
-    lag < max_lag, a window join is used: for each row, the most
-    recent source value within [date - max_lag, date - lag] is
-    selected.
+    When 'lag == max_lag' (the default), an equi-join is used: source
+    dates are shifted forward by 'lag' and matched exactly. When
+    'lag < max_lag', an inequality join is used: for each row, the most
+    recent source value within the window '[date - max_lag, date - lag]'
+    is selected.
 
-    The combination of by and the date column must be unique in
-    data. If by is None, dates alone must be unique.
+    The combination of 'by' and the date column must be unique in 'data'.
+    If 'by' is None, dates alone must be unique.
 
     Parameters
     ----------
@@ -46,33 +45,66 @@ def add_lagged_columns(
         DataFrame containing the variables to lag.
     cols : list of str or str
         Names of the columns to lag. Each column produces a new column
-        suffixed with _lag.
+        suffixed with '_lag'.
     lag : int, pd.Timedelta, or pd.DateOffset
-        Minimum lag (inclusive) to apply. An int is interpreted as
-        days.
+        Minimum lag (inclusive) to apply, e.g. 'pd.DateOffset(months=1)'.
+        An int is interpreted as days.
     max_lag : int, pd.Timedelta, or pd.DateOffset, optional
-        Maximum lag (inclusive). Defaults to lag (exact lag).
+        Maximum lag (inclusive) to apply. Defaults to 'lag' (exact lag).
     by : list of str or str, optional
-        Grouping columns (e.g. a stock identifier). Lagged values are
+        Grouping column(s) (e.g. a stock identifier). Lagged values are
         matched within groups. Defaults to None.
     drop_na : bool, optional
-        If True, NaN values in the source columns are excluded
-        before matching, so the lookup skips over missing observations.
-        Applied independently per column. Defaults to False.
+        If True, NaN values in the source columns are excluded before
+        matching, so the lookup skips over missing observations. Applied
+        independently per column. Defaults to False.
     ff_adjustment : bool, optional
-        If True, only the last observation per year (within each
-        group defined by by) is retained as a source for lagged
-        values, following Fama-French conventions for annual
-        accounting data. Defaults to False.
+        If True, only the last observation per year (within each group
+        defined by 'by') is retained as a source for lagged values,
+        following Fama-French conventions for annual accounting data.
+        Defaults to False.
     date_col : str, optional
-        Name of the date column. Defaults to "date".
+        Name of the date column. Defaults to 'date'.
+    data_options : dict, optional
+        Column-name mapping (see 'data_options'). The 'date' element is
+        used to specify the date column. Uses the 'data_options' default
+        when None: 'date' -> 'date'.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with the same rows as data and new columns
-        appended, each suffixed with _lag. Unmatched rows receive
-        NaN in the lagged columns.
+        Data frame with the same rows as 'data' and new columns
+        appended, each suffixed with '_lag'. Unmatched rows receive NaN
+        in the lagged columns.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import add_lagged_columns
+    >>> rng = np.random.default_rng(42)
+    >>> dates = pd.date_range('2023-01-01', periods=10, freq='MS')
+    >>> data = pd.DataFrame({
+    ...     'permno': [1] * 10 + [2] * 10,
+    ...     'date': list(dates) * 2,
+    ...     'size': rng.uniform(100, 200, 20),
+    ...     'bm': rng.uniform(0.5, 1.5, 20),
+    ... })
+    >>> # Exact lag: each row gets the value from exactly 2 months earlier
+    >>> add_lagged_columns(
+    ...     data,
+    ...     cols=['size', 'bm'],
+    ...     lag=pd.DateOffset(months=2),
+    ...     by='permno',
+    ... )
+    >>> # Window lag: most recent value from 2 to 4 months earlier
+    >>> add_lagged_columns(
+    ...     data,
+    ...     cols='size',
+    ...     lag=pd.DateOffset(months=2),
+    ...     max_lag=pd.DateOffset(months=4),
+    ...     by='permno',
+    ... )
     """
     if data_options is not None:
         date_col = data_options.get("date", date_col)
@@ -261,35 +293,66 @@ def join_lagged_values(
     date_col: str = "date",
     data_options: dict | None = None,
 ) -> pd.DataFrame:
-    """Join lagged values from new_data into original_data over
-    a date range.
+    """Join lagged values of variables over a date range.
 
-    Unlike :func:'add_lagged_columns', this supports joining across
-    DataFrames with different date grids (e.g. monthly source into
-    quarterly target). All columns in new_data besides id_keys
-    and the date column are lagged and joined under their original
-    names.
+    Joins lagged values of selected variables from one data frame
+    ('new_data') into another ('original_data'), based on date ranges
+    defined by 'min_lag' and 'max_lag'. Unlike 'add_lagged_columns',
+    this function supports joining across data frames with different
+    date grids (e.g. monthly source data into quarterly target data).
+    All columns in 'new_data' besides 'id_keys' and the date column are
+    lagged and joined under their original names.
 
     Parameters
     ----------
     original_data : pd.DataFrame
         Target panel data.
     new_data : pd.DataFrame
-        Source variables to lag and merge.
+        Source variables to lag and merge. All columns besides
+        'id_keys' and the date column will be lagged and joined.
     id_keys : list of str or str
         Identifier column(s) shared by both frames.
-    min_lag, max_lag : int, pd.Timedelta, or pd.DateOffset
-        Inclusive lag bounds.
+    min_lag : int, pd.Timedelta, or pd.DateOffset
+        Lower lag bound (inclusive).
+    max_lag : int, pd.Timedelta, or pd.DateOffset
+        Upper lag bound (inclusive).
     ff_adjustment : bool, optional
         If True, keeps only the last observation per identifier and
-        year in new_data before lagging. Defaults to False.
+        year in 'new_data' before lagging (Fama-French convention).
+        Defaults to False.
     date_col : str, optional
-        Name of the date column. Defaults to "date".
+        Name of the date column. Defaults to 'date'.
+    data_options : dict, optional
+        Column-name mapping (see 'data_options'). The 'date' element is
+        used to identify the date column. Uses the 'data_options'
+        default when None: 'date' -> 'date'.
 
     Returns
     -------
     pd.DataFrame
-        original_data with new columns from new_data appended.
+        'original_data' with all columns from 'new_data' appended as
+        lagged values (keeping their original names).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import join_lagged_values
+    >>> rng = np.random.default_rng(42)
+    >>> dates = pd.date_range('2020-01-01', periods=6, freq='MS')
+    >>> df1 = pd.DataFrame({
+    ...     'id': [1] * 6 + [2] * 6,
+    ...     'date': list(dates) * 2,
+    ... })
+    >>> df2 = df1.copy()
+    >>> df2['x'] = rng.standard_normal(len(df2))
+    >>> join_lagged_values(
+    ...     original_data=df1,
+    ...     new_data=df2,
+    ...     id_keys='id',
+    ...     min_lag=pd.DateOffset(months=1),
+    ...     max_lag=pd.DateOffset(months=3),
+    ... )
     """
     if data_options is not None:
         date_col = data_options.get("date", date_col)
@@ -431,9 +494,13 @@ def data_options(
     earnings: str = "ib",
     **kwargs,
 ) -> dict:
-    """Construct a tidyfinance data options dict.
+    """Create data options for tidyfinance functions.
 
-    Maps the Tidy Finance naming conventions to the actual column names.
+    Creates a dict of data options used by tidyfinance-related
+    functions. These options map the specific data variables to the
+    Tidy Finance naming conventions, allowing functions to flexibly
+    work with different datasets by specifying the relevant column
+    names. Additional options can be passed through '**kwargs'.
 
     Parameters
     ----------
@@ -465,8 +532,13 @@ def data_options(
     Returns
     -------
     dict
-        Mapping with at least the 11 standard column-name keys plus
-        any extras provided via kwargs.
+        Mapping with at least the 11 standard column-name keys plus any
+        extras provided via '**kwargs'.
+
+    Examples
+    --------
+    >>> from tidyfinance import data_options
+    >>> data_options(id='permno', date='date', exchange='exchange')
     """
     _validate_column_name(id, "id", "entity")
     _validate_column_name(date, "date", "date")
@@ -534,7 +606,30 @@ def assign_portfolio(
     Returns
     -------
     pd.Series
-        Portfolio assignments as a float series.
+        Portfolio assignments as a float series. Each entry is the
+        1-indexed portfolio number; values outside the breakpoint
+        range fall into the boundary portfolios. NaN inputs are
+        returned as NaN.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import assign_portfolio, breakpoint_options
+    >>> rng = np.random.default_rng(42)
+    >>> data = pd.DataFrame({
+    ...     'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
+    ...     'market_cap': rng.uniform(1, 100, 100),
+    ... })
+    >>> # Quintile portfolios on market_cap with NYSE breakpoints
+    >>> assign_portfolio(
+    ...     data,
+    ...     sorting_variable='market_cap',
+    ...     breakpoint_options=breakpoint_options(
+    ...         n_portfolios=5,
+    ...         breakpoints_exchanges='NYSE',
+    ...     ),
+    ... )
     """
     if breakpoint_function is None:
         breakpoint_function = compute_breakpoints
@@ -608,33 +703,62 @@ def breakpoint_options(
     breakpoints_min_size_threshold: float = None,
     **kwargs,
 ) -> dict:
-    """
-    Create a dictionary of options for breakpoints in portfolio sorting.
+    """Create breakpoint options for portfolio sorting.
+
+    Generates a structured dict of options for defining breakpoints in
+    portfolio sorting. It includes parameters for the number of
+    portfolios, percentile thresholds, exchange-specific breakpoints,
+    and smooth bunching, along with additional optional parameters.
 
     Parameters
     ----------
     n_portfolios : int, optional
-        Number of portfolios to create. Must be a positive integer.
-    percentiles : list, optional
-        Percentile thresholds for defining breakpoints. Each value
-        must be between 0 and 1.
+        Number of portfolios to create. Must be a positive integer. If
+        not provided, defaults to None.
+    percentiles : list of float, optional
+        Percentile thresholds for defining breakpoints. Each value must
+        be between 0 and 1. If not provided, defaults to None.
     breakpoints_exchanges : str or list of str, optional
-        Exchange (or exchanges) from which to compute the breakpoints.
-        Accepts either a non-empty string or a non-empty list of
-        strings.
+        Non-empty exchange (or list of exchanges) from which to compute
+        the breakpoints. If not provided, defaults to None.
     smooth_bunching : bool, default False
-        Whether smooth bunching should be applied.
+        Indicates whether smooth bunching should be applied.
     breakpoints_min_size_threshold : float, optional
-        Quantile below which stocks are excluded from breakpoint
-        computation. Must be None or a single numeric value strictly
-        between 0 and 1. None disables the filter.
+        When set to a value between 0 and 1, stocks with market
+        capitalization below this quantile are excluded from breakpoint
+        computation. The quantile is computed among
+        'breakpoints_exchanges' stocks if specified, otherwise among
+        all stocks. Requires a market capitalization column in the data
+        (see 'data_options'). Defaults to None (no size filtering).
     **kwargs
-        Additional optional arguments, stored verbatim in the dict.
+        Additional optional arguments. These will be captured in the
+        resulting structure as part of the dict.
 
     Returns
     -------
     dict
-        Dictionary containing breakpoint options.
+        Dictionary containing the provided breakpoint options,
+        including any additional arguments passed via '**kwargs'.
+
+    Examples
+    --------
+    >>> from tidyfinance import breakpoint_options
+    >>> # Quintile portfolios with NYSE breakpoints
+    >>> breakpoint_options(
+    ...     n_portfolios=5,
+    ...     breakpoints_exchanges='NYSE',
+    ... )
+    >>> # Custom percentile thresholds (mutually exclusive with n_portfolios)
+    >>> breakpoint_options(
+    ...     percentiles=[0.3, 0.7],
+    ...     breakpoints_exchanges='NYSE',
+    ... )
+    >>> # Exclude the smallest 20% of NYSE stocks from breakpoint computation
+    >>> breakpoint_options(
+    ...     n_portfolios=10,
+    ...     breakpoints_exchanges='NYSE',
+    ...     breakpoints_min_size_threshold=0.2,
+    ... )
     """
     # Validate n_portfolios
     if n_portfolios is not None:
@@ -719,37 +843,92 @@ def compute_breakpoints(
     breakpoint_options: dict,
     data_options: dict = None,
 ) -> np.ndarray:
-    """
-    Compute breakpoints based on a sorting variable for portfolios.
+    """Compute breakpoints based on a sorting variable.
+
+    Computes breakpoints based on a specified sorting variable. It can
+    optionally filter the data by exchanges or lagged size quantiles
+    before computing the breakpoints. The function requires either the
+    number of portfolios to be created or specific percentiles for the
+    breakpoints, but not both. The function also optionally handles
+    cases where the sorting variable clusters on the edges, by
+    assigning all extreme values to the edges and attempting to compute
+    equally populated breakpoints with the remaining values.
 
     Parameters
     ----------
     data : pd.DataFrame
         DataFrame with the dataset for breakpoint computation.
     sorting_variable : str
-        Column name used to determine breakpoints.
+        Column name in 'data' to be used for determining breakpoints.
     breakpoint_options : dict
-        Dictionary containing breakpoint parameters, including:
+        Named dict of 'breakpoint_options' for the breakpoints. The
+        accepted entries include:
 
-        - 'n_portfolios' (int, optional): Number of equally sized portfolios.
-        - 'percentiles' (list, optional): Custom percentiles for breakpoints.
-        - 'breakpoints_exchanges' (str or list, optional): Exchanges to
-          filter the data before computing breakpoints.
-        - 'smooth_bunching' (bool, optional): Whether to smooth edge
-          breakpoints.
-        - 'breakpoints_min_size_threshold' (float, optional): Quantile below
-          which stocks are excluded from breakpoint computation.
+        - 'n_portfolios' (int, optional): Number of equally sized
+          portfolios to create. Mutually exclusive with 'percentiles'.
+        - 'percentiles' (list of float, optional): Percentiles defining
+          the breakpoints of the portfolios. Mutually exclusive with
+          'n_portfolios'.
+        - 'breakpoints_exchanges' (str or list of str, optional):
+          Exchange names to filter the data before computing
+          breakpoints. Exchanges must be stored in the column given by
+          'data_options' (defaults to 'exchange'). If None, no
+          filtering is applied.
+        - 'smooth_bunching' (bool, optional): Whether to attempt
+          smoothing non-extreme portfolios if the sorting variable
+          bunches on the extremes (True) or not (False, the default).
+          In some cases, smoothing will not result in equal-sized
+          portfolios off the edges due to multiple clusters. If
+          sufficiently large bunching is detected, 'percentiles' is
+          ignored and equally-spaced portfolios are returned for these
+          cases with a warning.
+        - 'breakpoints_min_size_threshold' (float, optional): Value
+          between 0 and 1 (exclusive). When set, stocks with market
+          capitalization below this quantile are excluded from
+          breakpoint computation. The quantile is computed among
+          'breakpoints_exchanges' stocks if specified, otherwise among
+          all stocks. Requires a market capitalization column in the
+          data (column name determined by 'data_options').
 
     data_options : dict, optional
-        Column-name mapping (see data_options). The 'exchange' key is used
-        when breakpoints_exchanges is set, and 'mktcap_lag' is used when
-        breakpoints_min_size_threshold is set. Defaults to a mapping with
-        'exchange' -> 'exchange' and 'mktcap_lag' -> 'mktcap_lag' if None.
+        Column-name mapping (see 'data_options'). The 'exchange' key is
+        used to specify the exchange column, and 'mktcap_lag' is used
+        to specify the market capitalization column. Uses the
+        'data_options' default when None: 'exchange' -> 'exchange' and
+        'mktcap_lag' -> 'mktcap_lag'.
 
     Returns
     -------
     np.ndarray
-        A sorted array of breakpoints.
+        Sorted array of breakpoints of the desired length.
+
+    Notes
+    -----
+    This function raises a ValueError if both 'n_portfolios' and
+    'percentiles' are provided or missing simultaneously.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import compute_breakpoints, breakpoint_options
+    >>> rng = np.random.default_rng(42)
+    >>> data = pd.DataFrame({
+    ...     'id': range(1, 101),
+    ...     'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
+    ...     'market_cap': range(1, 101),
+    ... })
+    >>> compute_breakpoints(
+    ...     data, 'market_cap', breakpoint_options(n_portfolios=5)
+    ... )
+    >>> compute_breakpoints(
+    ...     data,
+    ...     'market_cap',
+    ...     breakpoint_options(
+    ...         percentiles=[0.2, 0.4, 0.6, 0.8],
+    ...         breakpoints_exchanges=['NYSE'],
+    ...     ),
+    ... )
     """
     if not isinstance(breakpoint_options, dict):
         raise ValueError(
@@ -917,8 +1096,25 @@ def create_summary_statistics(
     detail: bool = False,
     drop_na: bool = False,
 ) -> pd.DataFrame:
-    """
-    Compute summary statistics for specified numeric variables in a DataFrame.
+    """Create summary statistics for specified variables.
+
+    Computes a set of summary statistics for numeric and boolean
+    variables in a data frame. It allows users to select specific
+    variables for summarization and can calculate statistics for the
+    whole dataset or within groups specified by the 'by' argument.
+    Additional detail levels for quantiles can be included.
+
+    The function first checks that all specified variables are of a
+    numeric dtype (int, float, or bool). If any variables fail this
+    check, a 'ValueError' is raised listing the offending columns.
+    Boolean columns are summarized as their numeric equivalent — for
+    example, the 'mean' of a boolean column is the proportion of True.
+
+    The basic set of summary statistics includes the count of non-NaN
+    values (n), mean, standard deviation (sd), minimum (min), median
+    (q50), and maximum (max). If 'detail' is True, the function also
+    computes the 1st, 5th, 10th, 25th, 75th, 90th, 95th, and 99th
+    percentiles.
 
     For each selected variable the function reports the number of
     observations (count), mean, standard deviation (std), minimum,
@@ -930,36 +1126,71 @@ def create_summary_statistics(
     Parameters
     ----------
     data : pd.DataFrame
-        DataFrame containing the data to summarize.
+        Data frame containing the variables to be summarized.
     variables : list of str
-        Column names to summarize. Each must be numeric or boolean.
+        List of column names in the data frame to summarize. These
+        variables must be of a numeric dtype (int, float, or bool).
     by : str, optional
-        Column name to group the data by before summarizing. Defaults
-        to None (summarize the whole dataset).
+        Column name to group the data before summarizing. If None (the
+        default), summary statistics are computed across all
+        observations.
     detail : bool, default False
-        If True, include the detailed quantiles (1%, 5%, 10%, 25%,
-        75%, 90%, 95%, 99%) in addition to the basic statistics.
+        Whether to compute detailed summary statistics, including
+        additional quantiles. When False, computes basic statistics
+        (n, mean, sd, min, median, max). When True, additional
+        quantiles (1%, 5%, 10%, 25%, 75%, 90%, 95%, 99%) are computed.
     drop_na : bool, default False
-        Whether to drop missing values before summarizing.
+        Whether to drop missing values for each variable before
+        summarizing.
 
     Returns
     -------
     pd.DataFrame
-        Summary statistics (count, mean, std, min, median or the
-        requested quantiles, and max) for each selected variable;
-        reported per group when ``by`` is supplied.
+        Data frame with summary statistics for each selected variable.
+        If 'by' is specified, the output includes the grouping variable
+        as well. Each row represents a variable (and a group if 'by' is
+        used), and each column contains the computed statistics.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import create_summary_statistics
+    >>> data = pd.DataFrame({
+    ...     'ret': [0.01, -0.02, 0.03, np.nan, 0.005],
+    ...     'size': [100, 200, 150, 300, 250],
+    ...     'group': ['A', 'A', 'B', 'B', 'A'],
+    ... })
+    >>> # Basic summary across all observations
+    >>> create_summary_statistics(data, ['ret', 'size'])
+    >>> # Grouped summary
+    >>> create_summary_statistics(data, ['ret', 'size'], by='group')
+    >>> # Detailed quantiles
+    >>> create_summary_statistics(data, ['ret'], detail=True)
     """
     # Check that all specified variables are numeric or boolean
     non_numeric_vars = [
         var
         for var in variables
-        if not np.issubdtype(data[var].dtype, np.number)
+        if not pd.api.types.is_numeric_dtype(data[var].dtype)
     ]
     if non_numeric_vars:
         raise ValueError(
             "The following columns are not numeric or boolean: "
             f"{', '.join(non_numeric_vars)}"
         )
+
+    # Cast boolean columns to float so they survive `describe()`, which
+    # drops bool dtype by default. The mean of the cast column then
+    # equals the proportion of True in the original.
+    bool_cols = [
+        v for v in variables
+        if pd.api.types.is_bool_dtype(data[v].dtype)
+    ]
+    if bool_cols:
+        data = data.copy()
+        for c in bool_cols:
+            data[c] = data[c].astype(float)
 
     # Drop missing values if specified
     if drop_na:
@@ -999,26 +1230,54 @@ def estimate_betas(
     min_obs: int = None,
     id_col: str = "permno",
 ) -> pd.DataFrame:
-    """
-    Estimate rolling betas using RollingOLS.from_formula from statsmodels.
+    """Estimate rolling betas.
+
+    Estimates rolling betas for a given model using the provided data
+    via 'RollingOLS.from_formula' from statsmodels. For each stock, the
+    regression specified by 'model' is fit over a rolling window of
+    size 'lookback'.
 
     Parameters
     ----------
-    data (pd.DataFrame): DataFrame containing stock return data with date and
-        stock identifier columns.
-    model (str): A formula representing the regression model
-        (e.g., 'ret_excess ~ mkt_excess').
-    lookback (int): Rolling-window size, given as the number of
-        observations (rows) per stock used to estimate the betas.
-    min_obs (int, optional): Minimum number of observations required for a
-        valid estimate. Defaults to 80% of lookback.
-    id_col (str, optional): Column name representing the stock identifier.
-        Defaults to 'permno'.
+    data : pd.DataFrame
+        Data frame containing the data with a date identifier (defaults
+        to 'date'), a stock identifier (defaults to 'permno'), and the
+        other variables used in the model.
+    model : str
+        Formula describing the model to be estimated (e.g.,
+        'ret_excess ~ mkt_excess + hml + smb').
+    lookback : int
+        Rolling window size in number of consecutive per-stock
+        observations. Passed through to
+        'statsmodels.RollingOLS' as 'window'.
+    min_obs : int, optional
+        Minimum number of observations required to estimate the model.
+        Defaults to 80% of 'lookback'.
+    id_col : str, default 'permno'
+        Column name representing the stock identifier.
 
     Returns
     -------
-    pd.DataFrame: A DataFrame with estimated rolling betas for each stock
-        and time period.
+    pd.DataFrame
+        Data frame with the estimated betas for each stock and time
+        period.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import estimate_betas
+    >>> rng = np.random.default_rng(1234)
+    >>> dates = pd.date_range('2020-01-01', periods=12, freq='MS')
+    >>> data_monthly = pd.DataFrame({
+    ...     'date': np.repeat(dates, 50),
+    ...     'permno': np.tile(range(1, 51), 12),
+    ...     'ret_excess': rng.normal(0, 0.1, 600),
+    ...     'mkt_excess': rng.normal(0, 0.1, 600),
+    ...     'smb': rng.normal(0, 0.1, 600),
+    ...     'hml': rng.normal(0, 0.1, 600),
+    ... })
+    >>> estimate_betas(data_monthly, 'ret_excess ~ mkt_excess', lookback=3)
     """
     if min_obs is None:
         min_obs = int(lookback * 0.8)
@@ -1049,10 +1308,14 @@ def estimate_betas(
 def _ar1_ols_residuals(e: np.ndarray) -> tuple[float, np.ndarray]:
     """Fit an AR(1) by OLS without intercept or demeaning.
 
-    Mirrors R's ``ar(x, order.max = 1, demean = FALSE, aic = FALSE,
-    method = "ols")``, which sandwich uses to prewhiten the estimating
-    functions. Returns the AR(1) coefficient and the prewhitened residuals
-    (length ``len(e) - 1``).
+    Estimates rho in e_t = rho * e_{t-1} + u_t by ordinary least
+    squares (no intercept, no demeaning). Used to prewhiten the
+    estimating functions before forming a Newey-West long-run variance.
+
+    Returns
+    -------
+    tuple
+        (rho, residuals) where 'residuals' has length 'len(e) - 1'.
     """
     x = e[:-1]
     z = e[1:]
@@ -1063,8 +1326,29 @@ def _ar1_ols_residuals(e: np.ndarray) -> tuple[float, np.ndarray]:
 def _newey_west_bandwidth(e: np.ndarray, prewhite: int) -> float:
     """Automatic Newey & West (1994) bandwidth for the Bartlett kernel.
 
-    Replicates ``sandwich::bwNeweyWest`` for the univariate, intercept-only
-    case (the estimating functions are the demeaned series ``e``).
+    Computes the data-dependent truncation lag for a univariate,
+    intercept-only Bartlett-kernel HAC estimator. If 'prewhite > 0',
+    the series is first prewhitened by an AR(1) fit (no intercept).
+    The bandwidth is the optimal one derived in Newey and West (1994).
+
+    Parameters
+    ----------
+    e : np.ndarray
+        The estimating-function series (typically the demeaned
+        per-period coefficient).
+    prewhite : int
+        Order of the prewhitening AR fit. Pass 0 to disable.
+
+    Returns
+    -------
+    float
+        Recommended truncation lag.
+
+    References
+    ----------
+    Newey, W. K., and West, K. D. (1994). Automatic lag selection in
+    covariance matrix estimation. Review of Economic Studies, 61(4),
+    631-653. https://doi.org/10.2307/2297912
     """
     n = e.shape[0]
     m = int(np.floor((3 if prewhite > 0 else 4) * (n / 100.0) ** (2.0 / 9.0)))
@@ -1091,33 +1375,42 @@ def _newey_west_se(
 ) -> float:
     """Newey-West HAC standard error of the mean of a time series.
 
-    Replicates the default behavior of R's ``sandwich::NeweyWest`` applied to
-    an intercept-only regression (``lm(series ~ 1)``): VAR(1) prewhitening
-    (``prewhite=1``), automatic Newey & West (1994) bandwidth selection when
-    ``lag`` is ``None``, a Bartlett kernel, and no finite-sample adjustment
-    (``adjust=False``). This is the estimator the Tidy Finance R edition uses
-    for Fama-MacBeth t-statistics, so the two editions agree numerically.
+    Computes the Newey-West heteroskedasticity- and autocorrelation-
+    consistent standard error of the sample mean of 'series'. The
+    long-run variance is estimated with a Bartlett kernel; when
+    'prewhite > 0', the series is first prewhitened by an AR(1) fit;
+    when 'lag' is None, the truncation lag follows the automatic
+    bandwidth selection of Newey and West (1994).
 
     Parameters
     ----------
     series : np.ndarray
-        The time-ordered series (e.g. a factor's per-period risk premium).
+        Time-ordered series (e.g. a factor's per-period risk premium).
     lag : int, optional
-        Bartlett truncation lag. If ``None`` (default), the automatic
-        Newey & West (1994) bandwidth is used.
+        Bartlett truncation lag. If None, the automatic Newey & West
+        (1994) bandwidth is used.
     prewhite : int, default 1
-        Order of the VAR prewhitening (``1`` matches R's default; ``0``
-        disables prewhitening).
+        Order of the prewhitening AR fit. Pass 0 to disable.
     adjust : bool, default False
-        Apply the ``n / (n - k)`` finite-sample adjustment (R default is
-        ``False``).
+        Apply the 'n / (n - k)' finite-sample degrees-of-freedom
+        correction.
 
-    Notes
-    -----
-    A series with fewer than two (non-NaN) observations returns ``NaN``.
-    Very short series (``n < 3``) are handled more gracefully than R's
-    ``NeweyWest``, which errors on such degenerate input; this never arises
-    in a real Fama-MacBeth run, where each value is a per-period estimate.
+    Returns
+    -------
+    float
+        Newey-West HAC standard error of the sample mean. Returns NaN
+        when 'series' has fewer than two non-NaN observations.
+
+    References
+    ----------
+    Newey, W. K., and West, K. D. (1987). A simple, positive
+    semi-definite, heteroskedasticity and autocorrelation consistent
+    covariance matrix. Econometrica, 55(3), 703-708.
+    https://doi.org/10.2307/1913610
+
+    Newey, W. K., and West, K. D. (1994). Automatic lag selection in
+    covariance matrix estimation. Review of Economic Studies, 61(4),
+    631-653. https://doi.org/10.2307/2297912
     """
     y = np.asarray(series, dtype=float)
     y = y[~np.isnan(y)]
@@ -1162,33 +1455,100 @@ def estimate_fama_macbeth(
     vcov_options: dict | None = None,
     date_col: str = "date",
 ) -> pd.DataFrame:
-    """
-    Estimate Fama-MacBeth regressions by running cross-sectional regressions.
+    """Estimate Fama-MacBeth regressions.
+
+    Runs one cross-sectional ordinary least squares regression per period
+    of 'date_col', then averages the per-period coefficients to obtain
+    risk premia and aggregates them into a single tidy frame.
 
     Parameters
     ----------
-    data (pd.DataFrame): A DataFrame containing the data for the regression.
-    model (str): A formula representing the regression model.
-    vcov (str): Type of standard errors to compute. Options are "iid" or
-        "newey-west".
-    vcov_options (dict, optional): Options for the Newey-West standard
-        errors, mirroring R's ``sandwich::NeweyWest``. Recognized keys are
-        ``lag`` (Bartlett truncation lag; ``None`` selects the automatic
-        Newey & West (1994) bandwidth), ``prewhite`` (VAR order for
-        prewhitening, default ``1``), and ``adjust`` (finite-sample
-        correction, default ``False``). When ``None`` (the default), the
-        estimator matches R's ``sandwich::NeweyWest`` default exactly:
-        VAR(1) prewhitening plus automatic bandwidth selection. The
-        deprecated ``maxlags`` key is accepted as an alias for ``lag`` (with
-        ``prewhite`` defaulting to ``0``, the previous behavior). Only these
-        Bartlett-kernel arguments are honored; other ``sandwich::NeweyWest``
-        options (e.g. ``kernel``) are not supported.
-    date_col (str): Column name representing the time periods.
+    data : pd.DataFrame
+        Panel containing the dependent and independent variables named in
+        'model' plus a column with the time index. Each (date, unit)
+        combination should appear at most once.
+    model : str
+        Formula describing the cross-sectional regression
+        (e.g., 'ret_excess ~ beta + bm + log_mktcap'). Standard patsy
+        syntax; an intercept is included unless the formula ends in '- 1'.
+    vcov : {'iid', 'newey-west'}, default 'newey-west'
+        Standard error treatment for the time-series average of period
+        coefficients. 'iid' assumes independent and identically distributed
+        errors across periods. 'newey-west' applies Newey-West
+        heteroskedasticity- and autocorrelation-consistent standard errors
+        with Bartlett kernel.
+    vcov_options : dict, optional
+        Tuning options for the Newey-West estimator. Recognized keys:
+
+        - 'lag' : int, optional
+            Bartlett truncation lag. If None (the default), the
+            automatic bandwidth from Newey & West (1994) is used.
+        - 'prewhite' : int, default 1
+            Order of the VAR prewhitening filter applied before
+            computing the long-run variance. Pass 0 to disable.
+        - 'adjust' : bool, default False
+            Apply a finite-sample degrees-of-freedom correction.
+        - 'maxlags' : int, optional
+            Deprecated alias for 'lag' (with 'prewhite' defaulting
+            to 0). Emits a DeprecationWarning.
+    date_col : str, default 'date'
+        Column in 'data' identifying the time index for cross-sectional
+        regressions.
 
     Returns
     -------
-    pd.DataFrame: A DataFrame containing estimated risk premia,
-        standard errors, and t-statistics.
+    pd.DataFrame
+        One row per term in 'model' with columns:
+
+        - 'factor' : term name (Intercept or regressor)
+        - 'risk_premium' : time-series mean of cross-sectional coefficients
+        - 'standard_error' : SE of the time-series mean under 'vcov'
+        - 't_statistic' : risk_premium / standard_error
+        - 'n' : number of periods used
+
+    Raises
+    ------
+    ValueError
+        If 'vcov' is not 'iid' or 'newey-west', or if 'date_col' is
+        missing from 'data'.
+
+    References
+    ----------
+    Fama, E. F., and MacBeth, J. D. (1973). Risk, return, and equilibrium:
+    Empirical tests. Journal of Political Economy, 81(3), 607-636.
+    https://doi.org/10.1086/260061
+
+    Newey, W. K., and West, K. D. (1987). A simple, positive
+    semi-definite, heteroskedasticity and autocorrelation consistent
+    covariance matrix. Econometrica, 55(3), 703-708.
+    https://doi.org/10.2307/1913610
+
+    Newey, W. K., and West, K. D. (1994). Automatic lag selection in
+    covariance matrix estimation. Review of Economic Studies, 61(4),
+    631-653. https://doi.org/10.2307/2297912
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import estimate_fama_macbeth
+    >>> rng = np.random.default_rng(1234)
+    >>> dates = pd.date_range('2020-01-01', periods=12, freq='MS')
+    >>> data = pd.DataFrame({
+    ...     'date': np.repeat(dates, 50),
+    ...     'permno': np.tile(range(1, 51), 12),
+    ...     'ret_excess': rng.normal(0, 0.1, 600),
+    ...     'beta': rng.normal(1, 0.2, 600),
+    ...     'bm': rng.normal(0.5, 0.1, 600),
+    ...     'log_mktcap': rng.normal(10, 1, 600),
+    ... })
+    >>> result = estimate_fama_macbeth(data, 'ret_excess ~ beta+bm+log_mktcap')
+    >>> # Override the Newey-West settings
+    >>> result_iid = estimate_fama_macbeth(
+    ...     data,
+    ...     'ret_excess ~ beta + bm + log_mktcap',
+    ...     vcov='iid',
+    ... )
     """
     if vcov not in ["iid", "newey-west"]:
         raise ValueError("vcov must be either 'iid' or 'newey-west'.")
@@ -1201,8 +1561,9 @@ def estimate_fama_macbeth(
     if "maxlags" in options:
         warnings.warn(
             "vcov_options key 'maxlags' is deprecated; use 'lag' (and "
-            "'prewhite'). The default Newey-West estimator now matches R's "
-            "sandwich::NeweyWest (VAR(1) prewhitening + automatic bandwidth).",
+            "'prewhite'). The default Newey-West estimator now uses "
+            "VAR(1) prewhitening with automatic Newey-West (1994) "
+            "bandwidth selection.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -1236,10 +1597,20 @@ def estimate_fama_macbeth(
         .rename(columns={"estimate": "risk_premium"})
     )
 
-    # Compute standard errors based on vcov choice
-    def compute_t_statistic(x):
+    # Compute standard error, t-statistic, and n per factor under
+    # the chosen vcov.
+    def compute_se_and_t(x):
         x = x.sort_values(date_col)
-        estimate = x["estimate"]
+        estimate = x["estimate"].dropna()
+        n = int(estimate.size)
+        if n < 2:
+            return pd.Series(
+                {
+                    "standard_error": np.nan,
+                    "t_statistic": np.nan,
+                    "n": n,
+                }
+            )
         if vcov == "newey-west":
             se = _newey_west_se(
                 estimate.to_numpy(),
@@ -1248,20 +1619,36 @@ def estimate_fama_macbeth(
                 adjust=nw_adjust,
             )
         else:
-            se = smf.ols("estimate ~ 1", x).fit().bse["Intercept"]
-        return estimate.mean() / se
+            se = (
+                smf.ols("estimate ~ 1", x.dropna(subset=["estimate"]))
+                .fit()
+                .bse["Intercept"]
+            )
+        if se is None or np.isnan(se) or se == 0:
+            t_stat = np.nan
+        else:
+            t_stat = float(estimate.mean()) / float(se)
+        return pd.Series(
+            {
+                "standard_error": float(se) if se is not None else np.nan,
+                "t_statistic": t_stat,
+                "n": n,
+            }
+        )
 
-    price_of_risk_t_stat = (
+    price_of_risk_se_t_n = (
         risk_premiums.melt(
             id_vars=date_col, var_name="factor", value_name="estimate"
         )
         .groupby("factor")
-        .apply(compute_t_statistic, include_groups=False)
+        .apply(compute_se_and_t, include_groups=False)
         .reset_index()
-        .rename(columns={0: "t_statistic"})
     )
 
-    result_df = price_of_risk.merge(price_of_risk_t_stat, on="factor")
+    result_df = (
+        price_of_risk.merge(price_of_risk_se_t_n, on="factor")
+        [["factor", "risk_premium", "standard_error", "t_statistic", "n"]]
+    )
 
     return result_df
 
@@ -1276,11 +1663,11 @@ def filter_options(
     exclude_negative_earnings: bool = False,
     **kwargs,
 ) -> dict:
-    """
-    Create a dictionary of filter options for sample construction.
+    """Create filter options for sample construction.
 
-    These options control which observations are retained before
-    portfolio sorting.
+    Creates a dict of filter options used for sample construction in
+    tidyfinance-related functions. These options control which
+    observations are retained before portfolio sorting.
 
     Parameters
     ----------
@@ -1290,17 +1677,19 @@ def filter_options(
         Whether to exclude utility firms (SIC codes 4900 to 4999).
     min_stock_price : float, optional
         Minimum stock price required to include an observation. Must
-        be strictly positive when provided. None disables the filter.
+        be strictly positive when provided. None (the default) applies
+        no price filter.
     min_size_quantile : float, optional
         Minimum cross-sectional size quantile (based on lagged market
         cap) required to include an observation. Must be strictly
         between 0 and 1 when provided. The cutoff is computed from
         NYSE stocks only; this requires an 'exchange' column in the
-        data. None disables the filter.
+        data (as mapped via 'data_options'). None (the default)
+        applies no size quantile filter.
     min_listing_age : float, optional
         Minimum number of months a stock must have been listed in
-        CRSP. Must be non-negative when provided. None disables the
-        filter.
+        CRSP. Must be non-negative when provided. None (the default)
+        applies no listing age filter.
     exclude_negative_book_equity : bool, default False
         Whether to exclude observations with non-positive book equity.
     exclude_negative_earnings : bool, default False
@@ -1311,7 +1700,17 @@ def filter_options(
     Returns
     -------
     dict
-        Dictionary containing filter options.
+        Dict containing the specified filter options.
+
+    Examples
+    --------
+    >>> from tidyfinance import filter_options
+    >>> filter_options(
+    ...     exclude_financials=True,
+    ...     exclude_utilities=True,
+    ...     min_stock_price=1,
+    ...     min_listing_age=12,
+    ... )
     """
     _validate_flag(exclude_financials, "exclude_financials")
     _validate_flag(exclude_utilities, "exclude_utilities")
@@ -1378,32 +1777,82 @@ def portfolio_sort_options(
     breakpoint_options_secondary: dict = None,
     **kwargs,
 ) -> dict:
-    """
-    Create a dictionary of portfolio sort options.
+    """Create portfolio sort options.
 
-    Bundles sample-construction filters and breakpoint specifications
-    for use with portfolio-sort workflows.
+    Creates a dict of options that bundles sample construction filters
+    and breakpoint specifications for use with
+    'implement_portfolio_sort'.
 
     Parameters
     ----------
     filter_options : dict, optional
-        Filter options dict produced by filter_options(). None (the
-        default) applies no filters.
-    breakpoint_options_main : dict
-        Breakpoint options dict produced by breakpoint_options(),
-        specifying breakpoints for the primary sorting variable.
-        Required.
+        Dict produced by 'filter_options', or None (the default, which
+        applies no filters). The accepted entries include:
+
+        - 'exclude_financials' (bool): Whether to exclude financial
+          firms (SIC codes 6000 to 6799). Defaults to False.
+        - 'exclude_utilities' (bool): Whether to exclude utility firms
+          (SIC codes 4900 to 4999). Defaults to False.
+        - 'min_stock_price' (float, optional): Minimum stock price
+          required to include an observation. None (the default)
+          applies no price filter.
+        - 'min_size_quantile' (float, optional): Minimum cross-sectional
+          size quantile (based on lagged market cap) required to
+          include an observation. None (the default) applies no size
+          quantile filter.
+        - 'min_listing_age' (float, optional): Minimum number of months
+          a stock must have been listed in CRSP. None (the default)
+          applies no listing age filter.
+        - 'exclude_negative_book_equity' (bool): Whether to exclude
+          observations with non-positive book equity. Defaults to False.
+        - 'exclude_negative_earnings' (bool): Whether to exclude
+          observations with non-positive earnings. Defaults to False.
+
+    breakpoint_options_main : dict, optional
+        Dict produced by 'breakpoint_options', specifying breakpoints
+        for the primary sorting variable, or None (the default) when
+        no primary breakpoints are required. The accepted entries
+        include:
+
+        - 'n_portfolios' (int, optional): Number of equally sized
+          portfolios. Mutually exclusive with 'percentiles'.
+        - 'percentiles' (list of float, optional): Percentiles for
+          defining the breakpoints. Mutually exclusive with
+          'n_portfolios'.
+        - 'breakpoints_exchanges' (str or list of str, optional):
+          Exchange names to filter the data before computing
+          breakpoints. If None, no filtering is applied.
+        - 'smooth_bunching' (bool, optional): Whether to attempt
+          smoothing non-extreme portfolios if the sorting variable
+          bunches on the extremes.
+        - 'breakpoints_min_size_threshold' (float, optional): Value
+          between 0 and 1 (exclusive) below which stocks are excluded
+          from breakpoint computation.
+
     breakpoint_options_secondary : dict, optional
-        Breakpoint options dict produced by breakpoint_options() for
-        the secondary sorting variable. None (the default) selects a
-        univariate sort.
+        Dict produced by 'breakpoint_options', specifying breakpoints
+        for the secondary sorting variable, or None (the default) for
+        univariate sorts. The accepted entries are the same as for
+        'breakpoint_options_main'.
     **kwargs
         Additional optional arguments, stored verbatim in the dict.
 
     Returns
     -------
     dict
-        Dictionary containing the bundled portfolio sort options.
+        Dict containing the specified options.
+
+    Examples
+    --------
+    >>> from tidyfinance import (
+    ...     portfolio_sort_options,
+    ...     filter_options,
+    ...     breakpoint_options,
+    ... )
+    >>> portfolio_sort_options(
+    ...     filter_options=filter_options(exclude_financials=True),
+    ...     breakpoint_options_main=breakpoint_options(n_portfolios=10),
+    ... )
     """
     if filter_options is not None and not (
         isinstance(filter_options, dict)
@@ -1660,65 +2109,137 @@ def compute_portfolio_returns(
     data_options: dict = None,
     quiet: bool = False,
 ) -> pd.DataFrame:
-    """Compute univariate or bivariate portfolio returns.
+    """Compute portfolio returns.
 
-    Sorts stocks into portfolios based on one or two sorting variables
-    and computes equal-weighted, value-weighted, and capped
-    value-weighted returns per portfolio-date cross-section. Supports
-    periodic (per-date) or annual (single rebalancing month per year)
-    rebalancing.
+    Computes individual portfolio returns based on specified sorting
+    variables and sorting methods. The portfolios can be rebalanced
+    every period or on an annual frequency by specifying a rebalancing
+    month, which is only applicable at a monthly return frequency. The
+    function supports univariate and bivariate sorts, with the latter
+    supporting dependent and independent sorting methods.
+
+    The function checks for consistency in the provided arguments. For
+    univariate sorts, a single sorting variable and a corresponding
+    number of portfolios must be provided. For bivariate sorts, two
+    sorting variables and two corresponding numbers of portfolios (or
+    percentiles) are required. The sorting method determines how
+    portfolios are assigned and how returns are computed. The function
+    handles missing and extreme values appropriately based on the
+    specified sorting method and rebalancing frequency.
 
     Parameters
     ----------
     data : pd.DataFrame
         Stock-level panel. Must contain the id, date, and excess
-        return columns (configurable via data_options), the sorting
-        variable(s), and optionally a market-cap lag column.
+        return columns (configurable via 'data_options'), the sorting
+        variable(s), and optionally a market-cap lag column for
+        value-weighted returns.
     sorting_variables : str or list of str
-        Column(s) to sort by. One for univariate, two for bivariate.
-    sorting_method : str
-        One of 'univariate', 'bivariate-dependent', or
-        'bivariate-independent'.
+        Column name(s) in 'data' to use for sorting and portfolio
+        assignment. For univariate sorts, provide a single variable.
+        For bivariate sorts, provide two variables, where the first
+        string refers to the main variable and the second string
+        refers to the secondary ('control') variable.
+    sorting_method : {'univariate', 'bivariate-dependent',
+                      'bivariate-independent'}
+        Sorting method to use. For bivariate sorts, the portfolio
+        returns are averaged over the controlling sorting variable
+        (i.e., the second sorting variable), and only portfolio
+        returns for the main sorting variable are returned.
     rebalancing_month : int, optional
-        Month (1-12) to use for annual rebalancing. None means
-        rebalance every period.
+        Integer between 1 and 12 specifying the month in which to form
+        portfolios that are held constant for one year. For example,
+        setting it to 7 creates portfolios in July that are held
+        constant until June of the following year. The default None
+        corresponds to periodic rebalancing.
     breakpoint_options_main : dict
-        Breakpoint options for the primary sorting variable (produced
-        by breakpoint_options()). Required.
+        Named dict of 'breakpoint_options' passed to
+        'breakpoint_function_main' for the main sorting variable.
+        Required.
     breakpoint_options_secondary : dict, optional
-        Breakpoint options for the secondary sorting variable.
-        Required for bivariate sorts.
+        Named dict of 'breakpoint_options' passed to
+        'breakpoint_function_secondary'. Required for bivariate sorts.
     breakpoint_function_main : callable, optional
-        Function for computing primary breakpoints. Defaults to
-        compute_breakpoints.
+        Function to compute breakpoints for the main sorting variable.
+        Defaults to 'compute_breakpoints'.
     breakpoint_function_secondary : callable, optional
-        Function for computing secondary breakpoints. Defaults to
-        compute_breakpoints.
+        Function to compute breakpoints for the secondary sorting
+        variable. Defaults to 'compute_breakpoints'.
     min_portfolio_size : int, default 1
-        Minimum number of firms required in a reported cross-section;
-        cross-sections with fewer firms receive NaN. For univariate
-        sorts this is the firm count per (portfolio, date). For
-        bivariate sorts the firm counts are summed over the
-        controlling (secondary) sorting variable, so the threshold
-        applies to the per-(portfolio, date) total. A typical value is
-        5 (Fama-French convention); set to 0 to deactivate.
+        Minimum number of firms required in the reported portfolio
+        cross-section on a given date. The threshold is applied to the
+        firm count per (portfolio, date) of the reported cross-section.
+        Cross-sections below the threshold have their returns set to
+        NaN. A typical value is 5 (the Fama-French convention). Set to
+        0 to deactivate the check entirely.
     cap_weight : float, default 0.8
-        Quantile of market cap at which to cap weights for the capped
-        value-weighted return. Must be in [0, 1].
+        Quantile of the cross-sectional 'mktcap_lag' distribution at
+        which market capitalizations are capped per date when computing
+        the capped value-weighted excess return ('ret_excess_vw_capped').
+        Must be in [0, 1].
     data_options : dict, optional
-        Column-name mapping (see data_options). Defaults to
-        data_options() if None.
+        Column-name mapping (see 'data_options'). The 'id', 'date',
+        'ret_excess', and 'mktcap_lag' elements are used. Uses
+        'data_options' defaults when None.
     quiet : bool, default False
         If True, suppress informational warnings about missing
-        observations.
+        observations in the output panel.
 
     Returns
     -------
     pd.DataFrame
-        Complete portfolio-date panel with columns: portfolio, date,
-        and the return columns. If a market-cap lag column is present
-        in the input, returns ret_excess_vw, ret_excess_ew, and
-        ret_excess_vw_capped. Otherwise only ret_excess_ew.
+        Data frame with computed portfolio returns as a complete panel
+        (all portfolio-date combinations), containing:
+
+        - 'portfolio': Portfolio identifier.
+        - date column (as in 'data_options'): Date of the portfolio
+          return.
+        - 'ret_excess_vw': Value-weighted excess return (only if 'data'
+          contains the market-cap lag column). NaN if insufficient
+          observations.
+        - 'ret_excess_ew': Equal-weighted excess return. NaN if
+          insufficient observations.
+        - 'ret_excess_vw_capped': Capped value-weighted excess return
+          (only if 'data' contains the market-cap lag column). Weights
+          are computed using market capitalization capped at the
+          'cap_weight' percentile per date. NaN if insufficient
+          observations.
+
+    Notes
+    -----
+    Ensure that 'data' contains all required columns: the specified
+    sorting variables and excess returns (see options and defaults set
+    in 'data_options'). A ValueError is raised if any required column
+    is missing.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import (
+    ...     compute_portfolio_returns,
+    ...     breakpoint_options,
+    ... )
+    >>> rng = np.random.default_rng(42)
+    >>> dates = pd.date_range('2020-01-01', periods=100, freq='MS')
+    >>> data = pd.DataFrame({
+    ...     'permno': range(1, 501),
+    ...     'date': np.repeat(dates, 5),
+    ...     'mktcap_lag': rng.uniform(100, 1000, 500),
+    ...     'ret_excess': rng.standard_normal(500),
+    ...     'size': rng.uniform(50, 150, 500),
+    ... })
+    >>> # Univariate sorting with periodic rebalancing
+    >>> compute_portfolio_returns(
+    ...     data, 'size', 'univariate',
+    ...     breakpoint_options_main=breakpoint_options(n_portfolios=5),
+    ... )
+    >>> # Bivariate dependent sorting with annual rebalancing
+    >>> compute_portfolio_returns(
+    ...     data, ['size', 'mktcap_lag'], 'bivariate-dependent', 7,
+    ...     breakpoint_options_main=breakpoint_options(n_portfolios=5),
+    ...     breakpoint_options_secondary=breakpoint_options(n_portfolios=3),
+    ... )
     """
     _validate_flag(quiet, "quiet")
 
@@ -2115,33 +2636,64 @@ def compute_long_short_returns(
     direction: str = "top_minus_bottom",
     data_options: dict = None,
 ) -> pd.DataFrame:
-    """
-    Compute long-short returns from a portfolio-return panel.
+    """Compute long-short returns.
 
-    For each date, identifies the lowest-numbered ('bottom') and
-    highest-numbered ('top') portfolios and computes the long-short
-    return as (top - bottom) or (bottom - top) depending on
-    'direction'. Dates with only one portfolio receive NaN.
+    Calculates long-short returns based on the returns of portfolios.
+    The long-short return is computed as the difference between the
+    returns of the 'top' and 'bottom' portfolios. The direction of the
+    calculation can be adjusted based on whether the return from the
+    'bottom' portfolio is subtracted from or added to the return from
+    the 'top' portfolio.
 
     Parameters
     ----------
     data : pd.DataFrame
-        Portfolio-return panel. Must contain the date, portfolio,
-        and one or more return columns whose names contain the
-        excess-return key from data_options.
+        Data frame containing portfolio returns. Must include columns
+        for the portfolio identifier, date, and return measurements
+        (as specified in 'data_options').
     direction : str, default 'top_minus_bottom'
-        Either 'top_minus_bottom' (long top, short bottom) or
-        'bottom_minus_top' (long bottom, short top).
+        Direction of the long-short return calculation. Must be either
+        'top_minus_bottom' or 'bottom_minus_top'. If set to
+        'bottom_minus_top', the return is computed as (bottom - top).
     data_options : dict, optional
-        Column-name mapping (see data_options). Uses defaults
-        {'date': 'date', 'ret_excess': 'ret_excess',
-        'portfolio': 'portfolio'} when None.
+        Column-name mapping (see 'data_options'). The 'date' element
+        specifies the date column, the 'ret_excess' element specifies
+        the excess return column, and 'portfolio' specifies the
+        assigned portfolio. Uses the 'data_options' defaults when
+        None: 'date' -> 'date', 'ret_excess' -> 'ret_excess', and
+        'portfolio' -> 'portfolio'.
 
     Returns
     -------
     pd.DataFrame
-        One row per date with one column per return measurement
-        holding the long-short return.
+        Data frame with columns for date and the computed long-short
+        returns. The data frame is arranged by date and pivoted to
+        have return measurement types as columns with their
+        corresponding long-short returns.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import (
+    ...     compute_portfolio_returns,
+    ...     compute_long_short_returns,
+    ...     breakpoint_options,
+    ... )
+    >>> rng = np.random.default_rng(42)
+    >>> dates = pd.date_range('2020-01-01', periods=100, freq='MS')
+    >>> data = pd.DataFrame({
+    ...     'permno': range(1, 101),
+    ...     'date': np.repeat(dates, 1),
+    ...     'mktcap_lag': rng.uniform(100, 1000, 100),
+    ...     'ret_excess': rng.standard_normal(100),
+    ...     'size': rng.uniform(50, 150, 100),
+    ... })
+    >>> portfolio_returns = compute_portfolio_returns(
+    ...     data, 'size', 'univariate',
+    ...     breakpoint_options_main=breakpoint_options(n_portfolios=5),
+    ... )
+    >>> compute_long_short_returns(portfolio_returns)
     """
     if data_options is None:
         data_options = {
@@ -2206,35 +2758,57 @@ def compute_rolling_value(
     min_obs: int = None,
     data_options: dict = None,
 ) -> np.ndarray:
-    """Apply a summary function over rolling calendar-period windows.
+    """Compute a rolling value by period.
 
-    For each row at date d, takes the window of all rows whose date
-    falls in the same or one of the previous (periods - 1) calendar
-    periods. Drops NaN rows; if fewer than min_obs rows remain, the
-    result is NaN, otherwise applies f to the window data.
+    Applies an arbitrary summary function over rolling time-period
+    windows. Each window spans 'periods' units of 'period' (e.g., 12
+    months). Before calling 'f', rows with any missing values are
+    dropped from the window; if fewer than 'min_obs' rows remain, the
+    result is NaN instead.
 
     Parameters
     ----------
     data : pd.DataFrame
-        Input data with a datetime column named per data_options.
+        Data frame with a datetime column named according to
+        'data_options[date]' (default 'date').
     f : callable
-        Function applied to each window. Receives a DataFrame slice
-        (complete cases) and must return a single scalar.
+        Function applied to each window. Receives a data frame slice
+        (complete cases only) and must return a single scalar value.
     period : str, default 'month'
-        Calendar period unit: 'month', 'quarter', or 'year'.
+        Calendar period unit for the rolling windows. One of 'month',
+        'quarter', or 'year'.
     periods : int, default 12
-        Number of periods in the rolling window.
+        Number of periods to include in the rolling window.
     min_obs : int, optional
-        Minimum non-missing rows required per window. Defaults to
-        periods.
+        Minimum number of non-missing rows required per window.
+        Defaults to 'periods'.
     data_options : dict, optional
-        Column-name mapping (see data_options). Uses {'date': 'date'}
-        if None.
+        Column-name mapping (see 'data_options'). The 'date' element
+        is used to specify the date column. Uses the 'data_options'
+        default when None: 'date' -> 'date'.
 
     Returns
     -------
     np.ndarray
-        Numeric vector aligned with the rows of data.
+        Numeric vector aligned with the rows of 'data'.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import compute_rolling_value
+    >>> rng = np.random.default_rng(42)
+    >>> df = pd.DataFrame({
+    ...     'date': pd.date_range('2020-01-01', periods=24, freq='MS'),
+    ...     'value': rng.standard_normal(24),
+    ... })
+    >>> df['rolling_sd'] = compute_rolling_value(
+    ...     df,
+    ...     f=lambda x: x['value'].std(ddof=1),
+    ...     period='month',
+    ...     periods=4,
+    ...     min_obs=2,
+    ... )
     """
     if data_options is None:
         data_options = {"date": "date"}
@@ -2318,32 +2892,80 @@ def filter_sorting_data(
     data_options: dict = None,
     quiet: bool = False,
 ) -> pd.DataFrame:
-    """
-    Apply sample-construction filters to a stock-level panel.
+    """Filter sorting data.
 
-    Filters are applied in a fixed order: financials exclusion,
-    utilities exclusion, minimum stock price, minimum size quantile,
-    minimum listing age, positive book equity, positive earnings.
-    An informational warning is emitted for each filter that removes
-    at least one row, unless 'quiet' is True.
+    Applies sample construction filters to a data frame before
+    portfolio sorting. Filters are applied in a fixed order:
+    financials exclusion, utilities exclusion, minimum stock price,
+    minimum size quantile, minimum listing age, positive book equity,
+    and positive earnings. An informational warning is emitted for
+    each filter that actually removes at least one observation.
 
     Parameters
     ----------
     data : pd.DataFrame
-        Stock-level panel to filter.
+        Data frame containing the stock-level panel data to be
+        filtered.
     filter_options : dict, optional
-        Filter options dict produced by filter_options(). None
-        applies no filters (uses the filter_options() defaults).
+        Dict produced by 'filter_options'. If None (the default), the
+        defaults from 'filter_options' are used (i.e., no filters are
+        applied). The accepted entries include:
+
+        - 'exclude_financials' (bool): Whether to exclude financial
+          firms (SIC codes 6000 to 6799). Defaults to False.
+        - 'exclude_utilities' (bool): Whether to exclude utility firms
+          (SIC codes 4900 to 4999). Defaults to False.
+        - 'min_stock_price' (float, optional): Minimum stock price
+          required to include an observation. None (the default)
+          applies no price filter.
+        - 'min_size_quantile' (float, optional): Minimum cross-sectional
+          size quantile (based on lagged market cap) required to
+          include an observation. None (the default) applies no size
+          quantile filter. The cutoff is computed from NYSE stocks
+          only; the 'exchange' column (mapped via 'data_options') must
+          be present or a ValueError is raised.
+        - 'min_listing_age' (float, optional): Minimum number of months
+          a stock must have been listed in CRSP. None (the default)
+          applies no listing age filter.
+        - 'exclude_negative_book_equity' (bool): Whether to exclude
+          observations with non-positive book equity. Defaults to False.
+        - 'exclude_negative_earnings' (bool): Whether to exclude
+          observations with non-positive earnings. Defaults to False.
+
     data_options : dict, optional
-        Column-name mapping (see data_options). Uses the
-        data_options() defaults if None.
+        Column-name mapping (see 'data_options'). The 'siccd' element
+        specifies the SIC code column, 'price' specifies the (adjusted)
+        price column, 'mktcap_lag' specifies the market capitalization
+        column, 'date' specifies the date column, 'listing_age'
+        specifies the listing age column, 'be' specifies the book
+        equity column, and 'earnings' specifies the earnings column.
+        Uses the 'data_options' defaults when None.
     quiet : bool, default False
-        If True, suppress per-filter warnings.
+        Whether informational messages should be suppressed.
 
     Returns
     -------
     pd.DataFrame
-        Filtered data with the same columns as input.
+        Filtered data frame, preserving the class and structure of the
+        input.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from tidyfinance import filter_sorting_data, filter_options
+    >>> data = pd.DataFrame({
+    ...     'permno': range(1, 6),
+    ...     'date': pd.Timestamp('2020-01-01'),
+    ...     'siccd': [6100, 2000, 4950, 3000, 6500],
+    ...     'prc_adj': [5, 0.5, 15, 20, 10],
+    ... })
+    >>> filter_sorting_data(
+    ...     data,
+    ...     filter_options=filter_options(
+    ...         exclude_financials=True,
+    ...         min_stock_price=1,
+    ...     ),
+    ... )
     """
     if not isinstance(quiet, bool):
         raise ValueError("'quiet' must be a single boolean.")
@@ -2507,49 +3129,92 @@ def implement_portfolio_sort(
     data_options: dict = None,
     quiet: bool = False,
 ) -> pd.DataFrame:
-    """
-    Convenience wrapper that filters a panel and computes portfolio returns.
+    """Implement a portfolio sort.
 
-    Equivalent to calling filter_sorting_data() followed by
-    compute_portfolio_returns() with the filter and breakpoint
+    A convenience wrapper that combines sample construction filtering
+    and portfolio return computation into a single call. Equivalent to
+    calling 'filter_sorting_data' followed by
+    'compute_portfolio_returns' with the filter and breakpoint
     specifications bundled in 'portfolio_sort_options'.
 
     Parameters
     ----------
     data : pd.DataFrame
-        Stock-level panel.
+        Data frame containing the stock-level panel data.
     sorting_variables : str or list of str
-        Column(s) to sort on.
+        One or two column names to sort portfolios on.
     sorting_method : str
-        'univariate', 'bivariate-dependent', or 'bivariate-independent'.
+        Sorting method to use. One of 'univariate',
+        'bivariate-dependent', or 'bivariate-independent'.
     portfolio_sort_options : dict
-        Dict produced by portfolio_sort_options(). Bundles filter and
-        breakpoint specifications.
+        Dict produced by 'portfolio_sort_options', bundling filter and
+        breakpoint specifications. The accepted entries include
+        'filter_options', 'breakpoint_options_main', and
+        'breakpoint_options_secondary'.
     rebalancing_month : int, optional
-        Month (1-12) for annual rebalancing. None means rebalance
-        every period.
+        Month in which portfolios are rebalanced annually. None (the
+        default) means monthly rebalancing.
     breakpoint_function_main : callable, optional
-        Function for primary breakpoints. Defaults to compute_breakpoints.
+        Function used to compute breakpoints for the main sorting
+        variable. Defaults to 'compute_breakpoints'.
     breakpoint_function_secondary : callable, optional
-        Function for secondary breakpoints. Defaults to
-        compute_breakpoints.
+        Function used to compute breakpoints for the secondary sorting
+        variable. Defaults to 'compute_breakpoints'.
     min_portfolio_size : int, default 1
-        Minimum number of firms required in a reported cross-section;
-        cross-sections with fewer firms receive NaN. For bivariate
-        sorts the firm counts are summed over the controlling sorting
-        variable (see compute_portfolio_returns). A typical value is 5
-        (Fama-French convention); set to 0 to deactivate.
+        Minimum number of firms in the reported portfolio
+        cross-section on a given date. For univariate sorts that is
+        firms per portfolio-date; for bivariate sorts that is firms
+        per main-portfolio-date summed across the secondary buckets.
+        Cross-sections below the threshold have their returns set to
+        NaN. Set to 0 to deactivate the check.
     cap_weight : float, default 0.8
-        Quantile for capping value weights.
+        Quantile of the cross-sectional 'mktcap_lag' distribution at
+        which market capitalizations are capped per date when computing
+        the capped value-weighted excess return ('ret_excess_vw_capped').
+        Must be in [0, 1].
     data_options : dict, optional
-        Column-name mapping. Uses defaults if None.
+        Column-name mapping (see 'data_options'). All elements are
+        forwarded to 'filter_sorting_data' and
+        'compute_portfolio_returns'. Uses the 'data_options' defaults
+        when None.
     quiet : bool, default False
-        If True, suppress informational warnings.
+        Whether informational messages should be suppressed.
 
     Returns
     -------
     pd.DataFrame
-        Portfolio returns panel as produced by compute_portfolio_returns().
+        Data frame of portfolio returns as returned by
+        'compute_portfolio_returns'.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import (
+    ...     implement_portfolio_sort,
+    ...     portfolio_sort_options,
+    ...     filter_options,
+    ...     breakpoint_options,
+    ... )
+    >>> rng = np.random.default_rng(123)
+    >>> dates = pd.date_range('2020-01-01', periods=100, freq='MS')
+    >>> data = pd.DataFrame({
+    ...     'permno': range(1, 501),
+    ...     'date': np.repeat(dates, 5),
+    ...     'mktcap_lag': rng.uniform(100, 1000, 500),
+    ...     'ret_excess': rng.standard_normal(500),
+    ...     'prc_adj': rng.uniform(0.5, 50, 500),
+    ...     'size': rng.uniform(50, 150, 500),
+    ... })
+    >>> implement_portfolio_sort(
+    ...     data=data,
+    ...     sorting_variables='size',
+    ...     sorting_method='univariate',
+    ...     portfolio_sort_options=portfolio_sort_options(
+    ...         filter_options=filter_options(min_stock_price=1),
+    ...         breakpoint_options_main=breakpoint_options(n_portfolios=5),
+    ...     ),
+    ... )
     """
     if not isinstance(quiet, bool):
         raise ValueError("'quiet' must be a single boolean.")
@@ -2629,35 +3294,77 @@ def estimate_model(
     min_obs: int = 1,
     output="coefficients",
 ):
-    """Estimate a linear model from a formula string.
+    """Estimate a linear model.
 
-    Parses the formula, validates that independent variables exist in
-    the data, fits an OLS regression on the complete-case subset, and
-    returns the requested output(s).
+    Estimates a linear model specified by one or more independent
+    variables. It checks for the presence of the specified independent
+    variables in the dataset and whether the dataset has a sufficient
+    number of observations. Depending on the 'output' parameter, it
+    returns the model's coefficients, t-statistics, residuals, or any
+    combination in a named dict.
 
     Parameters
     ----------
     data : pd.DataFrame
         Data frame containing the dependent variable and one or more
-        independent variables referenced in the formula.
+        independent variables.
     model : str
-        Formula string like 'y ~ x1 + x2 + x3' or 'y ~ x1 - 1' for
+        Formula string describing the model to be estimated (e.g.,
+        'ret_excess ~ mkt_excess + hml + smb'). Use 'y ~ x - 1' for
         no-intercept models.
     min_obs : int, default 1
-        Minimum number of complete-case observations required to fit
-        the model. Cross-sections below this threshold return NaN.
+        Minimum number of observations required to estimate the model.
     output : str or list of str, default 'coefficients'
-        One or more of 'coefficients', 'tstats', 'residuals'. If a
-        single string is given, the corresponding object is returned
-        directly. If a list is given, a dict is returned.
+        What to return. Must contain one or more of 'coefficients',
+        'residuals', and 'tstats'. If a single value is provided, the
+        corresponding object is returned directly. If multiple values
+        are provided, a dict is returned.
 
     Returns
     -------
     pd.DataFrame, np.ndarray, or dict
-        Coefficients or tstats as a 1-row DataFrame with model term
-        names as columns. Residuals as a numeric vector aligned with
-        input rows (NaN for rows with missing data or insufficient
-        observations). If multiple outputs requested, a dict.
+        If 'output' contains a single value: a data frame of
+        coefficients or t-statistics, or a numeric vector of
+        residuals. If 'output' contains multiple values: a dict with
+        the requested elements. Coefficients and t-statistics are
+        returned as data frames with column names corresponding to the
+        model terms. Residuals are returned as a numeric vector of
+        length 'len(data)' with NaN for rows with missing data or
+        insufficient observations.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from tidyfinance import estimate_model
+    >>> rng = np.random.default_rng(42)
+    >>> data = pd.DataFrame({
+    ...     'ret_excess': rng.standard_normal(100),
+    ...     'mkt_excess': rng.standard_normal(100),
+    ...     'smb': rng.standard_normal(100),
+    ...     'hml': rng.standard_normal(100),
+    ... })
+    >>> # Estimate model with a single independent variable
+    >>> estimate_model(data, 'ret_excess ~ mkt_excess')
+    >>> # Estimate model with multiple independent variables
+    >>> estimate_model(data, 'ret_excess ~ mkt_excess + smb + hml')
+    >>> # Estimate model without intercept
+    >>> estimate_model(data, 'ret_excess ~ mkt_excess - 1')
+    >>> # Calculate residuals
+    >>> estimate_model(
+    ...     data, 'ret_excess ~ mkt_excess + smb + hml',
+    ...     output='residuals',
+    ... )
+    >>> # Return t-statistics
+    >>> estimate_model(
+    ...     data, 'ret_excess ~ mkt_excess + smb + hml',
+    ...     output='tstats',
+    ... )
+    >>> # Return coefficients, t-statistics, and residuals
+    >>> estimate_model(
+    ...     data, 'ret_excess ~ mkt_excess + smb + hml',
+    ...     output=['coefficients', 'tstats', 'residuals'],
+    ... )
     """
     if isinstance(output, str):
         output_list = [output]
