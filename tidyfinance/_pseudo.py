@@ -73,15 +73,15 @@ def _simulate_pseudo_identifiers(
 ) -> pd.DataFrame:
     """Draw a pseudo universe of stock identifiers.
 
-    Fully determined by ''(seed, n_assets)'' so calls to different
+    Fully determined by '(seed, n_assets)' so calls to different
     pseudo datasets (CRSP, Compustat, CCM links) share the same
     identifier mapping and join cleanly.
 
     Returns
     -------
     pd.DataFrame
-        One row per pseudo firm with columns ''permno'', ''permco'',
-        ''gvkey'', ''exchange'', ''industry'', and ''siccd''.
+        One row per pseudo firm with columns 'permno', 'permco',
+        'gvkey', 'exchange', 'industry', and 'siccd'.
     """
     n_assets = int(n_assets)
     if n_assets <= 0:
@@ -115,7 +115,20 @@ def _simulate_pseudo_identifiers(
 # %% Router
 
 def _check_supported_dataset_pseudo(dataset: str) -> None:
-    """Raise when ''dataset'' is not a supported pseudo dataset."""
+    """
+    Validate that 'dataset' is a supported pseudo-data name.
+
+    Parameters
+    ----------
+    dataset : str
+        Dataset name to check against '_SUPPORTED_PSEUDO_DATASETS'.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset' is not one of the supported pseudo datasets, with
+        the full set of accepted names included in the message.
+    """
     if dataset not in _SUPPORTED_PSEUDO_DATASETS:
         joined = ", ".join(repr(d) for d in _SUPPORTED_PSEUDO_DATASETS)
         raise ValueError(
@@ -130,12 +143,43 @@ def _simulate_pseudo_data(
     end_date: Optional[str] = None,
     **kwargs,
 ) -> pd.DataFrame:
-    """Internal router invoked when ''domain='Pseudo Data'''.
+    """
+    Dispatch a pseudo-data request to the matching per-dataset generator.
 
-    Validates ''dataset'', emits a notice that pseudo data is being
-    returned, and dispatches to the per-dataset generator. Users access
-    pseudo data via ''download_data(domain='Pseudo Data', ...)'' or the
-    per-dataset ''_download_data_pseudo_*()'' functions.
+    Validates 'dataset', emits a UserWarning that the returned panel
+    is simulated and unsuitable for inference, and forwards the call
+    to '_download_data_pseudo_crsp',
+    '_download_data_pseudo_compustat', or
+    '_download_data_pseudo_ccm_links' based on the 'dataset' prefix.
+    Reached when callers use 'download_data(domain="Pseudo Data", ...)'.
+
+    Parameters
+    ----------
+    dataset : str
+        Name of the pseudo dataset to simulate. Must be one of the
+        names listed in '_SUPPORTED_PSEUDO_DATASETS' (e.g.,
+        'crsp_monthly', 'crsp_daily', 'compustat_annual',
+        'compustat_quarterly', 'ccm_links').
+    start_date : str, optional
+        Lower date bound forwarded to the per-dataset generator.
+        Ignored for 'ccm_links'.
+    end_date : str, optional
+        Upper date bound forwarded to the per-dataset generator.
+        Ignored for 'ccm_links'.
+    **kwargs
+        Additional generator-specific arguments (e.g., 'n_assets',
+        'seed', 'version', 'additional_columns', 'adjust_volume').
+
+    Returns
+    -------
+    pd.DataFrame
+        Pseudo panel with the column layout of the corresponding WRDS
+        dataset.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset' is None or not in '_SUPPORTED_PSEUDO_DATASETS'.
     """
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -182,12 +226,76 @@ def _download_data_pseudo_crsp(
     n_assets: int = 1000,
     seed: int = 1234,
 ) -> pd.DataFrame:
-    """Generate pseudo CRSP data with the same column layout as
-    ''_download_data_wrds_crsp''. The returned values are simulated and
-    not suitable for inference.
+    """Generate pseudo CRSP data with the WRDS CRSP schema.
 
-    Both ''crsp_monthly'' and ''crsp_daily'' are supported. The daily
-    panel uses weekdays (Mon–Fri) only; weekend dates are excluded.
+    Returns simulated panel data that mirrors the column layout of
+    '_download_data_wrds_crsp'. Useful for testing and for reproducing
+    the workflow of CRSP-based analyses without a WRDS subscription. The
+    generated values are random draws and are not suitable for
+    inference. Both 'crsp_monthly' and 'crsp_daily' are supported; the
+    daily panel uses weekdays (Monday through Friday) only so the
+    calendar approximates a trading-day grid.
+
+    Parameters
+    ----------
+    dataset : str
+        Which CRSP variant to simulate. One of 'crsp_monthly' or
+        'crsp_daily'.
+    start_date : str or datetime-like, optional
+        Inclusive lower bound of the simulated panel, in 'YYYY-MM-DD'
+        format. Falls back to a default range when omitted.
+    end_date : str or datetime-like, optional
+        Inclusive upper bound of the simulated panel, in 'YYYY-MM-DD'
+        format.
+    version : str, default 'v2'
+        Accepted for API compatibility with '_download_data_wrds_crsp';
+        the pseudo schema follows the v2 output.
+    additional_columns : list of str, optional
+        Extra column names appended to the panel. Filled with plausible
+        random draws so call sites continue to work; values themselves
+        are not economically meaningful.
+    add_ccm_links : bool, default False
+        When 'True', a 'gvkey' column derived from the same pseudo
+        identifier universe used by '_download_data_pseudo_ccm_links' is
+        appended.
+    adjust_volume : bool, default False
+        Accepted for API compatibility; ignored for pseudo data.
+    batch_size : int, default 500
+        Accepted for API compatibility; ignored for pseudo data.
+    n_assets : int, default 1000
+        Number of pseudo firms in the universe.
+    seed : int, default 1234
+        Random seed controlling the pseudo identifier universe and the
+        simulated values. Identical '(seed, n_assets)' pairs produce
+        identical output across calls and match the identifier universe
+        used by '_download_data_pseudo_compustat' and
+        '_download_data_pseudo_ccm_links'.
+
+    Returns
+    -------
+    pandas.DataFrame
+        For 'crsp_monthly', a DataFrame with columns 'permno', 'date',
+        'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
+        'industry', and 'ret_excess'. For 'crsp_daily', a DataFrame
+        with columns 'permno', 'date', 'ret', and 'ret_excess'. When
+        'add_ccm_links=True', a 'gvkey' column is appended.
+
+    Examples
+    --------
+    >>> from tidyfinance._pseudo import _download_data_pseudo_crsp
+    >>> monthly = _download_data_pseudo_crsp(
+    ...     'crsp_monthly',
+    ...     start_date='2020-01-01',
+    ...     end_date='2024-12-31',
+    ...     n_assets=20,
+    ... )
+    >>> daily = _download_data_pseudo_crsp(
+    ...     'crsp_daily',
+    ...     start_date='2020-01-01',
+    ...     end_date='2020-03-31',
+    ...     n_assets=20,
+    ... )
     """
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -229,7 +337,41 @@ def _simulate_pseudo_crsp_monthly(
     additional_columns,
     seed: int,
 ) -> pd.DataFrame:
-    """Monthly CRSP pseudo panel."""
+    """
+    Generate a monthly CRSP pseudo panel.
+
+    Crosses 'identifiers' with month-start dates between 'start_date'
+    and 'end_date', then draws share counts, prices, and returns
+    from i.i.d. distributions (shrout uniform in [1, 50]k;
+    prc uniform in [1, 1000]; ret Normal(0.008, 0.10)). Derived
+    columns ('mktcap', 'mktcap_lag', 'listing_age', 'primaryexch',
+    'ret_excess') are computed deterministically from the draws.
+
+    Parameters
+    ----------
+    identifiers : pd.DataFrame
+        Per-permno identifier frame with at least 'permno', 'exchange',
+        'siccd', and 'industry' columns; produced by
+        '_simulate_pseudo_identifiers'.
+    start_date, end_date : str or pd.Timestamp
+        Inclusive sample range (the first month-start at or before
+        'start_date' and the last month-start at or before 'end_date').
+    additional_columns : list of str or None
+        Extra column names to attach. Each is filled with i.i.d.
+        standard normal draws.
+    seed : int
+        Base seed; the function uses 'seed + 1' to keep draws
+        independent of sibling generators.
+
+    Returns
+    -------
+    pd.DataFrame
+        Monthly panel with columns 'permno', 'date',
+        'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
+        'industry', 'ret_excess', followed by any requested
+        'additional_columns'.
+    """
     start_m = pd.Timestamp(start_date).to_period("M").to_timestamp()
     end_m = pd.Timestamp(end_date).to_period("M").to_timestamp()
     months = pd.date_range(start_m, end_m, freq="MS")
@@ -284,7 +426,33 @@ def _simulate_pseudo_crsp_daily(
     additional_columns,
     seed: int,
 ) -> pd.DataFrame:
-    """Daily CRSP pseudo panel — weekdays only."""
+    """
+    Generate a daily CRSP pseudo panel restricted to weekdays.
+
+    Crosses 'identifiers' with weekday dates between 'start_date' and
+    'end_date' (Mondays through Fridays). For each row draws a daily
+    return from Normal(0.0004, 0.02) and a small risk-free haircut to
+    produce 'ret_excess'.
+
+    Parameters
+    ----------
+    identifiers : pd.DataFrame
+        Identifier frame; only the 'permno' column is used.
+    start_date, end_date : str or pd.Timestamp
+        Inclusive date range. Weekend days are dropped before the
+        cross-join.
+    additional_columns : list of str or None
+        Extra column names to attach. Each is filled with i.i.d.
+        standard normal draws.
+    seed : int
+        Base seed; the function uses 'seed + 2'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Daily panel with columns 'permno', 'date', 'ret',
+        'ret_excess', followed by any requested 'additional_columns'.
+    """
     all_days = pd.date_range(start_date, end_date, freq="D")
     weekdays = all_days[all_days.weekday < 5]
 
@@ -328,13 +496,69 @@ def _download_data_pseudo_compustat(
     n_assets: int = 1000,
     seed: int = 1234,
 ) -> pd.DataFrame:
-    """Generate pseudo Compustat data with the same column layout as
-    ''_download_data_wrds_compustat''. The returned values are
-    simulated and not suitable for inference.
+    """Generate pseudo Compustat data with the WRDS schema.
 
-    Both ''compustat_annual'' and ''compustat_quarterly'' are
-    supported. ''only_usd'' is accepted for API compatibility and has
-    no effect (the pseudo universe is USD-denominated).
+    Returns simulated panel data that mirrors the column layout of
+    '_download_data_wrds_compustat'. Useful for testing and for
+    reproducing the workflow of Compustat-based analyses without a WRDS
+    subscription. The generated values are random draws and are not
+    suitable for inference. Both 'compustat_annual' and
+    'compustat_quarterly' are supported.
+
+    Parameters
+    ----------
+    dataset : str
+        Which Compustat variant to simulate. One of 'compustat_annual'
+        or 'compustat_quarterly'.
+    start_date : str or datetime-like, optional
+        Inclusive lower bound of the simulated panel, in 'YYYY-MM-DD'
+        format.
+    end_date : str or datetime-like, optional
+        Inclusive upper bound of the simulated panel, in 'YYYY-MM-DD'
+        format.
+    additional_columns : list of str, optional
+        Extra column names appended to the panel. Filled with plausible
+        random draws; values themselves are not economically meaningful.
+    only_usd : bool, default False
+        Accepted for API compatibility with
+        '_download_data_wrds_compustat'. The pseudo universe is treated
+        as USD-denominated, so this flag has no effect.
+    n_assets : int, default 1000
+        Number of pseudo firms in the universe.
+    seed : int, default 1234
+        Random seed controlling the pseudo identifier universe and the
+        simulated values. Identical '(seed, n_assets)' pairs produce
+        identical output across calls and match the identifier universe
+        used by '_download_data_pseudo_crsp' and
+        '_download_data_pseudo_ccm_links'.
+
+    Returns
+    -------
+    pandas.DataFrame
+        For 'compustat_annual', a DataFrame with 'gvkey', 'date',
+        'datadate', the financial-statement variables 'seq', 'ceq',
+        'at', 'lt', 'txditc', 'txdb', 'itcb', 'pstkrv', 'pstkl',
+        'pstk', 'capx', 'oancf', 'sale', 'cogs', 'xint', 'xsga', 'ib',
+        'curcd', plus the derived 'be', 'op', 'at_lag', 'inv', and any
+        requested 'additional_columns'. For 'compustat_quarterly', a
+        DataFrame with 'gvkey', 'date', 'datadate', 'atq', 'ceqq', and
+        any requested 'additional_columns'.
+
+    Examples
+    --------
+    >>> from tidyfinance._pseudo import _download_data_pseudo_compustat
+    >>> annual = _download_data_pseudo_compustat(
+    ...     'compustat_annual',
+    ...     start_date='2020-01-01',
+    ...     end_date='2024-12-31',
+    ...     n_assets=20,
+    ... )
+    >>> quarterly = _download_data_pseudo_compustat(
+    ...     'compustat_quarterly',
+    ...     start_date='2020-01-01',
+    ...     end_date='2024-12-31',
+    ...     n_assets=20,
+    ... )
     """
     _ = only_usd  # kept for API parity
     if dataset is None:
@@ -370,7 +594,38 @@ def _simulate_pseudo_compustat_annual(
     additional_columns,
     seed: int,
 ) -> pd.DataFrame:
-    """Annual Compustat pseudo panel."""
+    """
+    Generate an annual Compustat pseudo panel.
+
+    Crosses 'identifiers' with calendar years from 'start_date.year'
+    through 'end_date.year' inclusive. Total assets ('at') evolve as
+    cumulative exponentiated Normal(0.05, 0.30) growth shocks per
+    'gvkey' starting from 100. Other balance-sheet items ('seq',
+    'ceq', 'lt', 'pstk', etc.) are drawn as fixed fractions of 'at',
+    so cross-sectional ratios are plausible without reflecting any
+    real firm.
+
+    Parameters
+    ----------
+    identifiers : pd.DataFrame
+        Identifier frame; only the 'gvkey' column is used.
+    start_date, end_date : str or pd.Timestamp
+        Inclusive date range. The year component drives the panel;
+        sub-annual resolution is ignored.
+    additional_columns : list of str or None
+        Extra column names to attach. Each is filled with i.i.d.
+        standard normal draws.
+    seed : int
+        Base seed; the function uses 'seed + 4'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Annual panel with 'gvkey', 'year', 'datadate' (Dec 31 of
+        each year), 'date' (month-start of December), and the
+        Compustat-style accounting columns, followed by any requested
+        'additional_columns'.
+    """
     years = np.arange(
         pd.Timestamp(start_date).year, pd.Timestamp(end_date).year + 1
     )
@@ -476,7 +731,34 @@ def _simulate_pseudo_compustat_quarterly(
     additional_columns,
     seed: int,
 ) -> pd.DataFrame:
-    """Quarterly Compustat pseudo panel."""
+    """
+    Generate a quarterly Compustat pseudo panel.
+
+    Crosses 'identifiers' with quarter-end dates between 'start_date'
+    and 'end_date'. Total assets ('atq') evolve as cumulative
+    exponentiated Normal(0.012, 0.15) growth shocks per 'gvkey'
+    starting from 100. Common equity ('ceqq') is drawn as a fixed
+    fraction of 'atq'.
+
+    Parameters
+    ----------
+    identifiers : pd.DataFrame
+        Identifier frame; only the 'gvkey' column is used.
+    start_date, end_date : str or pd.Timestamp
+        Inclusive date range, rounded to quarter starts and ends.
+    additional_columns : list of str or None
+        Extra column names to attach. Each is filled with i.i.d.
+        standard normal draws.
+    seed : int
+        Base seed; the function uses 'seed + 3'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Quarterly panel with 'gvkey', 'datadate' (quarter-end),
+        'date' (month-start), 'atq', 'ceqq', followed by any
+        requested 'additional_columns'.
+    """
     start_q = pd.Timestamp(start_date).to_period("Q").to_timestamp()
     end_q = pd.Timestamp(end_date).to_period("Q").to_timestamp()
     q_starts = pd.date_range(start_q, end_q, freq="QS")
@@ -523,9 +805,35 @@ def _download_data_pseudo_ccm_links(
 ) -> pd.DataFrame:
     """Generate a pseudo CRSP-Compustat linking table.
 
-    Every pseudo ''permno'' is linked to its corresponding ''gvkey''
-    for the full sample horizon. ''linktype'' and ''linkprim'' are
-    accepted for API compatibility and ignored.
+    Returns a simulated linking table with the same column layout as
+    '_download_data_wrds_ccm_links'. Every pseudo 'permno' is linked to
+    its corresponding 'gvkey' for the full sample horizon (1925 through
+    2099). The 'linktype' and 'linkprim' arguments are accepted for API
+    compatibility and ignored.
+
+    Parameters
+    ----------
+    n_assets : int, default 1000
+        Number of pseudo firms in the universe.
+    seed : int, default 1234
+        Random seed controlling the pseudo identifier universe.
+    linktype : list of str, optional
+        Accepted for API compatibility with
+        '_download_data_wrds_ccm_links'; ignored for pseudo data.
+    linkprim : list of str, optional
+        Accepted for API compatibility with
+        '_download_data_wrds_ccm_links'; ignored for pseudo data.
+
+    Returns
+    -------
+    pandas.DataFrame
+        DataFrame with columns 'permno', 'gvkey', 'linkdt', and
+        'linkenddt', one row per pseudo firm.
+
+    Examples
+    --------
+    >>> from tidyfinance._pseudo import _download_data_pseudo_ccm_links
+    >>> links = _download_data_pseudo_ccm_links(n_assets=10)
     """
     _ = (linktype, linkprim)
     identifiers = _simulate_pseudo_identifiers(
