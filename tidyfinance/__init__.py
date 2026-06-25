@@ -53,6 +53,11 @@ if "__path__" in globals():
             # re-exports (e.g. 'import os') and constants.
             if not isinstance(obj, (types.FunctionType, type)):
                 continue
+            # Skip objects imported from third-party packages (e.g.
+            # 'create_engine', 'ThreadPoolExecutor'); only expose
+            # symbols defined within this package.
+            if not getattr(obj, "__module__", "").startswith(__name__):
+                continue
 
             globals()[name] = obj
             __all__.append(name)
