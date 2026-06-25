@@ -5,7 +5,7 @@
 # ----------------------
 # Set this if your importable module name differs from the project name.
 # Example: project 'py-yaml12' with module name 'yaml12'
-# module: yaml12
+module: tidyfinance
 
 # Docstring Parser
 # ----------------
@@ -48,14 +48,21 @@ authors:
     email: christoph.frey@gmail.com
     # github: 
     # orcid: 
-    # homepage: 
+    homepage: https://sites.google.com/site/christophfrey/
   - name: Christoph Scheuch
     role: Author
     # affiliation: 
     email: christoph@tidy-intelligence.com
     # github: 
     # orcid: 
-    # homepage: 
+    homepage: https://christophscheuch.github.io/
+  - name: Stefan Voigt
+    role: Author
+    # affiliation: 
+    email: stefan.voigt@econ.ku.dk
+    # github: 
+    # orcid: 
+    homepage: https://www.voigtstefan.me/
 
 # Funding / Copyright Holder
 # --------------------------
