@@ -5,8 +5,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import statsmodels.formula.api as smf
-from statsmodels.regression.rolling import RollingOLS
+from pyfixest.estimation import feols
 
 from ._internal import (
     _check_new_col,
@@ -1213,10 +1212,20 @@ def estimate_betas(
 ) -> pd.DataFrame:
     """Estimate rolling betas.
 
-    Estimates rolling betas for a given model using the provided data
-    via 'RollingOLS.from_formula' from statsmodels. For each stock, the
-    regression specified by 'model' is fit over a rolling window of
-    size 'lookback'.
+    Estimates rolling betas for a given model using the provided data.
+    For each stock, the regression specified by 'model' is fit over a
+    rolling window of 'lookback' consecutive observations.
+
+    The estimator avoids refitting a full regression for every window.
+    Instead it accumulates the per-observation cross-products that
+    define the normal equations (the design Gram matrix 'X'X' and the
+    moment vector 'X'y'), takes their rolling sums via cumulative-sum
+    differencing, and solves the resulting small linear system once per
+    window. This closed-form approach follows the fast beta estimation
+    described at
+    https://www.tidy-finance.org/blog/fast-beta-estimation/ and is
+    considerably faster than looping rolling regressions while
+    returning the same coefficients.
 
     Parameters
     ----------
@@ -1226,11 +1235,11 @@ def estimate_betas(
         other variables used in the model.
     model : str
         Formula describing the model to be estimated (e.g.,
-        'ret_excess ~ mkt_excess + hml + smb').
+        'ret_excess ~ mkt_excess + hml + smb'). An intercept is
+        included unless the formula ends in '- 1' (or '+ 0').
     lookback : int
         Rolling window size in number of consecutive per-stock
-        observations. Passed through to
-        'statsmodels.RollingOLS' as 'window'.
+        observations.
     min_obs : int, optional
         Minimum number of observations required to estimate the model.
         Defaults to 80% of 'lookback'.
@@ -1241,7 +1250,10 @@ def estimate_betas(
     -------
     pd.DataFrame
         Data frame with the estimated betas for each stock and time
-        period.
+        period. Contains one column per model term (the intercept, when
+        present, is named 'Intercept'), the stock identifier, and the
+        'date' column. Windows with fewer than 'min_obs' observations
+        yield NaN coefficients.
 
     Examples
     --------
@@ -1267,25 +1279,171 @@ def estimate_betas(
     elif min_obs <= 0:
         raise ValueError("min_obs must be a positive integer.")
 
+    dep_var, regressors, has_intercept = _parse_linear_formula(model)
+
+    coef_names = (["Intercept"] if has_intercept else []) + regressors
+
     results = []
     for stock_id, group in data.groupby(id_col):
         group = group.sort_values("date")
 
-        rolling_model = RollingOLS.from_formula(
-            formula=model,
-            data=group,
-            window=lookback,
-            min_nobs=min_obs,
-            missing="drop",
-        ).fit()
-
-        betas = rolling_model.params
+        betas = _rolling_ols_betas(
+            group,
+            dep_var,
+            regressors,
+            has_intercept,
+            lookback,
+            min_obs,
+        )
+        betas = pd.DataFrame(betas, columns=coef_names)
         betas[id_col] = stock_id
         betas["date"] = group["date"].values
         results.append(betas)
 
-    betas_df = pd.concat(results).reset_index()
+    betas_df = pd.concat(results, ignore_index=True)
+    betas_df = betas_df[coef_names + [id_col, "date"]]
     return betas_df
+
+
+def _parse_linear_formula(model: str) -> tuple[str, list[str], bool]:
+    """Parse a simple additive regression formula.
+
+    Splits a formula of the form 'y ~ x1 + x2 + ...' into the dependent
+    variable, the list of regressor column names, and whether an
+    intercept is included. An intercept is included unless the formula
+    contains a '- 1' (or '+ 0') term, matching standard patsy/formulaic
+    conventions. Only additive column terms are supported.
+
+    Parameters
+    ----------
+    model : str
+        Formula string, e.g. 'ret_excess ~ mkt_excess + smb - 1'.
+
+    Returns
+    -------
+    tuple
+        (dependent_variable, regressors, has_intercept).
+    """
+    if "~" not in model:
+        raise ValueError("'model' must contain '~'.")
+    lhs, rhs = model.split("~", 1)
+    dep_var = lhs.strip()
+
+    has_intercept = True
+    tokens = re.split(r"[\s+]+", rhs.strip())
+    regressors = []
+    skip_next = False
+    for tok in tokens:
+        if not tok:
+            continue
+        if skip_next:
+            skip_next = False
+            continue
+        if tok == "-":
+            # The following token (expected to be '1') drops the
+            # intercept.
+            skip_next = True
+            has_intercept = False
+            continue
+        if tok in ("1", "0"):
+            if tok == "0":
+                has_intercept = False
+            continue
+        regressors.append(tok)
+
+    return dep_var, regressors, has_intercept
+
+
+def _rolling_ols_betas(
+    group: pd.DataFrame,
+    dep_var: str,
+    regressors: list[str],
+    has_intercept: bool,
+    lookback: int,
+    min_obs: int,
+) -> np.ndarray:
+    """Rolling OLS coefficients via cumulative cross-product sums.
+
+    Computes, for every row 'i' of 'group' (assumed sorted in time),
+    the OLS coefficients of 'dep_var' on 'regressors' over the window of
+    up to 'lookback' consecutive rows ending at 'i'. Rows containing
+    missing values in the model variables are dropped before windowing.
+
+    Rather than refitting a regression per window, the routine forms the
+    per-observation design Gram matrix 'X'X' and moment vector 'X'y',
+    accumulates them with cumulative sums, differences those to obtain
+    the windowed normal equations, and solves each small system. The
+    coefficients are therefore identical to ordinary least squares.
+
+    Parameters
+    ----------
+    group : pd.DataFrame
+        Per-stock data sorted by date.
+    dep_var : str
+        Dependent variable column name.
+    regressors : list of str
+        Regressor column names.
+    has_intercept : bool
+        Whether to prepend an intercept column.
+    lookback : int
+        Rolling window length in observations.
+    min_obs : int
+        Minimum number of observations required in a window.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape '(len(group), k)' with the estimated
+        coefficients aligned to the original rows of 'group', where 'k'
+        counts the intercept (if any) plus the regressors. Rows whose
+        window has fewer than 'min_obs' observations, or whose normal
+        equations are singular, contain NaN. Rows dropped for missing
+        data also contain NaN.
+    """
+    n_rows = len(group)
+    k = (1 if has_intercept else 0) + len(regressors)
+    betas = np.full((n_rows, k), np.nan)
+
+    model_vars = [dep_var] + regressors
+    complete = group[model_vars].notna().all(axis=1).to_numpy()
+    pos = np.flatnonzero(complete)
+    n = pos.size
+    if n == 0:
+        return betas
+
+    y = group[dep_var].to_numpy(dtype=float)[pos]
+    x = group[regressors].to_numpy(dtype=float)[pos]
+    if has_intercept:
+        design = np.column_stack([np.ones(n), x])
+    else:
+        design = x if x.ndim == 2 else x.reshape(n, 0)
+
+    # Per-observation cross-products: the Gram matrix X'X is the sum of
+    # the outer products of each design row, and X'y the sum of each row
+    # scaled by y. Cumulative sums let any window be recovered by
+    # differencing two prefix sums.
+    gram_rows = design[:, :, None] * design[:, None, :]  # (n, k, k)
+    moment_rows = design * y[:, None]  # (n, k)
+
+    gram_prefix = np.zeros((n + 1, k, k))
+    gram_prefix[1:] = np.cumsum(gram_rows, axis=0)
+    moment_prefix = np.zeros((n + 1, k))
+    moment_prefix[1:] = np.cumsum(moment_rows, axis=0)
+
+    i = np.arange(n)
+    lo = np.maximum(0, i - lookback + 1)
+    count = i + 1 - lo
+
+    gram_win = gram_prefix[i + 1] - gram_prefix[lo]  # (n, k, k)
+    moment_win = moment_prefix[i + 1] - moment_prefix[lo]  # (n, k)
+
+    for j in np.flatnonzero(count >= min_obs):
+        try:
+            betas[pos[j]] = np.linalg.solve(gram_win[j], moment_win[j])
+        except np.linalg.LinAlgError:
+            pass
+
+    return betas
 
 
 def _ar1_ols_residuals(e: np.ndarray) -> tuple[float, np.ndarray]:
@@ -1452,8 +1610,9 @@ def estimate_fama_macbeth(
         combination should appear at most once.
     model : str
         Formula describing the cross-sectional regression
-        (e.g., 'ret_excess ~ beta + bm + log_mktcap'). Standard patsy
-        syntax; an intercept is included unless the formula ends in '- 1'.
+        (e.g., 'ret_excess ~ beta + bm + log_mktcap'). Standard
+        formulaic syntax; an intercept is included unless the formula
+        ends in '- 1'.
     vcov : {'iid', 'newey-west'}, default 'newey-west'
         Standard error treatment for the time-series average of period
         coefficients. 'iid' assumes independent and identically distributed
@@ -1564,8 +1723,8 @@ def estimate_fama_macbeth(
         if len(group) <= len(model.split("~")[1].split("+")):
             continue
 
-        model_fit = smf.ols(model, data=group).fit()
-        params = model_fit.params.to_dict()
+        model_fit = feols(model, data=group)
+        params = model_fit.coef().to_dict()
         params[date_col] = date
         cross_section_results.append(params)
 
@@ -1604,11 +1763,9 @@ def estimate_fama_macbeth(
                 adjust=nw_adjust,
             )
         else:
-            se = (
-                smf.ols("estimate ~ 1", x.dropna(subset=["estimate"]))
-                .fit()
-                .bse["Intercept"]
-            )
+            se = feols("estimate ~ 1", data=x.dropna(subset=["estimate"])).se()[
+                "Intercept"
+            ]
         if se is None or np.isnan(se) or se == 0:
             t_stat = np.nan
         else:
@@ -3360,7 +3517,7 @@ def estimate_model(
     fit = None
     if not insufficient:
         try:
-            fit = smf.ols(model, data=data[complete]).fit()
+            fit = feols(model, data=data[complete])
         except Exception:
             insufficient = True
 
@@ -3382,20 +3539,20 @@ def estimate_model(
         if insufficient:
             result["coefficients"] = na_df()
         else:
-            result["coefficients"] = to_df(fit.params)
+            result["coefficients"] = to_df(fit.coef())
 
     if "tstats" in output_list:
         if insufficient:
             result["tstats"] = na_df()
         else:
-            result["tstats"] = to_df(fit.tvalues)
+            result["tstats"] = to_df(fit.tstat())
 
     if "residuals" in output_list:
         if insufficient:
             result["residuals"] = np.full(len(data), np.nan)
         else:
             resid = np.full(len(data), np.nan)
-            resid[complete.values] = fit.resid.values
+            resid[complete.values] = np.asarray(fit.resid())
             result["residuals"] = resid
 
     if return_multiple:

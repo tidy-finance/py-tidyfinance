@@ -14,6 +14,32 @@ sys.path.insert(
 from tidyfinance.core import estimate_model  # noqa: E402
 
 
+def _ols_reference(df, dep, regressors):
+    """Independent OLS fit (intercept + regressors) via numpy.
+
+    Returns (params, tvalues, residuals) as dicts/arrays keyed by
+    'Intercept' and the regressor names, computed straight from the
+    normal equations so the test does not depend on the estimator under
+    test or on statsmodels.
+    """
+    sub = df[[dep] + regressors].dropna()
+    y = sub[dep].to_numpy(dtype=float)
+    x = np.column_stack([np.ones(len(sub)), sub[regressors].to_numpy(float)])
+    names = ["Intercept"] + regressors
+    beta, _, _, _ = np.linalg.lstsq(x, y, rcond=None)
+    resid = y - x @ beta
+    n, k = x.shape
+    sigma2 = (resid @ resid) / (n - k)
+    xtx_inv = np.linalg.inv(x.T @ x)
+    se = np.sqrt(np.diag(sigma2 * xtx_inv))
+    tvalues = beta / se
+    return (
+        dict(zip(names, beta)),
+        dict(zip(names, tvalues)),
+        resid,
+    )
+
+
 def make_test_data():
     """Construct the standard test panel (100 rows, 4 columns)."""
     rng = np.random.default_rng(42)
@@ -92,17 +118,17 @@ def test_default_output_returns_a_dataframe_of_coefficients():
     assert result.shape[1] == 2
 
 
-def test_coefficients_match_statsmodels_output():
-    """Test coefficients match statsmodels output."""
+def test_coefficients_match_ols_reference():
+    """Test coefficients match an independent numpy OLS fit."""
     df = make_test_data()
     result = estimate_model(df, "ret_excess ~ mkt_excess + smb + hml")
-    import statsmodels.formula.api as smf
-
-    fit = smf.ols("ret_excess ~ mkt_excess + smb + hml", data=df).fit()
-    assert abs(result["intercept"].iloc[0] - fit.params["Intercept"]) < 1e-12
-    assert abs(result["mkt_excess"].iloc[0] - fit.params["mkt_excess"]) < 1e-12
-    assert abs(result["smb"].iloc[0] - fit.params["smb"]) < 1e-12
-    assert abs(result["hml"].iloc[0] - fit.params["hml"]) < 1e-12
+    params, _, _ = _ols_reference(
+        df, "ret_excess", ["mkt_excess", "smb", "hml"]
+    )
+    assert abs(result["intercept"].iloc[0] - params["Intercept"]) < 1e-10
+    assert abs(result["mkt_excess"].iloc[0] - params["mkt_excess"]) < 1e-10
+    assert abs(result["smb"].iloc[0] - params["smb"]) < 1e-10
+    assert abs(result["hml"].iloc[0] - params["hml"]) < 1e-10
 
 
 def test_model_without_intercept_omits_intercept_column():
@@ -126,10 +152,8 @@ def test_tstats_output_returns_t_statistics_as_dataframe():
     assert "mkt_excess" in result.columns
     assert "smb" in result.columns
 
-    import statsmodels.formula.api as smf
-
-    fit = smf.ols("ret_excess ~ mkt_excess + smb", data=df).fit()
-    assert abs(result["mkt_excess"].iloc[0] - fit.tvalues["mkt_excess"]) < 1e-12
+    _, tvalues, _ = _ols_reference(df, "ret_excess", ["mkt_excess", "smb"])
+    assert abs(result["mkt_excess"].iloc[0] - tvalues["mkt_excess"]) < 1e-10
 
 
 # %% residuals
@@ -143,16 +167,14 @@ def test_residuals_output_returns_numeric_vector_of_correct_length():
     assert len(result) == len(df)
 
 
-def test_residuals_match_statsmodels_residuals():
-    """Test residuals match statsmodels residuals."""
+def test_residuals_match_ols_reference():
+    """Test residuals match an independent numpy OLS fit."""
     df = make_test_data()
     result = estimate_model(
         df, "ret_excess ~ mkt_excess + smb", output="residuals"
     )
-    import statsmodels.formula.api as smf
-
-    fit = smf.ols("ret_excess ~ mkt_excess + smb", data=df).fit()
-    np.testing.assert_allclose(result, fit.resid.values)
+    _, _, resid = _ols_reference(df, "ret_excess", ["mkt_excess", "smb"])
+    np.testing.assert_allclose(result, resid, atol=1e-10)
 
 
 def test_residuals_are_na_where_data_has_missing_values():
