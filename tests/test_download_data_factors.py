@@ -1,8 +1,10 @@
 """Tests for download_data_factors_ff and download_data_factors_q."""
 
+import io
 import os
 import sys
-from unittest.mock import patch
+import zipfile
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -14,6 +16,7 @@ sys.path.insert(
 from tidyfinance.data_download import (
     _download_data_factors_ff,
     _download_data_factors_q,
+    _famafrench_downloader,
 )  # noqa: E402
 from tidyfinance.supported_datasets import (
     _check_supported_dataset_ff,
@@ -402,6 +405,71 @@ def test_download_data_factors_ff_does_not_rescale_breakpoints():
     ):
         result = _download_data_factors_ff("ME Breakpoints")
     assert list(result["v2"]) == [488, 492]
+
+
+# %% _famafrench_downloader
+
+
+def _make_french_zip(table_body):
+    """Build an in-memory Kenneth French style ZIP from a CSV body.
+
+    A leading documentation chunk is prepended so the parser has to
+    skip it and keep only the first data table.
+    """
+    header = "This file was created for testing tidyfinance. " * 3
+    data_raw = header + "\r\n\r\n" + table_body
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("data.csv", data_raw.encode("latin1"))
+    response = MagicMock()
+    response.content = buffer.getvalue()
+    response.raise_for_status = MagicMock()
+    return response
+
+
+def test_famafrench_downloader_parses_first_table():
+    """Test _famafrench_downloader parses the first table in the archive."""
+    rows = "\r\n".join(
+        f"{y}{m:02d},1.0,0.1" for y in range(2000, 2021) for m in range(1, 13)
+    )
+    response = _make_french_zip(",Mkt-RF,RF\r\n" + rows)
+
+    with patch("tidyfinance.data_download.requests.get", return_value=response):
+        result = _famafrench_downloader("ftp/Some_File_CSV.zip")
+
+    assert isinstance(result, pd.DataFrame)
+    assert list(result.columns) == ["Mkt-RF", "RF"]
+    assert result.index.name == "date"
+    assert len(result) == 252
+
+
+def test_famafrench_downloader_applies_date_filter():
+    """Test _famafrench_downloader filters the parsed table by date."""
+    rows = "\r\n".join(
+        f"{y}{m:02d},1.0,0.1" for y in range(2000, 2021) for m in range(1, 13)
+    )
+    response = _make_french_zip(",Mkt-RF,RF\r\n" + rows)
+
+    with patch("tidyfinance.data_download.requests.get", return_value=response):
+        result = _famafrench_downloader(
+            "ftp/Some_File_CSV.zip",
+            start_date="2010-01-01",
+            end_date="2010-12-31",
+        )
+
+    assert len(result) == 12
+    assert result.index.min() >= pd.Timestamp("2010-01-01")
+    assert result.index.max() <= pd.Timestamp("2010-12-31")
+
+
+def test_famafrench_downloader_propagates_download_error():
+    """Test _famafrench_downloader propagates HTTP download errors."""
+    response = MagicMock()
+    response.raise_for_status.side_effect = Exception("404 error")
+
+    with patch("tidyfinance.data_download.requests.get", return_value=response):
+        with pytest.raises(Exception, match="404 error"):
+            _famafrench_downloader("ftp/Missing_CSV.zip")
 
 
 if __name__ == "__main__":
