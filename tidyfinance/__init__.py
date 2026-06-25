@@ -19,7 +19,7 @@ import types
 
 # Toggle these to control auto-discovery scope.
 INCLUDE_PRIVATE_MODULES = False   # scan '_internal', '_pseudo', etc.
-INCLUDE_PRIVATE_NAMES = True      # expose '_download_data_*' etc.
+INCLUDE_PRIVATE_NAMES = False      # expose '_download_data_*' etc.
 
 # Names to never expose, even if the filters above would include them.
 # Use this for things like '__future__' re-imports or sentinel objects.
@@ -88,9 +88,16 @@ _BACKEND_WRAPPED = (
     "download_data",
     "list_supported_datasets",
     "list_supported_indexes",
+    "process_trace_data"
 )
 for _name in _BACKEND_WRAPPED:
-    if _name in globals():
-        globals()[_name] = use_backend(globals()[_name])
+    if _name not in globals():
+        raise RuntimeError(
+            f"'{_name}' is listed in _BACKEND_WRAPPED but was not "
+            f"auto-discovered from any public submodule. Check the "
+            f"name for typos or update _BACKEND_WRAPPED."
+        )
+    globals()[_name] = use_backend(globals()[_name])
 
-del _seen, _name
+del _seen
+globals().pop("_name", None)

@@ -360,9 +360,9 @@ def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
     trace_all : pd.DataFrame
         Raw Enhanced TRACE messages with the message-status columns
         used by the cleaning protocol ('trc_st', 'msg_seq_nb',
-        'orig_msg_seq_nb', 'trd_rpt_dt', 'trd_exctn_dt',
-        'trd_exctn_tm', 'cusip_id', 'entrd_vol_qt', 'rptd_pr',
-        'rpt_side_cd', 'cntra_mp_id', 'asof_cd').
+        'orig_msg_seq_nb', 'trd_rpt_dt', 'trd_rpt_tm',
+        'trd_exctn_dt', 'trd_exctn_tm', 'cusip_id', 'entrd_vol_qt',
+        'rptd_pr', 'rpt_side_cd', 'cntra_mp_id', 'asof_cd').
 
     Returns
     -------

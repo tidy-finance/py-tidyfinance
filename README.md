@@ -41,14 +41,13 @@ tf.set_backend("polars")
 # Returns a polars DataFrame
 data = tf.download_data(
   domain="Fama-French",
-  dataset="factors_ff3_monthly",
+  dataset="factors_ff_3_monthly",
   start_date="2000-01-01",
   end_date="2020-12-31"
 )
 
 # Subsequent calls also return polars
-tf.estimate_model(data, "mkt_excess")
-
+tf.estimate_model(data, "mkt_excess ~ smb + hml")
 tf.set_backend("pandas")  # back to the default
 ```
 

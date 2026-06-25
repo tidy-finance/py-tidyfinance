@@ -11,8 +11,8 @@ Examples
 --------
 >>> import tidyfinance as tf
 >>> tf.set_backend("polars")
->>> data = tf.download_data("Fama-French", "factors_ff3_monthly")
->>> tf.estimate_model(data, "mkt_excess")  # also returns polars
+>>> data = tf.download_data("Fama-French", "factors_ff_3_monthly")
+>>> tf.estimate_model(data, "mkt_excess ~ smb + hml") # also returns polars
 >>> tf.set_backend("pandas")  # back to the default
 """
 
