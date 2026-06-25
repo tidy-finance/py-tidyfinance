@@ -189,6 +189,90 @@ def test_estimate_rolling_betas_min_obs(sample_data: pd.DataFrame) -> None:
     )
 
 
+def test_estimate_betas_min_obs_non_positive_raises(
+    sample_data: pd.DataFrame,
+) -> None:
+    """min_obs <= 0 raises a ValueError."""
+    for bad in (0, -5):
+        with pytest.raises(ValueError, match="min_obs must be a positive"):
+            estimate_betas(
+                sample_data, "ret_excess ~ mkt_excess", 30, min_obs=bad
+            )
+
+
+def test_estimate_betas_default_min_obs_is_80_percent(
+    sample_data: pd.DataFrame,
+) -> None:
+    """min_obs defaults to 80% of lookback when not provided."""
+    lookback = 30
+    default = estimate_betas(sample_data, "ret_excess ~ mkt_excess", lookback)
+    explicit = estimate_betas(
+        sample_data,
+        "ret_excess ~ mkt_excess",
+        lookback,
+        min_obs=int(lookback * 0.8),
+    )
+    pd.testing.assert_frame_equal(default, explicit)
+
+
+def test_estimate_betas_without_intercept_omits_intercept_column(
+    sample_data: pd.DataFrame,
+) -> None:
+    """A '- 1' formula omits the Intercept column."""
+    result = estimate_betas(sample_data, "ret_excess ~ mkt_excess - 1", 30)
+    assert "Intercept" not in result.columns
+    assert "mkt_excess" in result.columns
+
+
+def test_estimate_betas_match_per_window_ols(
+    sample_data: pd.DataFrame,
+) -> None:
+    """Estimated betas match a per-window OLS fit."""
+    lookback = 30
+    result = estimate_betas(sample_data, "ret_excess ~ mkt_excess", lookback)
+
+    group = (
+        sample_data[sample_data["permno"] == 1]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+    i = 50
+    window = group.iloc[i - lookback + 1 : i + 1]
+    design = np.column_stack(
+        [np.ones(len(window)), window["mkt_excess"].values]
+    )
+    expected = np.linalg.lstsq(design, window["ret_excess"].values, rcond=None)[
+        0
+    ]
+
+    row = result[
+        (result["permno"] == 1) & (result["date"] == group.loc[i, "date"])
+    ]
+    np.testing.assert_allclose(
+        row[["Intercept", "mkt_excess"]].values[0], expected, rtol=1e-8
+    )
+
+
+def test_estimate_betas_custom_id_column(
+    sample_data: pd.DataFrame,
+) -> None:
+    """A non-default stock identifier column is honored."""
+    renamed = sample_data.rename(columns={"permno": "gvkey"})
+    result = estimate_betas(
+        renamed, "ret_excess ~ mkt_excess", 30, id_col="gvkey"
+    )
+    assert "gvkey" in result.columns
+    assert "permno" not in result.columns
+
+
+def test_estimate_betas_invalid_formula_raises(
+    sample_data: pd.DataFrame,
+) -> None:
+    """A formula without '~' raises a ValueError."""
+    with pytest.raises(ValueError, match="must contain '~'"):
+        estimate_betas(sample_data, "ret_excess mkt_excess", 30)
+
+
 def sample_data_fmb() -> pd.DataFrame:
     np.random.seed(42)
     dates = pd.date_range(start="2020-01-01", periods=12, freq="ME")
@@ -223,6 +307,30 @@ def test_estimate_fama_macbeth_vcov(sample_data: pd.DataFrame) -> None:
     assert "t_statistic" in result.columns, (
         "Output should include t-statistics based on vcov choice"
     )
+
+
+def test_estimate_fama_macbeth_invalid_vcov_raises() -> None:
+    """An unsupported vcov option raises a ValueError."""
+    with pytest.raises(ValueError, match="vcov must be either"):
+        estimate_fama_macbeth(
+            sample_data_fmb(),
+            "ret_excess ~ beta + bm + log_mktcap",
+            vcov="bogus",
+        )
+
+
+def test_estimate_fama_macbeth_missing_date_column_raises() -> None:
+    """A missing date column raises a ValueError."""
+    data = sample_data_fmb().drop(columns="date")
+    with pytest.raises(ValueError, match="must contain a date column"):
+        estimate_fama_macbeth(data, "ret_excess ~ beta + bm + log_mktcap")
+
+
+def test_estimate_fama_macbeth_n_equals_number_of_periods() -> None:
+    """The reported 'n' equals the number of distinct periods."""
+    data = sample_data_fmb()
+    result = estimate_fama_macbeth(data, "ret_excess ~ beta + bm + log_mktcap")
+    assert (result["n"] == data["date"].nunique()).all()
 
 
 # Fixed series with reference values computed in R via
@@ -399,6 +507,14 @@ def test_create_summary_statistics_rejects_strings() -> None:
     df = pd.DataFrame({"name": ["A", "B", "C"], "x": [1, 2, 3]})
     with pytest.raises(ValueError, match="not numeric or boolean"):
         create_summary_statistics(df, ["name", "x"])
+
+
+def test_create_summary_statistics_handles_na() -> None:
+    """NA values are dropped before statistics are computed."""
+    df = pd.DataFrame({"x": [1.0, 2.0, np.nan, 4.0]})
+    result = create_summary_statistics(df, ["x"])
+    assert result["count"].iloc[0] == 3
+    assert result["mean"].iloc[0] == pytest.approx((1.0 + 2.0 + 4.0) / 3)
 
 
 def sample_data_ls() -> pd.DataFrame:
