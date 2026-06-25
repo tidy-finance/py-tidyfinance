@@ -82,7 +82,7 @@ authors:
 # Canonical address of the deployed documentation site.
 # Required for subdirectory deployments, skills page install commands,
 # .well-known/ discovery, and sitemaps.
-# site_url: "https://your-org.github.io/your-package/"
+site_url: "https://python.tidy-finance.org"
 
 # Site Settings
 # -------------
