@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -16,11 +16,7 @@ from tidyfinance.data_download import _download_data_fred  # noqa: E402
 
 def test_downloads_parses_and_filters_fred_data():
     """Test downloads, parses, and filters FRED data."""
-    body = (
-        "observation_date,GDP\n"
-        "2020-01-01,1\n"
-        "2020-02-01,2\n"
-    )
+    body = "observation_date,GDP\n2020-01-01,1\n2020-02-01,2\n"
     response_mock = MagicMock()
     response_mock.status_code = 200
     response_mock.text = body
@@ -48,8 +44,9 @@ def test_returns_empty_data_when_fred_responds_with_non_200_status():
     with patch(
         "tidyfinance.data_download.requests.get", return_value=response_mock
     ):
-        with pytest.warns(UserWarning,
-                          match="Failed to retrieve data for series GDP"):
+        with pytest.warns(
+            UserWarning, match="Failed to retrieve data for series GDP"
+        ):
             result = _download_data_fred("GDP")
 
     assert isinstance(result, pd.DataFrame)

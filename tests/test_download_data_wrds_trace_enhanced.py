@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -29,8 +29,20 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
     d0 = pd.Timestamp("2011-01-02")
 
     def row(
-        msg, orig, vol, pr, side, contra, date, rpt, status, asof="", wis="N",
-        settle=1, stlmnt=None, spcl="",
+        msg,
+        orig,
+        vol,
+        pr,
+        side,
+        contra,
+        date,
+        rpt,
+        status,
+        asof="",
+        wis="N",
+        settle=1,
+        stlmnt=None,
+        spcl="",
     ):
         if stlmnt is None:
             stlmnt = date + pd.Timedelta(days=1)
@@ -66,9 +78,18 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
         row(14, None, 103, 99, "B", "D", d1, d1, "T"),
         row(15, None, 104, 99, "B", "D", d1, d1, "T"),
         row(16, None, 105, 99, "B", "C", d1, d1, "T", settle=8),
-        row(17, None, 106, 99, "B", "C", d1, d1, "T",
-            stlmnt=d1 + pd.Timedelta(days=8)
-            ),
+        row(
+            17,
+            None,
+            106,
+            99,
+            "B",
+            "C",
+            d1,
+            d1,
+            "T",
+            stlmnt=d1 + pd.Timedelta(days=8),
+        ),
         row(18, None, 107, 99, "B", "C", d1, d1, "T", wis="Y"),
         row(19, None, 108, 99, "B", "C", d1, d1, "T", spcl="Y"),
         row(20, None, 109, 99, "B", "C", d1, d1, "T", asof="A"),
@@ -83,12 +104,12 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
     ]
     trace = pd.DataFrame(rows)
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql", return_value=trace
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.data_download.pd.read_sql", return_value=trace),
     ):
         out = _download_data_wrds_trace_enhanced(
             ["00101JAH9"], "2010-01-01", "2014-01-01"

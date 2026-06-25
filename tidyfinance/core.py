@@ -1,21 +1,21 @@
 """Main module for tidyfinance package."""
 
+import re
 import warnings
 
 import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
 from statsmodels.regression.rolling import RollingOLS
-import warnings
-import re
 
 from ._internal import (
-    _to_offset,
     _check_new_col,
+    _to_offset,
     _validate_column_name,
     _validate_flag,
     _validate_optional_number,
 )
+
 
 def add_lagged_columns(
     data: pd.DataFrame,
@@ -79,32 +79,34 @@ def add_lagged_columns(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import add_lagged_columns
-    >>> rng = np.random.default_rng(42)
-    >>> dates = pd.date_range('2023-01-01', periods=10, freq='MS')
-    >>> data = pd.DataFrame({
-    ...     'permno': [1] * 10 + [2] * 10,
-    ...     'date': list(dates) * 2,
-    ...     'size': rng.uniform(100, 200, 20),
-    ...     'bm': rng.uniform(0.5, 1.5, 20),
-    ... })
-    >>> # Exact lag: each row gets the value from exactly 2 months earlier
-    >>> add_lagged_columns(
-    ...     data,
-    ...     cols=['size', 'bm'],
-    ...     lag=pd.DateOffset(months=2),
-    ...     by='permno',
-    ... )
-    >>> # Window lag: most recent value from 2 to 4 months earlier
-    >>> add_lagged_columns(
-    ...     data,
-    ...     cols='size',
-    ...     lag=pd.DateOffset(months=2),
-    ...     max_lag=pd.DateOffset(months=4),
-    ...     by='permno',
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import add_lagged_columns
+    rng = np.random.default_rng(42)
+    dates = pd.date_range('2023-01-01', periods=10, freq='MS')
+    data = pd.DataFrame({
+        'permno': [1] * 10 + [2] * 10,
+        'date': list(dates) * 2,
+        'size': rng.uniform(100, 200, 20),
+        'bm': rng.uniform(0.5, 1.5, 20),
+    })
+    # Exact lag: each row gets the value from exactly 2 months earlier
+    add_lagged_columns(
+        data,
+        cols=['size', 'bm'],
+        lag=pd.DateOffset(months=2),
+        by='permno',
+    )
+    # Window lag: most recent value from 2 to 4 months earlier
+    add_lagged_columns(
+        data,
+        cols='size',
+        lag=pd.DateOffset(months=2),
+        max_lag=pd.DateOffset(months=4),
+        by='permno',
+    )
+    ```
     """
     if data_options is not None:
         date_col = data_options.get("date", date_col)
@@ -119,9 +121,7 @@ def add_lagged_columns(
     max_lag_offset = _to_offset(max_lag if max_lag is not None else lag)
 
     if date_col not in data.columns:
-        raise ValueError(
-            f"'data' must contain the date column '{date_col}'."
-        )
+        raise ValueError(f"'data' must contain the date column '{date_col}'.")
 
     ref = pd.Timestamp("2020-01-01")
     lag_end = ref + lag_offset
@@ -134,9 +134,7 @@ def add_lagged_columns(
 
     missing_cols = [c for c in cols if c not in data.columns]
     if missing_cols:
-        raise ValueError(
-            f"'data' is missing column(s): {missing_cols}."
-        )
+        raise ValueError(f"'data' is missing column(s): {missing_cols}.")
 
     if by_list:
         missing_by = [c for c in by_list if c not in data.columns]
@@ -148,11 +146,10 @@ def add_lagged_columns(
     join_cols = by_list + [date_col]
     if data[join_cols].duplicated().any():
         raise ValueError(
-            "The combination of 'by' and date columns must be unique "
-            "in 'data'."
+            "The combination of 'by' and date columns must be unique in 'data'."
         )
 
-    exact_lag = (lag_end == max_lag_end)
+    exact_lag = lag_end == max_lag_end
     result = data.copy()
 
     if not exact_lag:
@@ -176,9 +173,7 @@ def add_lagged_columns(
             grp_cols = by_list + ["_yr"]
             lagged = lagged.assign(_yr=lagged[date_col].dt.year)
             max_dates = lagged.groupby(grp_cols)[date_col].transform("max")
-            lagged = lagged[lagged[date_col] == max_dates].drop(
-                columns="_yr"
-            )
+            lagged = lagged[lagged[date_col] == max_dates].drop(columns="_yr")
 
         if exact_lag:
             lagged[date_col] = lagged[date_col] + lag_offset
@@ -247,9 +242,7 @@ def _window_lag_join(
     _check_new_col(result, "_orig_idx")
     _check_new_col(lagged, "_src_date")
     result = result.assign(_orig_idx=np.arange(len(result)))
-    lagged = lagged.rename(
-        columns={date_col: "_src_date", col: lag_col_name}
-    )
+    lagged = lagged.rename(columns={date_col: "_src_date", col: lag_col_name})
 
     left_sorted = result.sort_values("_upper", kind="mergesort")
     right_sorted = lagged.sort_values("_src_date", kind="mergesort")
@@ -277,9 +270,9 @@ def _window_lag_join(
     merged.loc[~mask, lag_col_name] = np.nan
 
     merged = merged.sort_values("_orig_idx", kind="mergesort")
-    merged = merged.drop(
-        columns=["_orig_idx", "_src_date"]
-    ).reset_index(drop=True)
+    merged = merged.drop(columns=["_orig_idx", "_src_date"]).reset_index(
+        drop=True
+    )
     return merged
 
 
@@ -335,24 +328,26 @@ def join_lagged_values(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import join_lagged_values
-    >>> rng = np.random.default_rng(42)
-    >>> dates = pd.date_range('2020-01-01', periods=6, freq='MS')
-    >>> df1 = pd.DataFrame({
-    ...     'id': [1] * 6 + [2] * 6,
-    ...     'date': list(dates) * 2,
-    ... })
-    >>> df2 = df1.copy()
-    >>> df2['x'] = rng.standard_normal(len(df2))
-    >>> join_lagged_values(
-    ...     original_data=df1,
-    ...     new_data=df2,
-    ...     id_keys='id',
-    ...     min_lag=pd.DateOffset(months=1),
-    ...     max_lag=pd.DateOffset(months=3),
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import join_lagged_values
+    rng = np.random.default_rng(42)
+    dates = pd.date_range('2020-01-01', periods=6, freq='MS')
+    df1 = pd.DataFrame({
+        'id': [1] * 6 + [2] * 6,
+        'date': list(dates) * 2,
+    })
+    df2 = df1.copy()
+    df2['x'] = rng.standard_normal(len(df2))
+    join_lagged_values(
+        original_data=df1,
+        new_data=df2,
+        id_keys='id',
+        min_lag=pd.DateOffset(months=1),
+        max_lag=pd.DateOffset(months=3),
+    )
+    ```
     """
     if data_options is not None:
         date_col = data_options.get("date", date_col)
@@ -372,24 +367,17 @@ def join_lagged_values(
             f"'original_data' must contain the column '{date_col}'."
         )
     if date_col not in new_data.columns:
-        raise ValueError(
-            f"'new_data' must contain the column '{date_col}'."
-        )
+        raise ValueError(f"'new_data' must contain the column '{date_col}'.")
 
-    missing_original = [
-        k for k in id_keys if k not in original_data.columns
-    ]
+    missing_original = [k for k in id_keys if k not in original_data.columns]
     if missing_original:
         raise ValueError(
-            f"'original_data' is missing id column(s): "
-            f"{missing_original}."
+            f"'original_data' is missing id column(s): {missing_original}."
         )
 
     missing_new = [k for k in id_keys if k not in new_data.columns]
     if missing_new:
-        raise ValueError(
-            f"'new_data' is missing id column(s): {missing_new}."
-        )
+        raise ValueError(f"'new_data' is missing id column(s): {missing_new}.")
 
     new_column_names = [
         c for c in new_data.columns if c not in id_keys + [date_col]
@@ -401,12 +389,9 @@ def join_lagged_values(
         )
 
     original_non_key = [
-        c for c in original_data.columns
-        if c not in id_keys + [date_col]
+        c for c in original_data.columns if c not in id_keys + [date_col]
     ]
-    duplicate_cols = [
-        c for c in new_column_names if c in original_non_key
-    ]
+    duplicate_cols = [c for c in new_column_names if c in original_non_key]
     if duplicate_cols:
         raise ValueError(
             f"Column(s) in 'new_data' already exist in "
@@ -466,9 +451,7 @@ def join_lagged_values(
             direction="backward",
         )
 
-        mask = merged["_lower"].notna() & (
-            merged[date_col] <= merged["_upper"]
-        )
+        mask = merged["_lower"].notna() & (merged[date_col] <= merged["_upper"])
         merged.loc[~mask, col] = np.nan
 
         merged = merged.sort_values("_orig_idx", kind="mergesort")
@@ -537,15 +520,15 @@ def data_options(
 
     Examples
     --------
-    >>> from tidyfinance import data_options
-    >>> data_options(id='permno', date='date', exchange='exchange')
+    ```python
+    from tidyfinance import data_options
+    data_options(id='permno', date='date', exchange='exchange')
+    ```
     """
     _validate_column_name(id, "id", "entity")
     _validate_column_name(date, "date", "date")
     _validate_column_name(exchange, "exchange", "exchange")
-    _validate_column_name(
-        mktcap_lag, "mktcap_lag", "market capitalization lag"
-    )
+    _validate_column_name(mktcap_lag, "mktcap_lag", "market capitalization lag")
     _validate_column_name(ret_excess, "ret_excess", "excess return")
     _validate_column_name(portfolio, "portfolio", "portfolio")
     _validate_column_name(
@@ -613,23 +596,25 @@ def assign_portfolio(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import assign_portfolio, breakpoint_options
-    >>> rng = np.random.default_rng(42)
-    >>> data = pd.DataFrame({
-    ...     'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
-    ...     'market_cap': rng.uniform(1, 100, 100),
-    ... })
-    >>> # Quintile portfolios on market_cap with NYSE breakpoints
-    >>> assign_portfolio(
-    ...     data,
-    ...     sorting_variable='market_cap',
-    ...     breakpoint_options=breakpoint_options(
-    ...         n_portfolios=5,
-    ...         breakpoints_exchanges='NYSE',
-    ...     ),
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import assign_portfolio, breakpoint_options
+    rng = np.random.default_rng(42)
+    data = pd.DataFrame({
+        'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
+        'market_cap': rng.uniform(1, 100, 100),
+    })
+    # Quintile portfolios on market_cap with NYSE breakpoints
+    assign_portfolio(
+        data,
+        sorting_variable='market_cap',
+        breakpoint_options=breakpoint_options(
+            n_portfolios=5,
+            breakpoints_exchanges='NYSE',
+        ),
+    )
+    ```
     """
     if breakpoint_function is None:
         breakpoint_function = compute_breakpoints
@@ -742,23 +727,25 @@ def breakpoint_options(
 
     Examples
     --------
-    >>> from tidyfinance import breakpoint_options
-    >>> # Quintile portfolios with NYSE breakpoints
-    >>> breakpoint_options(
-    ...     n_portfolios=5,
-    ...     breakpoints_exchanges='NYSE',
-    ... )
-    >>> # Custom percentile thresholds (mutually exclusive with n_portfolios)
-    >>> breakpoint_options(
-    ...     percentiles=[0.3, 0.7],
-    ...     breakpoints_exchanges='NYSE',
-    ... )
-    >>> # Exclude the smallest 20% of NYSE stocks from breakpoint computation
-    >>> breakpoint_options(
-    ...     n_portfolios=10,
-    ...     breakpoints_exchanges='NYSE',
-    ...     breakpoints_min_size_threshold=0.2,
-    ... )
+    ```python
+    from tidyfinance import breakpoint_options
+    # Quintile portfolios with NYSE breakpoints
+    breakpoint_options(
+        n_portfolios=5,
+        breakpoints_exchanges='NYSE',
+    )
+    # Custom percentile thresholds (mutually exclusive with n_portfolios)
+    breakpoint_options(
+        percentiles=[0.3, 0.7],
+        breakpoints_exchanges='NYSE',
+    )
+    # Exclude the smallest 20% of NYSE stocks from breakpoint computation
+    breakpoint_options(
+        n_portfolios=10,
+        breakpoints_exchanges='NYSE',
+        breakpoints_min_size_threshold=0.2,
+    )
+    ```
     """
     # Validate n_portfolios
     if n_portfolios is not None:
@@ -909,31 +896,31 @@ def compute_breakpoints(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import compute_breakpoints, breakpoint_options
-    >>> rng = np.random.default_rng(42)
-    >>> data = pd.DataFrame({
-    ...     'id': range(1, 101),
-    ...     'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
-    ...     'market_cap': range(1, 101),
-    ... })
-    >>> compute_breakpoints(
-    ...     data, 'market_cap', breakpoint_options(n_portfolios=5)
-    ... )
-    >>> compute_breakpoints(
-    ...     data,
-    ...     'market_cap',
-    ...     breakpoint_options(
-    ...         percentiles=[0.2, 0.4, 0.6, 0.8],
-    ...         breakpoints_exchanges=['NYSE'],
-    ...     ),
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import compute_breakpoints, breakpoint_options
+    rng = np.random.default_rng(42)
+    data = pd.DataFrame({
+        'id': range(1, 101),
+        'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
+        'market_cap': range(1, 101),
+    })
+    compute_breakpoints(
+        data, 'market_cap', breakpoint_options(n_portfolios=5)
+    )
+    compute_breakpoints(
+        data,
+        'market_cap',
+        breakpoint_options(
+            percentiles=[0.2, 0.4, 0.6, 0.8],
+            breakpoints_exchanges=['NYSE'],
+        ),
+    )
+    ```
     """
     if not isinstance(breakpoint_options, dict):
-        raise ValueError(
-            "Please provide a dictionary with breakpoint options."
-        )
+        raise ValueError("Please provide a dictionary with breakpoint options.")
 
     n_portfolios = breakpoint_options.get("n_portfolios")
     percentiles = breakpoint_options.get("percentiles")
@@ -948,8 +935,7 @@ def compute_breakpoints(
 
     if n_portfolios is not None and percentiles is not None:
         raise ValueError(
-            "Please provide either 'n_portfolios' or 'percentiles', "
-            "not both."
+            "Please provide either 'n_portfolios' or 'percentiles', not both."
         )
     if n_portfolios is None and percentiles is None:
         raise ValueError(
@@ -992,9 +978,7 @@ def compute_breakpoints(
         all_mktcap = data[mktcap_col].values
         above_size = (~pd.isna(all_mktcap)) & (all_mktcap > size_cutoff)
         combined_mask = (
-            keep_mask & above_size
-            if keep_mask is not None
-            else above_size
+            keep_mask & above_size if keep_mask is not None else above_size
         )
         sorting_values = data[sorting_variable].values[combined_mask]
 
@@ -1025,9 +1009,7 @@ def compute_breakpoints(
             and breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
         )
         lower_edge = breakpoints[0] == breakpoints[1]
-        upper_edge = (
-            breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
-        )
+        upper_edge = breakpoints[n_portfolios - 1] == breakpoints[n_portfolios]
 
         if both_edges:
             if percentiles is not None:
@@ -1064,9 +1046,7 @@ def compute_breakpoints(
             ]
             probs_new = np.linspace(0, 1, n_portfolios)
             breakpoints_new = np.quantile(sorting_values_new, probs_new)
-            breakpoints = np.concatenate(
-                [[breakpoints[0]], breakpoints_new]
-            )
+            breakpoints = np.concatenate([[breakpoints[0]], breakpoints_new])
         elif upper_edge:
             if percentiles is not None:
                 warnings.warn(
@@ -1153,20 +1133,22 @@ def create_summary_statistics(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import create_summary_statistics
-    >>> data = pd.DataFrame({
-    ...     'ret': [0.01, -0.02, 0.03, np.nan, 0.005],
-    ...     'size': [100, 200, 150, 300, 250],
-    ...     'group': ['A', 'A', 'B', 'B', 'A'],
-    ... })
-    >>> # Basic summary across all observations
-    >>> create_summary_statistics(data, ['ret', 'size'])
-    >>> # Grouped summary
-    >>> create_summary_statistics(data, ['ret', 'size'], by='group')
-    >>> # Detailed quantiles
-    >>> create_summary_statistics(data, ['ret'], detail=True)
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import create_summary_statistics
+    data = pd.DataFrame({
+        'ret': [0.01, -0.02, 0.03, np.nan, 0.005],
+        'size': [100, 200, 150, 300, 250],
+        'group': ['A', 'A', 'B', 'B', 'A'],
+    })
+    # Basic summary across all observations
+    create_summary_statistics(data, ['ret', 'size'])
+    # Grouped summary
+    create_summary_statistics(data, ['ret', 'size'], by='group')
+    # Detailed quantiles
+    create_summary_statistics(data, ['ret'], detail=True)
+    ```
     """
     # Check that all specified variables are numeric or boolean
     non_numeric_vars = [
@@ -1184,8 +1166,7 @@ def create_summary_statistics(
     # drops bool dtype by default. The mean of the cast column then
     # equals the proportion of True in the original.
     bool_cols = [
-        v for v in variables
-        if pd.api.types.is_bool_dtype(data[v].dtype)
+        v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)
     ]
     if bool_cols:
         data = data.copy()
@@ -1264,20 +1245,22 @@ def estimate_betas(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import estimate_betas
-    >>> rng = np.random.default_rng(1234)
-    >>> dates = pd.date_range('2020-01-01', periods=12, freq='MS')
-    >>> data_monthly = pd.DataFrame({
-    ...     'date': np.repeat(dates, 50),
-    ...     'permno': np.tile(range(1, 51), 12),
-    ...     'ret_excess': rng.normal(0, 0.1, 600),
-    ...     'mkt_excess': rng.normal(0, 0.1, 600),
-    ...     'smb': rng.normal(0, 0.1, 600),
-    ...     'hml': rng.normal(0, 0.1, 600),
-    ... })
-    >>> estimate_betas(data_monthly, 'ret_excess ~ mkt_excess', lookback=3)
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import estimate_betas
+    rng = np.random.default_rng(1234)
+    dates = pd.date_range('2020-01-01', periods=12, freq='MS')
+    data_monthly = pd.DataFrame({
+        'date': np.repeat(dates, 50),
+        'permno': np.tile(range(1, 51), 12),
+        'ret_excess': rng.normal(0, 0.1, 600),
+        'mkt_excess': rng.normal(0, 0.1, 600),
+        'smb': rng.normal(0, 0.1, 600),
+        'hml': rng.normal(0, 0.1, 600),
+    })
+    estimate_betas(data_monthly, 'ret_excess ~ mkt_excess', lookback=3)
+    ```
     """
     if min_obs is None:
         min_obs = int(lookback * 0.8)
@@ -1529,26 +1512,28 @@ def estimate_fama_macbeth(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import estimate_fama_macbeth
-    >>> rng = np.random.default_rng(1234)
-    >>> dates = pd.date_range('2020-01-01', periods=12, freq='MS')
-    >>> data = pd.DataFrame({
-    ...     'date': np.repeat(dates, 50),
-    ...     'permno': np.tile(range(1, 51), 12),
-    ...     'ret_excess': rng.normal(0, 0.1, 600),
-    ...     'beta': rng.normal(1, 0.2, 600),
-    ...     'bm': rng.normal(0.5, 0.1, 600),
-    ...     'log_mktcap': rng.normal(10, 1, 600),
-    ... })
-    >>> result = estimate_fama_macbeth(data, 'ret_excess ~ beta+bm+log_mktcap')
-    >>> # Override the Newey-West settings
-    >>> result_iid = estimate_fama_macbeth(
-    ...     data,
-    ...     'ret_excess ~ beta + bm + log_mktcap',
-    ...     vcov='iid',
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import estimate_fama_macbeth
+    rng = np.random.default_rng(1234)
+    dates = pd.date_range('2020-01-01', periods=12, freq='MS')
+    data = pd.DataFrame({
+        'date': np.repeat(dates, 50),
+        'permno': np.tile(range(1, 51), 12),
+        'ret_excess': rng.normal(0, 0.1, 600),
+        'beta': rng.normal(1, 0.2, 600),
+        'bm': rng.normal(0.5, 0.1, 600),
+        'log_mktcap': rng.normal(10, 1, 600),
+    })
+    result = estimate_fama_macbeth(data, 'ret_excess ~ beta+bm+log_mktcap')
+    # Override the Newey-West settings
+    result_iid = estimate_fama_macbeth(
+        data,
+        'ret_excess ~ beta + bm + log_mktcap',
+        vcov='iid',
+    )
+    ```
     """
     if vcov not in ["iid", "newey-west"]:
         raise ValueError("vcov must be either 'iid' or 'newey-west'.")
@@ -1645,10 +1630,9 @@ def estimate_fama_macbeth(
         .reset_index()
     )
 
-    result_df = (
-        price_of_risk.merge(price_of_risk_se_t_n, on="factor")
-        [["factor", "risk_premium", "standard_error", "t_statistic", "n"]]
-    )
+    result_df = price_of_risk.merge(price_of_risk_se_t_n, on="factor")[
+        ["factor", "risk_premium", "standard_error", "t_statistic", "n"]
+    ]
 
     return result_df
 
@@ -1704,19 +1688,19 @@ def filter_options(
 
     Examples
     --------
-    >>> from tidyfinance import filter_options
-    >>> filter_options(
-    ...     exclude_financials=True,
-    ...     exclude_utilities=True,
-    ...     min_stock_price=1,
-    ...     min_listing_age=12,
-    ... )
+    ```python
+    from tidyfinance import filter_options
+    filter_options(
+        exclude_financials=True,
+        exclude_utilities=True,
+        min_stock_price=1,
+        min_listing_age=12,
+    )
+    ```
     """
     _validate_flag(exclude_financials, "exclude_financials")
     _validate_flag(exclude_utilities, "exclude_utilities")
-    _validate_flag(
-        exclude_negative_book_equity, "exclude_negative_book_equity"
-    )
+    _validate_flag(exclude_negative_book_equity, "exclude_negative_book_equity")
     _validate_flag(exclude_negative_earnings, "exclude_negative_earnings")
 
     _validate_optional_number(
@@ -1727,8 +1711,7 @@ def filter_options(
     )
     _validate_optional_number(
         min_size_quantile,
-        "min_size_quantile must be a single numeric strictly between "
-        "0 and 1.",
+        "min_size_quantile must be a single numeric strictly between 0 and 1.",
         min=0,
         max=1,
         min_strict=True,
@@ -1844,15 +1827,17 @@ def portfolio_sort_options(
 
     Examples
     --------
-    >>> from tidyfinance import (
-    ...     portfolio_sort_options,
-    ...     filter_options,
-    ...     breakpoint_options,
-    ... )
-    >>> portfolio_sort_options(
-    ...     filter_options=filter_options(exclude_financials=True),
-    ...     breakpoint_options_main=breakpoint_options(n_portfolios=10),
-    ... )
+    ```python
+    from tidyfinance import (
+        portfolio_sort_options,
+        filter_options,
+        breakpoint_options,
+    )
+    portfolio_sort_options(
+        filter_options=filter_options(exclude_financials=True),
+        breakpoint_options_main=breakpoint_options(n_portfolios=10),
+    )
+    ```
     """
     if filter_options is not None and not (
         isinstance(filter_options, dict)
@@ -1868,9 +1853,7 @@ def portfolio_sort_options(
 
     if not (
         isinstance(breakpoint_options_main, dict)
-        and _BREAKPOINT_OPTIONS_KEYS.issubset(
-            breakpoint_options_main.keys()
-        )
+        and _BREAKPOINT_OPTIONS_KEYS.issubset(breakpoint_options_main.keys())
     ):
         raise ValueError(
             "breakpoint_options_main must be a dict produced by "
@@ -2017,9 +2000,7 @@ def _aggregate_bivariate_returns(
     )
 
     avg_returns = (
-        cell_returns.groupby(
-            ["portfolio_main", date_col], as_index=False
-        )
+        cell_returns.groupby(["portfolio_main", date_col], as_index=False)
         .agg(
             ret_excess_vw=("ret_excess_vw", "mean"),
             ret_excess_ew=("ret_excess_ew", "mean"),
@@ -2028,9 +2009,7 @@ def _aggregate_bivariate_returns(
         .rename(columns={"portfolio_main": "portfolio"})
     )
 
-    n_renamed = n_per_main.rename(
-        columns={"portfolio_main": "portfolio"}
-    )
+    n_renamed = n_per_main.rename(columns={"portfolio_main": "portfolio"})
     result = avg_returns.merge(
         n_renamed, on=["portfolio", date_col], how="left"
     )
@@ -2079,6 +2058,7 @@ def _join_rebalanced_portfolios(
         'data' with the portfolio columns joined from 'portfolio_data'
         (NaN where no rebalancing window matches).
     """
+
     def _window_year(d):
         return d.year if d.month >= rebalancing_month else d.year - 1
 
@@ -2089,9 +2069,7 @@ def _join_rebalanced_portfolios(
     pd_w["_window_year"] = pd_w[date_col].dt.year
     pd_w = pd_w.drop(columns=date_col)
 
-    merged = data_w.merge(
-        pd_w, on=[id_col, "_window_year"], how="left"
-    )
+    merged = data_w.merge(pd_w, on=[id_col, "_window_year"], how="left")
     return merged.drop(columns="_window_year")
 
 
@@ -2215,32 +2193,34 @@ def compute_portfolio_returns(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import (
-    ...     compute_portfolio_returns,
-    ...     breakpoint_options,
-    ... )
-    >>> rng = np.random.default_rng(42)
-    >>> dates = pd.date_range('2020-01-01', periods=100, freq='MS')
-    >>> data = pd.DataFrame({
-    ...     'permno': range(1, 501),
-    ...     'date': np.repeat(dates, 5),
-    ...     'mktcap_lag': rng.uniform(100, 1000, 500),
-    ...     'ret_excess': rng.standard_normal(500),
-    ...     'size': rng.uniform(50, 150, 500),
-    ... })
-    >>> # Univariate sorting with periodic rebalancing
-    >>> compute_portfolio_returns(
-    ...     data, 'size', 'univariate',
-    ...     breakpoint_options_main=breakpoint_options(n_portfolios=5),
-    ... )
-    >>> # Bivariate dependent sorting with annual rebalancing
-    >>> compute_portfolio_returns(
-    ...     data, ['size', 'mktcap_lag'], 'bivariate-dependent', 7,
-    ...     breakpoint_options_main=breakpoint_options(n_portfolios=5),
-    ...     breakpoint_options_secondary=breakpoint_options(n_portfolios=3),
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import (
+        compute_portfolio_returns,
+        breakpoint_options,
+    )
+    rng = np.random.default_rng(42)
+    dates = pd.date_range('2020-01-01', periods=100, freq='MS')
+    data = pd.DataFrame({
+        'permno': range(1, 501),
+        'date': np.repeat(dates, 5),
+        'mktcap_lag': rng.uniform(100, 1000, 500),
+        'ret_excess': rng.standard_normal(500),
+        'size': rng.uniform(50, 150, 500),
+    })
+    # Univariate sorting with periodic rebalancing
+    compute_portfolio_returns(
+        data, 'size', 'univariate',
+        breakpoint_options_main=breakpoint_options(n_portfolios=5),
+    )
+    # Bivariate dependent sorting with annual rebalancing
+    compute_portfolio_returns(
+        data, ['size', 'mktcap_lag'], 'bivariate-dependent', 7,
+        breakpoint_options_main=breakpoint_options(n_portfolios=5),
+        breakpoint_options_secondary=breakpoint_options(n_portfolios=3),
+    )
+    ```
     """
     _validate_flag(quiet, "quiet")
 
@@ -2282,8 +2262,7 @@ def compute_portfolio_returns(
         and breakpoint_options_secondary is None
     ):
         warnings.warn(
-            "No 'breakpoint_options_secondary' specified in bivariate "
-            "sort.",
+            "No 'breakpoint_options_secondary' specified in bivariate sort.",
             UserWarning,
             stacklevel=2,
         )
@@ -2310,13 +2289,9 @@ def compute_portfolio_returns(
         date_col,
         ret_col,
     ]
-    missing_columns = [
-        c for c in required_columns if c not in data.columns
-    ]
+    missing_columns = [c for c in required_columns if c not in data.columns]
     if missing_columns:
-        raise ValueError(
-            f"Missing columns: {', '.join(missing_columns)}."
-        )
+        raise ValueError(f"Missing columns: {', '.join(missing_columns)}.")
 
     mktcap_lag_missing = w_col not in data.columns
     data = data.copy()
@@ -2370,6 +2345,7 @@ def compute_portfolio_returns(
         sv = sorting_variables[0]
 
         if rebalancing_month is None:
+
             def _assigner(g):
                 return assign_portfolio(
                     g,
@@ -2379,14 +2355,12 @@ def compute_portfolio_returns(
                     data_options=data_options,
                 )
 
-            data["portfolio"] = data.groupby(
-                date_col, group_keys=False
-            ).apply(_assigner, include_groups=False)
+            data["portfolio"] = data.groupby(date_col, group_keys=False).apply(
+                _assigner, include_groups=False
+            )
             portfolio_returns = data
         else:
-            filtered_data = data[
-                data[date_col].dt.month == rebalancing_month
-            ]
+            filtered_data = data[data[date_col].dt.month == rebalancing_month]
             if len(filtered_data) == 0:
                 raise ValueError(
                     f"No observations match 'rebalancing_month' = "
@@ -2407,9 +2381,7 @@ def compute_portfolio_returns(
             portfolio_data["portfolio"] = portfolio_data.groupby(
                 date_col, group_keys=False
             ).apply(_assigner, include_groups=False)
-            portfolio_data = portfolio_data[
-                [id_col, date_col, "portfolio"]
-            ]
+            portfolio_data = portfolio_data[[id_col, date_col, "portfolio"]]
             portfolio_returns = _join_rebalanced_portfolios(
                 data,
                 portfolio_data,
@@ -2461,20 +2433,16 @@ def compute_portfolio_returns(
             ).apply(_assign_main, include_groups=False)
             portfolio_returns = data
         else:
-            filtered_data = data[
-                data[date_col].dt.month == rebalancing_month
-            ]
+            filtered_data = data[data[date_col].dt.month == rebalancing_month]
             if len(filtered_data) == 0:
                 raise ValueError(
                     f"No observations match 'rebalancing_month' = "
                     f"{rebalancing_month}."
                 )
             portfolio_data = filtered_data.copy()
-            portfolio_data["portfolio_secondary"] = (
-                portfolio_data.groupby(date_col, group_keys=False).apply(
-                    _assign_sec, include_groups=False
-                )
-            )
+            portfolio_data["portfolio_secondary"] = portfolio_data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_sec, include_groups=False)
             portfolio_data["portfolio_main"] = portfolio_data.groupby(
                 [date_col, "portfolio_secondary"], group_keys=False
             ).apply(_assign_main, include_groups=False)
@@ -2537,20 +2505,16 @@ def compute_portfolio_returns(
             ).apply(_assign_main, include_groups=False)
             portfolio_returns = data
         else:
-            filtered_data = data[
-                data[date_col].dt.month == rebalancing_month
-            ]
+            filtered_data = data[data[date_col].dt.month == rebalancing_month]
             if len(filtered_data) == 0:
                 raise ValueError(
                     f"No observations match 'rebalancing_month' = "
                     f"{rebalancing_month}."
                 )
             portfolio_data = filtered_data.copy()
-            portfolio_data["portfolio_secondary"] = (
-                portfolio_data.groupby(date_col, group_keys=False).apply(
-                    _assign_sec, include_groups=False
-                )
-            )
+            portfolio_data["portfolio_secondary"] = portfolio_data.groupby(
+                date_col, group_keys=False
+            ).apply(_assign_sec, include_groups=False)
             portfolio_data["portfolio_main"] = portfolio_data.groupby(
                 date_col, group_keys=False
             ).apply(_assign_main, include_groups=False)
@@ -2585,9 +2549,7 @@ def compute_portfolio_returns(
 
     if rebalancing_month is not None:
         matching_dates = [
-            d
-            for d in all_dates
-            if pd.Timestamp(d).month == rebalancing_month
+            d for d in all_dates if pd.Timestamp(d).month == rebalancing_month
         ]
         if not matching_dates:
             raise ValueError(
@@ -2597,9 +2559,7 @@ def compute_portfolio_returns(
         first_rebalancing_date = min(matching_dates)
         all_dates = [d for d in all_dates if d >= first_rebalancing_date]
 
-    all_portfolios = (
-        portfolio_returns["portfolio"].dropna().unique().tolist()
-    )
+    all_portfolios = portfolio_returns["portfolio"].dropna().unique().tolist()
     complete_panel = pd.MultiIndex.from_product(
         [all_portfolios, all_dates], names=["portfolio", date_col]
     ).to_frame(index=False)
@@ -2674,27 +2634,29 @@ def compute_long_short_returns(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import (
-    ...     compute_portfolio_returns,
-    ...     compute_long_short_returns,
-    ...     breakpoint_options,
-    ... )
-    >>> rng = np.random.default_rng(42)
-    >>> dates = pd.date_range('2020-01-01', periods=100, freq='MS')
-    >>> data = pd.DataFrame({
-    ...     'permno': range(1, 101),
-    ...     'date': np.repeat(dates, 1),
-    ...     'mktcap_lag': rng.uniform(100, 1000, 100),
-    ...     'ret_excess': rng.standard_normal(100),
-    ...     'size': rng.uniform(50, 150, 100),
-    ... })
-    >>> portfolio_returns = compute_portfolio_returns(
-    ...     data, 'size', 'univariate',
-    ...     breakpoint_options_main=breakpoint_options(n_portfolios=5),
-    ... )
-    >>> compute_long_short_returns(portfolio_returns)
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import (
+        compute_portfolio_returns,
+        compute_long_short_returns,
+        breakpoint_options,
+    )
+    rng = np.random.default_rng(42)
+    dates = pd.date_range('2020-01-01', periods=100, freq='MS')
+    data = pd.DataFrame({
+        'permno': range(1, 101),
+        'date': np.repeat(dates, 1),
+        'mktcap_lag': rng.uniform(100, 1000, 100),
+        'ret_excess': rng.standard_normal(100),
+        'size': rng.uniform(50, 150, 100),
+    })
+    portfolio_returns = compute_portfolio_returns(
+        data, 'size', 'univariate',
+        breakpoint_options_main=breakpoint_options(n_portfolios=5),
+    )
+    compute_long_short_returns(portfolio_returns)
+    ```
     """
     if data_options is None:
         data_options = {
@@ -2795,21 +2757,23 @@ def compute_rolling_value(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import compute_rolling_value
-    >>> rng = np.random.default_rng(42)
-    >>> df = pd.DataFrame({
-    ...     'date': pd.date_range('2020-01-01', periods=24, freq='MS'),
-    ...     'value': rng.standard_normal(24),
-    ... })
-    >>> df['rolling_sd'] = compute_rolling_value(
-    ...     df,
-    ...     f=lambda x: x['value'].std(ddof=1),
-    ...     period='month',
-    ...     periods=4,
-    ...     min_obs=2,
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import compute_rolling_value
+    rng = np.random.default_rng(42)
+    df = pd.DataFrame({
+        'date': pd.date_range('2020-01-01', periods=24, freq='MS'),
+        'value': rng.standard_normal(24),
+    })
+    df['rolling_sd'] = compute_rolling_value(
+        df,
+        f=lambda x: x['value'].std(ddof=1),
+        period='month',
+        periods=4,
+        min_obs=2,
+    )
+    ```
     """
     if data_options is None:
         data_options = {"date": "date"}
@@ -2824,23 +2788,17 @@ def compute_rolling_value(
         )
 
     if date_col not in data.columns:
-        raise ValueError(
-            f"'data' must contain a '{date_col}' column."
-        )
+        raise ValueError(f"'data' must contain a '{date_col}' column.")
 
     if not pd.api.types.is_datetime64_any_dtype(data[date_col]):
-        raise ValueError(
-            f"The '{date_col}' column must be of datetime dtype."
-        )
+        raise ValueError(f"The '{date_col}' column must be of datetime dtype.")
 
     if not isinstance(period, str):
         raise ValueError("'period' must be a single string.")
 
     period_freq_map = {"month": "M", "quarter": "Q", "year": "Y"}
     if period not in period_freq_map:
-        raise ValueError(
-            "'period' must be one of 'month', 'quarter', 'year'."
-        )
+        raise ValueError("'period' must be one of 'month', 'quarter', 'year'.")
 
     buckets = data[date_col].dt.to_period(period_freq_map[period])
 
@@ -2850,9 +2808,7 @@ def compute_rolling_value(
     for i in range(n):
         anchor_bucket = buckets.iloc[i]
         start_bucket = anchor_bucket - (periods - 1)
-        in_window = (buckets >= start_bucket) & (
-            buckets <= anchor_bucket
-        )
+        in_window = (buckets >= start_bucket) & (buckets <= anchor_bucket)
         window_data = data[in_window].dropna()
         if len(window_data) >= min_obs:
             result[i] = f(window_data)
@@ -2860,15 +2816,14 @@ def compute_rolling_value(
     return result
 
 
-def _require_column(data: pd.DataFrame, col: str, arg: str, info: str = None
+def _require_column(
+    data: pd.DataFrame, col: str, arg: str, info: str = None
 ) -> None:
     """Raise ValueError if col is not in data.columns."""
     if col not in data.columns:
         if info is None:
             info = f"Set {arg} to the correct column name."
-        raise ValueError(
-            f"Column '{col}' not found in 'data'. {info}"
-        )
+        raise ValueError(f"Column '{col}' not found in 'data'. {info}")
 
 
 def _filter_with_log(
@@ -2952,21 +2907,23 @@ def filter_sorting_data(
 
     Examples
     --------
-    >>> import pandas as pd
-    >>> from tidyfinance import filter_sorting_data, filter_options
-    >>> data = pd.DataFrame({
-    ...     'permno': range(1, 6),
-    ...     'date': pd.Timestamp('2020-01-01'),
-    ...     'siccd': [6100, 2000, 4950, 3000, 6500],
-    ...     'prc_adj': [5, 0.5, 15, 20, 10],
-    ... })
-    >>> filter_sorting_data(
-    ...     data,
-    ...     filter_options=filter_options(
-    ...         exclude_financials=True,
-    ...         min_stock_price=1,
-    ...     ),
-    ... )
+    ```python
+    import pandas as pd
+    from tidyfinance import filter_sorting_data, filter_options
+    data = pd.DataFrame({
+        'permno': range(1, 6),
+        'date': pd.Timestamp('2020-01-01'),
+        'siccd': [6100, 2000, 4950, 3000, 6500],
+        'prc_adj': [5, 0.5, 15, 20, 10],
+    })
+    filter_sorting_data(
+        data,
+        filter_options=filter_options(
+            exclude_financials=True,
+            min_stock_price=1,
+        ),
+    )
+    ```
     """
     if not isinstance(quiet, bool):
         raise ValueError("'quiet' must be a single boolean.")
@@ -3008,17 +2965,13 @@ def filter_sorting_data(
             keep = data[col_siccd].isna() | ~(
                 (data[col_siccd] >= 6000) & (data[col_siccd] <= 6799)
             )
-            data = _filter_with_log(
-                data, keep, "exclude_financials", quiet
-            )
+            data = _filter_with_log(data, keep, "exclude_financials", quiet)
 
         if filter_options.get("exclude_utilities"):
             keep = data[col_siccd].isna() | ~(
                 (data[col_siccd] >= 4900) & (data[col_siccd] <= 4999)
             )
-            data = _filter_with_log(
-                data, keep, "exclude_utilities", quiet
-            )
+            data = _filter_with_log(data, keep, "exclude_utilities", quiet)
 
     # min_stock_price
     if filter_options.get("min_stock_price") is not None:
@@ -3034,9 +2987,7 @@ def filter_sorting_data(
         col_mktcap_lag = data_options["mktcap_lag"]
         col_date = data_options["date"]
         col_exchange = data_options["exchange"]
-        _require_column(
-            data, col_mktcap_lag, "data_options['mktcap_lag']"
-        )
+        _require_column(data, col_mktcap_lag, "data_options['mktcap_lag']")
         _require_column(data, col_date, "data_options['date']")
         _require_column(
             data,
@@ -3088,9 +3039,7 @@ def filter_sorting_data(
     # min_listing_age
     if filter_options.get("min_listing_age") is not None:
         col_listing_age = data_options["listing_age"]
-        _require_column(
-            data, col_listing_age, "data_options['listing_age']"
-        )
+        _require_column(data, col_listing_age, "data_options['listing_age']")
         keep = data[col_listing_age].notna() & (
             data[col_listing_age] >= filter_options["min_listing_age"]
         )
@@ -3110,9 +3059,7 @@ def filter_sorting_data(
         col_earn = data_options["earnings"]
         _require_column(data, col_earn, "data_options['earnings']")
         keep = data[col_earn].notna() & (data[col_earn] > 0)
-        data = _filter_with_log(
-            data, keep, "exclude_negative_earnings", quiet
-        )
+        data = _filter_with_log(data, keep, "exclude_negative_earnings", quiet)
 
     return data
 
@@ -3189,33 +3136,35 @@ def implement_portfolio_sort(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import (
-    ...     implement_portfolio_sort,
-    ...     portfolio_sort_options,
-    ...     filter_options,
-    ...     breakpoint_options,
-    ... )
-    >>> rng = np.random.default_rng(123)
-    >>> dates = pd.date_range('2020-01-01', periods=100, freq='MS')
-    >>> data = pd.DataFrame({
-    ...     'permno': range(1, 501),
-    ...     'date': np.repeat(dates, 5),
-    ...     'mktcap_lag': rng.uniform(100, 1000, 500),
-    ...     'ret_excess': rng.standard_normal(500),
-    ...     'prc_adj': rng.uniform(0.5, 50, 500),
-    ...     'size': rng.uniform(50, 150, 500),
-    ... })
-    >>> implement_portfolio_sort(
-    ...     data=data,
-    ...     sorting_variables='size',
-    ...     sorting_method='univariate',
-    ...     portfolio_sort_options=portfolio_sort_options(
-    ...         filter_options=filter_options(min_stock_price=1),
-    ...         breakpoint_options_main=breakpoint_options(n_portfolios=5),
-    ...     ),
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import (
+        implement_portfolio_sort,
+        portfolio_sort_options,
+        filter_options,
+        breakpoint_options,
+    )
+    rng = np.random.default_rng(123)
+    dates = pd.date_range('2020-01-01', periods=100, freq='MS')
+    data = pd.DataFrame({
+        'permno': range(1, 501),
+        'date': np.repeat(dates, 5),
+        'mktcap_lag': rng.uniform(100, 1000, 500),
+        'ret_excess': rng.standard_normal(500),
+        'prc_adj': rng.uniform(0.5, 50, 500),
+        'size': rng.uniform(50, 150, 500),
+    })
+    implement_portfolio_sort(
+        data=data,
+        sorting_variables='size',
+        sorting_method='univariate',
+        portfolio_sort_options=portfolio_sort_options(
+            filter_options=filter_options(min_stock_price=1),
+            breakpoint_options_main=breakpoint_options(n_portfolios=5),
+        ),
+    )
+    ```
     """
     if not isinstance(quiet, bool):
         raise ValueError("'quiet' must be a single boolean.")
@@ -3238,8 +3187,7 @@ def implement_portfolio_sort(
         and _data_options_keys.issubset(data_options.keys())
     ):
         raise ValueError(
-            "'data_options' must be None or a dict produced by "
-            "data_options()."
+            "'data_options' must be None or a dict produced by data_options()."
         )
 
     _portfolio_sort_options_keys = {
@@ -3249,9 +3197,7 @@ def implement_portfolio_sort(
     }
     if not (
         isinstance(portfolio_sort_options, dict)
-        and _portfolio_sort_options_keys.issubset(
-            portfolio_sort_options.keys()
-        )
+        and _portfolio_sort_options_keys.issubset(portfolio_sort_options.keys())
     ):
         raise ValueError(
             "'portfolio_sort_options' must be a dict produced by "
@@ -3259,9 +3205,7 @@ def implement_portfolio_sort(
         )
 
     filter_opts = portfolio_sort_options["filter_options"]
-    breakpoint_options_main = portfolio_sort_options[
-        "breakpoint_options_main"
-    ]
+    breakpoint_options_main = portfolio_sort_options["breakpoint_options_main"]
     breakpoint_options_secondary = portfolio_sort_options[
         "breakpoint_options_secondary"
     ]
@@ -3335,37 +3279,39 @@ def estimate_model(
 
     Examples
     --------
-    >>> import numpy as np
-    >>> import pandas as pd
-    >>> from tidyfinance import estimate_model
-    >>> rng = np.random.default_rng(42)
-    >>> data = pd.DataFrame({
-    ...     'ret_excess': rng.standard_normal(100),
-    ...     'mkt_excess': rng.standard_normal(100),
-    ...     'smb': rng.standard_normal(100),
-    ...     'hml': rng.standard_normal(100),
-    ... })
-    >>> # Estimate model with a single independent variable
-    >>> estimate_model(data, 'ret_excess ~ mkt_excess')
-    >>> # Estimate model with multiple independent variables
-    >>> estimate_model(data, 'ret_excess ~ mkt_excess + smb + hml')
-    >>> # Estimate model without intercept
-    >>> estimate_model(data, 'ret_excess ~ mkt_excess - 1')
-    >>> # Calculate residuals
-    >>> estimate_model(
-    ...     data, 'ret_excess ~ mkt_excess + smb + hml',
-    ...     output='residuals',
-    ... )
-    >>> # Return t-statistics
-    >>> estimate_model(
-    ...     data, 'ret_excess ~ mkt_excess + smb + hml',
-    ...     output='tstats',
-    ... )
-    >>> # Return coefficients, t-statistics, and residuals
-    >>> estimate_model(
-    ...     data, 'ret_excess ~ mkt_excess + smb + hml',
-    ...     output=['coefficients', 'tstats', 'residuals'],
-    ... )
+    ```python
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import estimate_model
+    rng = np.random.default_rng(42)
+    data = pd.DataFrame({
+        'ret_excess': rng.standard_normal(100),
+        'mkt_excess': rng.standard_normal(100),
+        'smb': rng.standard_normal(100),
+        'hml': rng.standard_normal(100),
+    })
+    # Estimate model with a single independent variable
+    estimate_model(data, 'ret_excess ~ mkt_excess')
+    # Estimate model with multiple independent variables
+    estimate_model(data, 'ret_excess ~ mkt_excess + smb + hml')
+    # Estimate model without intercept
+    estimate_model(data, 'ret_excess ~ mkt_excess - 1')
+    # Calculate residuals
+    estimate_model(
+        data, 'ret_excess ~ mkt_excess + smb + hml',
+        output='residuals',
+    )
+    # Return t-statistics
+    estimate_model(
+        data, 'ret_excess ~ mkt_excess + smb + hml',
+        output='tstats',
+    )
+    # Return coefficients, t-statistics, and residuals
+    estimate_model(
+        data, 'ret_excess ~ mkt_excess + smb + hml',
+        output=['coefficients', 'tstats', 'residuals'],
+    )
+    ```
     """
     if isinstance(output, str):
         output_list = [output]
@@ -3388,9 +3334,7 @@ def estimate_model(
     dep_var = parts[0].strip()
     rhs = parts[1].strip()
     tokens = re.split(r"[\s+]+", rhs)
-    independent_vars = [
-        t for t in tokens if t and t not in ("-", "1")
-    ]
+    independent_vars = [t for t in tokens if t and t not in ("-", "1")]
 
     if "intercept" in independent_vars:
         raise ValueError(
@@ -3398,9 +3342,7 @@ def estimate_model(
             "Please rename the column and try again."
         )
 
-    missing_vars = [
-        v for v in independent_vars if v not in data.columns
-    ]
+    missing_vars = [v for v in independent_vars if v not in data.columns]
     if missing_vars:
         raise ValueError(
             "The following independent variables are missing in the "
@@ -3424,9 +3366,7 @@ def estimate_model(
 
     def to_df(series):
         renamed = series.rename({"Intercept": "intercept"})
-        return pd.DataFrame(
-            [renamed.values], columns=list(renamed.index)
-        )
+        return pd.DataFrame([renamed.values], columns=list(renamed.index))
 
     def na_df():
         if len(independent_vars) == 0:

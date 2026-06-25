@@ -9,11 +9,13 @@ internally), so results from one call can be fed straight into the next.
 
 Examples
 --------
->>> import tidyfinance as tf
->>> tf.set_backend("polars")
->>> data = tf.download_data("Fama-French", "factors_ff_3_monthly")
->>> tf.estimate_model(data, "mkt_excess ~ smb + hml")
->>> tf.set_backend("pandas")  # back to the default
+```python
+import tidyfinance as tf
+tf.set_backend("polars")
+data = tf.download_data("Fama-French", "factors_ff_3_monthly")
+tf.estimate_model(data, "mkt_excess ~ smb + hml")
+tf.set_backend("pandas")  # back to the default
+```
 """
 
 import functools
@@ -67,8 +69,7 @@ def set_backend(backend: str) -> None:
 
 
 def get_backend() -> str:
-    """Return the active data frame backend ('"pandas"' or
-    '"polars"')."""
+    """Return the active data frame backend ('"pandas"' or '"polars"')."""
     return _BACKEND
 
 
@@ -118,7 +119,7 @@ def _convert_output(obj):
     return pl.from_pandas(obj, include_index=include_index)
 
 
-def use_backend(func):
+def _use_backend(func):
     """Wrap a public function so it honors the active backend.
 
     Polars data frames passed as arguments are converted to pandas

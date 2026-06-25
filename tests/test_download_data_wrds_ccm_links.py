@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -27,13 +27,13 @@ def test_downloads_default_ccm_links_and_replaces_missing_end_dates():
         }
     )
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="conn"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql", return_value=sql_result
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
-    ) as mock_disc:
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="conn"
+        ),
+        patch("tidyfinance.data_download.pd.read_sql", return_value=sql_result),
+        patch("tidyfinance.data_download.disconnect_connection") as mock_disc,
+    ):
         result = _download_data_wrds_ccm_links()
 
     mock_disc.assert_called_once_with("conn")
@@ -65,16 +65,16 @@ def test_passes_custom_link_filters_to_the_ccm_query():
         captured["query"] = query
         return sql_result
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="conn"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="conn"
+        ),
+        patch(
+            "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
     ):
-        result = _download_data_wrds_ccm_links(
-            linktype=["LU"], linkprim=["C"]
-        )
+        result = _download_data_wrds_ccm_links(linktype=["LU"], linkprim=["C"])
 
     assert len(result) == 1
     assert result["permno"].iloc[0] == 3

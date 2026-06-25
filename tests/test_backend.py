@@ -35,6 +35,7 @@ pythonpytestmark = pytest.mark.filterwarnings(
 
 # %% set_backend / get_backend
 
+
 def test_default_backend_is_pandas():
     assert get_backend() == "pandas"
 
@@ -50,6 +51,7 @@ def test_set_backend_rejects_invalid_value():
 
 
 # %% _convert_output
+
 
 def test_convert_output_passthrough_for_pandas_backend():
     df = pd.DataFrame({"a": [1, 2]})
@@ -92,6 +94,7 @@ def test_convert_output_leaves_dict_alone():
 
 # %% _to_pandas_input
 
+
 def test_to_pandas_input_converts_polars_frame():
     out = _to_pandas_input(pl.DataFrame({"a": [1, 2]}))
     assert isinstance(out, pd.DataFrame)
@@ -109,6 +112,7 @@ def test_to_pandas_input_passes_through_pandas():
 
 # %% download_data integration (network-free pseudo domain)
 
+
 def test_download_data_returns_pandas_by_default():
     with pytest.warns(UserWarning, match="pseudo data"):
         out = tf.download_data("Pseudo Data", "crsp_monthly")
@@ -124,12 +128,12 @@ def test_download_data_returns_polars_when_configured():
 
 # %% core function honors the backend (input + output round-trip)
 
+
 def _lag_input():
     return pd.DataFrame(
         {
             "permno": [1] * 4 + [2] * 4,
-            "date": list(pd.date_range("2023-01-01", periods=4, freq="MS"))
-            * 2,
+            "date": list(pd.date_range("2023-01-01", periods=4, freq="MS")) * 2,
             "size": [float(i) for i in range(1, 9)],
         }
     )
@@ -174,6 +178,7 @@ def test_series_returning_function_stays_pandas_under_polars():
 
 # %% boundary-only wrapping protects internal cross-calls
 
+
 def test_in_module_implementations_remain_unwrapped():
     """The wrapping is applied only at the public package boundary. The
     in-module implementations (which core functions call internally,
@@ -192,6 +197,7 @@ def test_in_module_implementations_remain_unwrapped():
 # %% Smoke tests: every wrapped function should round-trip its data
 # argument through the polars backend without raising and produce the
 # expected output type.
+
 
 def _panel_with_returns():
     """Five-asset, two-year panel — enough per cross-section to fit
@@ -353,13 +359,9 @@ def test_process_trace_data_round_trips_polars():
             "cusip_id": ["00077D1AA"] * 2,
             "msg_seq_nb": [1, 2],
             "orig_msg_seq_nb": [1, 2],
-            "trd_rpt_dt": pd.to_datetime(
-                ["2015-01-05", "2015-01-06"]
-            ),
+            "trd_rpt_dt": pd.to_datetime(["2015-01-05", "2015-01-06"]),
             "trd_rpt_tm": ["09:31:00", "09:36:00"],
-            "trd_exctn_dt": pd.to_datetime(
-                ["2015-01-04", "2015-01-05"]
-            ),
+            "trd_exctn_dt": pd.to_datetime(["2015-01-04", "2015-01-05"]),
             "trd_exctn_tm": ["09:30:00", "09:35:00"],
             "rptd_pr": [100.0, 100.5],
             "entrd_vol_qt": [1000, 1500],
@@ -370,9 +372,7 @@ def test_process_trace_data_round_trips_polars():
             "asof_cd": [None, None],
             "wis_fl": ["N", "N"],
             "days_to_sttl_ct": [2, 2],
-            "stlmnt_dt": pd.to_datetime(
-                ["2015-01-06", "2015-01-07"]
-            ),
+            "stlmnt_dt": pd.to_datetime(["2015-01-06", "2015-01-07"]),
             "spcl_trd_fl": [None, None],
         }
     )

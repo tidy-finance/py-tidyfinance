@@ -16,20 +16,17 @@ from tidyfinance.core import (  # noqa: E402
     compute_portfolio_returns,
 )
 
-
 # %% test data helper
 
 
-def make_data(n_stocks=30, n_months=6, start="2020-01-01", seed=42, with_mktcap=True):
+def make_data(
+    n_stocks=30, n_months=6, start="2020-01-01", seed=42, with_mktcap=True
+):
     """Construct a stock-month panel for tests."""
     rng = np.random.default_rng(seed)
     dates = pd.date_range(start=start, periods=n_months, freq="MS")
     df = pd.DataFrame(
-        [
-            (permno, date)
-            for date in dates
-            for permno in range(1, n_stocks + 1)
-        ],
+        [(permno, date) for date in dates for permno in range(1, n_stocks + 1)],
         columns=["permno", "date"],
     )
     n = len(df)

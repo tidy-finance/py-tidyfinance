@@ -18,7 +18,6 @@ from tidyfinance.core import (  # noqa: E402
     data_options,
 )
 
-
 # %% validation tests
 
 
@@ -52,13 +51,9 @@ def test_error_if_n_portfolios_is_1_or_less():
     data = pd.DataFrame({"id": range(100), "value": np.arange(1, 101)})
     # 1 and 0 are rejected by breakpoint_options' own validator
     with pytest.raises(ValueError):
-        compute_breakpoints(
-            data, "value", breakpoint_options(n_portfolios=1)
-        )
+        compute_breakpoints(data, "value", breakpoint_options(n_portfolios=1))
     with pytest.raises(ValueError):
-        compute_breakpoints(
-            data, "value", breakpoint_options(n_portfolios=0)
-        )
+        compute_breakpoints(data, "value", breakpoint_options(n_portfolios=0))
 
 
 def test_error_if_breakpoints_exchanges_column_is_missing_from_data():
@@ -68,9 +63,7 @@ def test_error_if_breakpoints_exchanges_column_is_missing_from_data():
         compute_breakpoints(
             data,
             "value",
-            breakpoint_options(
-                n_portfolios=5, breakpoints_exchanges=["NYSE"]
-            ),
+            breakpoint_options(n_portfolios=5, breakpoints_exchanges=["NYSE"]),
         )
 
 
@@ -90,30 +83,22 @@ def test_returns_n_portfolios_plus_1_breakpoints():
 def test_breakpoints_are_in_ascending_order():
     """Test breakpoints are in ascending order."""
     rng = np.random.default_rng()
-    data = pd.DataFrame(
-        {"id": range(1000), "value": rng.standard_normal(1000)}
-    )
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=5)
-    )
+    data = pd.DataFrame({"id": range(1000), "value": rng.standard_normal(1000)})
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=5))
     assert (np.diff(bp) >= 0).all()
 
 
 def test_breakpoints_are_numeric():
     """Test breakpoints are numeric."""
     data = pd.DataFrame({"id": range(100), "value": np.arange(1, 101)})
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=5)
-    )
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=5))
     assert np.issubdtype(bp.dtype, np.floating)
 
 
 def test_first_breakpoint_equals_min_last_approximately_equals_max():
     """Test first breakpoint equals min, last approximately equals max."""
     data = pd.DataFrame({"id": range(1000), "value": np.arange(1, 1001)})
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=5)
-    )
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=5))
     assert bp[0] == data["value"].min()
     # Last breakpoint = max + tiny epsilon (1e-20)
     assert abs(bp[5] - (data["value"].max() + 1e-20)) < 1e-15
@@ -122,9 +107,7 @@ def test_first_breakpoint_equals_min_last_approximately_equals_max():
 def test_n_portfolios_2_gives_3_breakpoints():
     """Test n_portfolios = 2 gives 3 breakpoints (min, median, max)."""
     data = pd.DataFrame({"id": range(100), "value": np.arange(1, 101)})
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=2)
-    )
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=2))
     assert len(bp) == 3
 
 
@@ -154,9 +137,7 @@ def test_single_percentile_produces_3_breakpoints():
 def test_percentile_breakpoints_are_ascending():
     """Test percentile breakpoints are ascending."""
     rng = np.random.default_rng(42)
-    data = pd.DataFrame(
-        {"id": range(500), "value": rng.standard_normal(500)}
-    )
+    data = pd.DataFrame({"id": range(500), "value": rng.standard_normal(500)})
     bp = compute_breakpoints(
         data,
         "value",
@@ -180,9 +161,7 @@ def test_n_portfolios_5_and_percentiles_give_same_breakpoints():
 def test_n_portfolios_10_and_decile_percentiles_give_same_breakpoints():
     """Test n_portfolios = 10 and decile percentiles give same breakpoints."""
     rng = np.random.default_rng(7)
-    data = pd.DataFrame(
-        {"id": range(5000), "value": rng.standard_normal(5000)}
-    )
+    data = pd.DataFrame({"id": range(5000), "value": rng.standard_normal(5000)})
     bp_n = compute_breakpoints(
         data, "value", breakpoint_options(n_portfolios=10)
     )
@@ -272,9 +251,7 @@ def test_error_when_custom_exchange_column_does_not_exist():
         compute_breakpoints(
             data,
             "value",
-            breakpoint_options(
-                n_portfolios=5, breakpoints_exchanges=["NYSE"]
-            ),
+            breakpoint_options(n_portfolios=5, breakpoints_exchanges=["NYSE"]),
             data_options=data_options(exchange="nonexistent"),
         )
 
@@ -288,9 +265,7 @@ def test_null_data_options_uses_defaults_without_error():
             "value": np.arange(1, 101),
         }
     )
-    compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=5)
-    )
+    compute_breakpoints(data, "value", breakpoint_options(n_portfolios=5))
 
 
 # %% interior epsilon
@@ -299,9 +274,7 @@ def test_null_data_options_uses_defaults_without_error():
 def test_interior_breakpoints_are_slightly_larger_than_raw_quantiles():
     """Test interior breakpoints are slightly larger than raw quantiles."""
     data = pd.DataFrame({"id": range(1000), "value": np.arange(1, 1001)})
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=5)
-    )
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=5))
     raw_q = np.quantile(data["value"].values, np.linspace(0, 1, 6))
     assert bp[0] == raw_q[0]
     for i in range(1, 6):
@@ -366,9 +339,7 @@ def test_smooth_bunching_handles_clustering_only_on_lower_edge():
     data = pd.DataFrame(
         {
             "id": range(500),
-            "value": np.concatenate(
-                [np.zeros(200), np.linspace(1, 100, 300)]
-            ),
+            "value": np.concatenate([np.zeros(200), np.linspace(1, 100, 300)]),
         }
     )
     bp = compute_breakpoints(
@@ -386,9 +357,7 @@ def test_lower_edge_bunching_with_percentiles_emits_warning():
     data = pd.DataFrame(
         {
             "id": range(500),
-            "value": np.concatenate(
-                [np.zeros(200), np.linspace(1, 100, 300)]
-            ),
+            "value": np.concatenate([np.zeros(200), np.linspace(1, 100, 300)]),
         }
     )
     with pytest.warns(UserWarning, match="smooth_bunching"):
@@ -537,9 +506,7 @@ def test_works_with_arbitrary_column_names():
 def test_works_with_very_small_data():
     """Test works with very small data (n = 2)."""
     data = pd.DataFrame({"id": [1, 2], "value": [1.0, 10.0]})
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=2)
-    )
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=2))
     assert len(bp) == 3
     assert bp[0] == 1
 
@@ -547,9 +514,7 @@ def test_works_with_very_small_data():
 def test_works_with_n_3_and_3_portfolios():
     """Test works with n = 3 and 3 portfolios (one obs per portfolio)."""
     data = pd.DataFrame({"id": [1, 2, 3], "value": [1.0, 5.0, 10.0]})
-    bp = compute_breakpoints(
-        data, "value", breakpoint_options(n_portfolios=3)
-    )
+    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=3))
     assert len(bp) == 4
 
 
@@ -584,9 +549,7 @@ def test_breakpoints_produce_valid_portfolio_assignments():
     from tidyfinance.core import assign_portfolio
 
     rng = np.random.default_rng(42)
-    data = pd.DataFrame(
-        {"id": range(1000), "value": rng.standard_normal(1000)}
-    )
+    data = pd.DataFrame({"id": range(1000), "value": rng.standard_normal(1000)})
     portfolios = assign_portfolio(
         data, "value", breakpoint_options={"n_portfolios": 5}
     )
@@ -652,9 +615,7 @@ def test_smooth_bunching_produces_more_distinct_interior_values():
 def test_function_is_deterministic():
     """Test function is deterministic (same input = same output)."""
     rng = np.random.default_rng(1)
-    data = pd.DataFrame(
-        {"id": range(500), "value": rng.standard_normal(500)}
-    )
+    data = pd.DataFrame({"id": range(500), "value": rng.standard_normal(500)})
     opts = breakpoint_options(n_portfolios=5)
     bp1 = compute_breakpoints(data, "value", opts)
     bp2 = compute_breakpoints(data, "value", opts)
@@ -678,9 +639,7 @@ def test_min_size_threshold_with_exchanges_filters_small_stocks():
     bp_no_filter = compute_breakpoints(
         data,
         "sorting_var",
-        breakpoint_options(
-            n_portfolios=5, breakpoints_exchanges=["NYSE"]
-        ),
+        breakpoint_options(n_portfolios=5, breakpoints_exchanges=["NYSE"]),
     )
     bp_with_filter = compute_breakpoints(
         data,
@@ -712,9 +671,7 @@ def test_min_size_threshold_without_exchanges_uses_full_sample():
     bp_with_filter = compute_breakpoints(
         data,
         "sorting_var",
-        breakpoint_options(
-            n_portfolios=5, breakpoints_min_size_threshold=0.2
-        ),
+        breakpoint_options(n_portfolios=5, breakpoints_min_size_threshold=0.2),
     )
     assert len(bp_with_filter) == 6
     assert not np.allclose(bp_no_filter, bp_with_filter)
@@ -725,9 +682,7 @@ def test_min_size_threshold_produces_correct_breakpoints():
     rng = np.random.default_rng(7)
     mktcap = np.arange(1, 101)
     sorting_var = rng.standard_normal(100)
-    data = pd.DataFrame(
-        {"mktcap_lag": mktcap, "sorting_var": sorting_var}
-    )
+    data = pd.DataFrame({"mktcap_lag": mktcap, "sorting_var": sorting_var})
     size_cutoff = np.quantile(mktcap, 0.2)
     above = mktcap > size_cutoff
     expected = np.quantile(sorting_var[above], np.linspace(0, 1, 6))
@@ -736,9 +691,7 @@ def test_min_size_threshold_produces_correct_breakpoints():
     bp = compute_breakpoints(
         data,
         "sorting_var",
-        breakpoint_options(
-            n_portfolios=5, breakpoints_min_size_threshold=0.2
-        ),
+        breakpoint_options(n_portfolios=5, breakpoints_min_size_threshold=0.2),
     )
     np.testing.assert_allclose(bp, expected)
 
@@ -747,9 +700,7 @@ def test_min_size_threshold_excludes_stocks_exactly_at_cutoff():
     """Test breakpoints_min_size_threshold excludes stocks exactly at the cutoff."""
     mktcap = np.array([10, 20, 30, 40, 50], dtype=float)
     sorting_var = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    data = pd.DataFrame(
-        {"mktcap_lag": mktcap, "sorting_var": sorting_var}
-    )
+    data = pd.DataFrame({"mktcap_lag": mktcap, "sorting_var": sorting_var})
     size_cutoff = np.quantile(mktcap, 0.25)
     above = mktcap > size_cutoff
     # boundary stock at exactly the cutoff is excluded
@@ -760,9 +711,7 @@ def test_min_size_threshold_excludes_stocks_exactly_at_cutoff():
     bp = compute_breakpoints(
         data,
         "sorting_var",
-        breakpoint_options(
-            n_portfolios=3, breakpoints_min_size_threshold=0.25
-        ),
+        breakpoint_options(n_portfolios=3, breakpoints_min_size_threshold=0.25),
     )
     np.testing.assert_allclose(bp, expected)
 
@@ -778,9 +727,7 @@ def test_min_size_threshold_with_na_mktcap_excludes_na_rows():
     bp = compute_breakpoints(
         data,
         "sorting_var",
-        breakpoint_options(
-            n_portfolios=3, breakpoints_min_size_threshold=0.2
-        ),
+        breakpoint_options(n_portfolios=3, breakpoints_min_size_threshold=0.2),
     )
     assert (~np.isnan(bp)).all()
     assert len(bp) == 4
@@ -814,9 +761,7 @@ def test_min_size_threshold_none_default_has_no_effect():
     bp_explicit_none = compute_breakpoints(
         data,
         "sorting_var",
-        breakpoint_options(
-            n_portfolios=5, breakpoints_min_size_threshold=None
-        ),
+        breakpoint_options(n_portfolios=5, breakpoints_min_size_threshold=None),
     )
     np.testing.assert_array_equal(bp_default, bp_explicit_none)
 
@@ -872,11 +817,7 @@ _df = pd.DataFrame(
 )
 
 _df_both = pd.DataFrame(
-    {
-        "x": np.concatenate(
-            [np.zeros(10), np.arange(1, 6), np.full(10, 10)]
-        )
-    }
+    {"x": np.concatenate([np.zeros(10), np.arange(1, 6), np.full(10, 10)])}
 )
 _df_lower = pd.DataFrame(
     {"x": np.concatenate([np.zeros(15), np.arange(1, 11)])}

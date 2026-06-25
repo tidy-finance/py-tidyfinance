@@ -181,6 +181,7 @@ def test_min_size_quantile_emits_no_message_when_no_rows_are_removed():
         }
     )
     import warnings as _w
+
     with _w.catch_warnings():
         _w.simplefilter("error", UserWarning)
         # Should not raise: no removal -> no warning
@@ -272,6 +273,7 @@ def test_quiet_true_suppresses_messages_across_all_filters():
     """Test quiet = True suppresses messages across all filters."""
     data = make_data()
     import warnings as _w
+
     with _w.catch_warnings():
         _w.simplefilter("error", UserWarning)
         filter_sorting_data(

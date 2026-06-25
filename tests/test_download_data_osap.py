@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -23,9 +23,7 @@ def test_downloads_and_processes_all_rows():
             "LongName": [1, 2],
         }
     )
-    with patch(
-        "tidyfinance.data_download.pd.read_csv", return_value=raw
-    ):
+    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
         result = _download_data_osap(sheet_id="abc")
 
     assert isinstance(result, pd.DataFrame)
@@ -44,9 +42,7 @@ def test_filters_rows_when_both_dates_are_supplied():
             "value": [1, 2, 3],
         }
     )
-    with patch(
-        "tidyfinance.data_download.pd.read_csv", return_value=raw
-    ):
+    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
         result = _download_data_osap(
             start_date="2020-02-01", end_date="2020-02-28"
         )
@@ -62,9 +58,7 @@ def test_returns_empty_dataframe_after_download_failure():
         "tidyfinance.data_download.pd.read_csv",
         side_effect=Exception("download failure"),
     ):
-        with pytest.warns(
-            UserWarning, match="Returning an empty dataset"
-        ):
+        with pytest.warns(UserWarning, match="Returning an empty dataset"):
             result = _download_data_osap()
 
     assert isinstance(result, pd.DataFrame)

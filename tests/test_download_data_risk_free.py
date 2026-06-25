@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -51,9 +51,7 @@ def test_data_is_filtered_when_start_and_end_dates_are_supplied():
     """Test data is filtered when start and end dates are supplied."""
     mock_data = pd.DataFrame(
         {
-            "date": pd.to_datetime(
-                ["2020-01-01", "2020-02-01", "2020-03-01"]
-            ),
+            "date": pd.to_datetime(["2020-01-01", "2020-02-01", "2020-03-01"]),
             "risk_free": [0.001, 0.002, 0.003],
         }
     )

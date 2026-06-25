@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -32,14 +32,19 @@ def test_download_errors_can_return_none():
     """Test download errors can return None."""
     response_mock = MagicMock()
     response_mock.status_code = 500
-    with patch(
-        "tidyfinance.data_download.list_supported_indexes",
-        return_value=_supported_indexes_df(),
-    ), patch(
-        "tidyfinance.data_download._get_random_user_agent", return_value="ua"
-    ), patch(
-        "tidyfinance.data_download.requests.get",
-        side_effect=Exception("network error"),
+    with (
+        patch(
+            "tidyfinance.data_download.list_supported_indexes",
+            return_value=_supported_indexes_df(),
+        ),
+        patch(
+            "tidyfinance.data_download._get_random_user_agent",
+            return_value="ua",
+        ),
+        patch(
+            "tidyfinance.data_download.requests.get",
+            side_effect=Exception("network error"),
+        ),
     ):
         with pytest.raises(Exception):
             _download_data_constituents("DAX")
@@ -49,13 +54,18 @@ def test_non_200_responses_fail():
     """Test non-200 responses fail."""
     response_mock = MagicMock()
     response_mock.status_code = 500
-    with patch(
-        "tidyfinance.data_download.list_supported_indexes",
-        return_value=_supported_indexes_df(),
-    ), patch(
-        "tidyfinance.data_download._get_random_user_agent", return_value="ua"
-    ), patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
+    with (
+        patch(
+            "tidyfinance.data_download.list_supported_indexes",
+            return_value=_supported_indexes_df(),
+        ),
+        patch(
+            "tidyfinance.data_download._get_random_user_agent",
+            return_value="ua",
+        ),
+        patch(
+            "tidyfinance.data_download.requests.get", return_value=response_mock
+        ),
     ):
         with pytest.raises(ValueError, match="Failed to download data"):
             _download_data_constituents("DAX")
@@ -77,13 +87,18 @@ def test_german_csv_layout_is_parsed_and_cleaned():
     response_mock.status_code = 200
     response_mock.text = csv
 
-    with patch(
-        "tidyfinance.data_download.list_supported_indexes",
-        return_value=_supported_indexes_df("DAX"),
-    ), patch(
-        "tidyfinance.data_download._get_random_user_agent", return_value="ua"
-    ), patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
+    with (
+        patch(
+            "tidyfinance.data_download.list_supported_indexes",
+            return_value=_supported_indexes_df("DAX"),
+        ),
+        patch(
+            "tidyfinance.data_download._get_random_user_agent",
+            return_value="ua",
+        ),
+        patch(
+            "tidyfinance.data_download.requests.get", return_value=response_mock
+        ),
     ):
         out = _download_data_constituents("DAX")
 
@@ -141,13 +156,18 @@ def test_asset_class_layout_covers_exchanges_and_symbol_rules():
     response_mock.status_code = 200
     response_mock.text = csv
 
-    with patch(
-        "tidyfinance.data_download.list_supported_indexes",
-        return_value=_supported_indexes_df("MSCI World"),
-    ), patch(
-        "tidyfinance.data_download._get_random_user_agent", return_value="ua"
-    ), patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
+    with (
+        patch(
+            "tidyfinance.data_download.list_supported_indexes",
+            return_value=_supported_indexes_df("MSCI World"),
+        ),
+        patch(
+            "tidyfinance.data_download._get_random_user_agent",
+            return_value="ua",
+        ),
+        patch(
+            "tidyfinance.data_download.requests.get", return_value=response_mock
+        ),
     ):
         out = _download_data_constituents("MSCI World")
 
@@ -194,17 +214,21 @@ def test_download_request_pipeline_is_executed():
     response_mock.status_code = 200
     response_mock.text = csv
 
-    with patch(
-        "tidyfinance.data_download.list_supported_indexes",
-        return_value=pd.DataFrame(
-            {"index": ["S&P 500"], "url": ["mock-url"], "skip": [0]}
+    with (
+        patch(
+            "tidyfinance.data_download.list_supported_indexes",
+            return_value=pd.DataFrame(
+                {"index": ["S&P 500"], "url": ["mock-url"], "skip": [0]}
+            ),
         ),
-    ), patch(
-        "tidyfinance.data_download._get_random_user_agent",
-        return_value="test-agent",
-    ), patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
-    ) as mock_get:
+        patch(
+            "tidyfinance.data_download._get_random_user_agent",
+            return_value="test-agent",
+        ),
+        patch(
+            "tidyfinance.data_download.requests.get", return_value=response_mock
+        ) as mock_get,
+    ):
         out = _download_data_constituents("S&P 500")
 
     assert "AAPL" in out["symbol"].tolist()

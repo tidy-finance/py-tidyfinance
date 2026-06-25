@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -29,14 +29,21 @@ def test_download_data_column_ordering():
         domain="Stock Prices",
         symbols="AAPL",
         start_date="2000-01-01",
-        end_date="2023-12-31"
+        end_date="2023-12-31",
     )
-    expected_columns = ['symbol', 'date', 'volume', 'open', 'low', 'high',
-                        'close', 'adjusted_close']
-    assert list(df.columns) == expected_columns, ("Expected columns "
-                                                  f"{expected_columns}, but "
-                                                  f"got {list(df.columns)}"
-                                                  )
+    expected_columns = [
+        "symbol",
+        "date",
+        "volume",
+        "open",
+        "low",
+        "high",
+        "close",
+        "adjusted_close",
+    ]
+    assert list(df.columns) == expected_columns, (
+        f"Expected columns {expected_columns}, but got {list(df.columns)}"
+    )
 
 
 def test_download_data_requires_domain():

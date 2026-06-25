@@ -8,8 +8,8 @@ import tempfile
 import time
 import warnings
 import zipfile
-from datetime import date
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 
 import numpy as np
 import pandas as pd
@@ -185,36 +185,38 @@ def download_data(
 
     Examples
     --------
-    >>> from tidyfinance import download_data
-    >>> download_data(
-    ...     'Fama-French',
-    ...     'Fama/French 5 Factors (2x3) [Daily]',
-    ...     '2000-01-01',
-    ...     '2020-12-31',
-    ... )
-    >>> download_data(
-    ...     'Goyal-Welch', 'monthly', '2000-01-01', '2020-12-31'
-    ... )
-    >>> download_data('Index Constituents', index='DAX')
-    >>> download_data('FRED', series=['GDP', 'CPIAUCNS'])
-    >>> download_data('Stock Prices', symbols=['AAPL', 'MSFT'])
-    >>> download_data(
-    ...     'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data(
-    ...     'Tidy Finance',
-    ...     'high_frequency_sp500',
-    ...     '2007-07-26',
-    ...     '2007-07-27',
-    ... )
-    >>> download_data(
-    ...     'Tidy Finance',
-    ...     'factor_library',
-    ...     sorting_variable='52w',
-    ...     rebalancing='annual',
-    ... )
-    >>> download_data('Tidy Finance', 'factor_library', ids=[1, 2, 3])
-    >>> download_data('Tidy Finance', 'factor_library_grid')
+    ```python
+    from tidyfinance import download_data
+    download_data(
+        'Fama-French',
+        'Fama/French 5 Factors (2x3) [Daily]',
+        '2000-01-01',
+        '2020-12-31',
+    )
+    download_data(
+        'Goyal-Welch', 'monthly', '2000-01-01', '2020-12-31'
+    )
+    download_data('Index Constituents', index='DAX')
+    download_data('FRED', series=['GDP', 'CPIAUCNS'])
+    download_data('Stock Prices', symbols=['AAPL', 'MSFT'])
+    download_data(
+        'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
+    )
+    download_data(
+        'Tidy Finance',
+        'high_frequency_sp500',
+        '2007-07-26',
+        '2007-07-27',
+    )
+    download_data(
+        'Tidy Finance',
+        'factor_library',
+        sorting_variable='52w',
+        rebalancing='annual',
+    )
+    download_data('Tidy Finance', 'factor_library', ids=[1, 2, 3])
+    download_data('Tidy Finance', 'factor_library_grid')
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -465,13 +467,15 @@ def _download_data_factors_ff(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_factors_ff
-    >>> download_data_factors_ff(
-    ...     'Fama/French 3 Factors', '2000-01-01', '2020-12-31'
-    ... )
-    >>> download_data_factors_ff(
-    ...     '10 Industry Portfolios', '2000-01-01', '2020-12-31'
-    ... )
+    ```python
+    from tidyfinance import download_data_factors_ff
+    download_data_factors_ff(
+        'Fama/French 3 Factors', '2000-01-01', '2020-12-31'
+    )
+    download_data_factors_ff(
+        '10 Industry Portfolios', '2000-01-01', '2020-12-31'
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -524,9 +528,11 @@ def _download_data_factors_ff(
                     )
                 )
                 .apply(
-                    lambda x: x.replace([-99.99, -999], np.nan)
-                    if x.name != "date"
-                    else x
+                    lambda x: (
+                        x.replace([-99.99, -999], np.nan)
+                        if x.name != "date"
+                        else x
+                    )
                 )
             )
             raw_data = raw_data[
@@ -592,11 +598,13 @@ def _download_data_factors_q(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_factors_q
-    >>> download_data_factors_q(
-    ...     'q5_factors_daily_2024', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data_factors_q('q5_factors_annual_2024')
+    ```python
+    from tidyfinance import download_data_factors_q
+    download_data_factors_q(
+        'q5_factors_daily_2024', '2020-01-01', '2020-12-31'
+    )
+    download_data_factors_q('q5_factors_annual_2024')
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -738,11 +746,13 @@ def _download_data_macro_predictors(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_macro_predictors
-    >>> download_data_macro_predictors('monthly')
-    >>> download_data_macro_predictors(
-    ...     'quarterly', '2000-01-01', '2020-12-31'
-    ... )
+    ```python
+    from tidyfinance import download_data_macro_predictors
+    download_data_macro_predictors('monthly')
+    download_data_macro_predictors(
+        'quarterly', '2000-01-01', '2020-12-31'
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -933,8 +943,10 @@ def _download_data_constituents(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_constituents
-    >>> download_data_constituents('DAX')
+    ```python
+    from tidyfinance import download_data_constituents
+    download_data_constituents('DAX')
+    ```
     """
     if dataset is not None and index is None:
         warnings.warn(
@@ -1106,9 +1118,11 @@ def _download_data_fred(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_fred
-    >>> download_data_fred('CPIAUCNS')
-    >>> download_data_fred(['GDP', 'CPIAUCNS'], '2010-01-01', '2010-12-31')
+    ```python
+    from tidyfinance import download_data_fred
+    download_data_fred('CPIAUCNS')
+    download_data_fred(['GDP', 'CPIAUCNS'], '2010-01-01', '2010-12-31')
+    ```
     """
     if isinstance(series, str):
         series = [series]
@@ -1219,9 +1233,11 @@ def _download_data_stock_prices(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_stock_prices
-    >>> download_data_stock_prices(['AAPL', 'MSFT'])
-    >>> download_data_stock_prices('GOOGL', '2021-01-01', '2022-01-01')
+    ```python
+    from tidyfinance import download_data_stock_prices
+    download_data_stock_prices(['AAPL', 'MSFT'])
+    download_data_stock_prices('GOOGL', '2021-01-01', '2022-01-01')
+    ```
     """
     if isinstance(symbols, str):
         symbols = [symbols]
@@ -1349,10 +1365,12 @@ def _download_data_osap(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_osap
-    >>> osap = download_data_osap(
-    ...     start_date='2020-01-01', end_date='2020-06-30'
-    ... )
+    ```python
+    from tidyfinance import download_data_osap
+    osap = download_data_osap(
+        start_date='2020-01-01', end_date='2020-06-30'
+    )
+    ```
     """
     start_date, end_date = _validate_dates(start_date, end_date)
 
@@ -1456,11 +1474,13 @@ def _download_data_risk_free(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_risk_free
-    >>> download_data_risk_free('2020-01-01', '2020-12-31')
-    >>> download_data_risk_free(
-    ...     '2020-01-01', '2020-12-31', frequency='daily'
-    ... )
+    ```python
+    from tidyfinance import download_data_risk_free
+    download_data_risk_free('2020-01-01', '2020-12-31')
+    download_data_risk_free(
+        '2020-01-01', '2020-12-31', frequency='daily'
+    )
+    ```
     """
     if frequency not in ("monthly", "daily"):
         raise ValueError("frequency must be 'monthly' or 'daily'.")
@@ -1538,18 +1558,20 @@ def _download_data_wrds(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds
-    >>> crsp_monthly = download_data_wrds(
-    ...     'crsp_monthly', '2020-01-01', '2020-12-31'
-    ... )
-    >>> compustat_annual = download_data_wrds(
-    ...     'compustat_annual', '2020-01-01', '2020-12-31'
-    ... )
-    >>> ccm_links = download_data_wrds('ccm_links')
-    >>> fisd = download_data_wrds('fisd')
-    >>> trace_enhanced = download_data_wrds(
-    ...     'trace_enhanced', cusips=['00101JAH9']
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds
+    crsp_monthly = download_data_wrds(
+        'crsp_monthly', '2020-01-01', '2020-12-31'
+    )
+    compustat_annual = download_data_wrds(
+        'compustat_annual', '2020-01-01', '2020-12-31'
+    )
+    ccm_links = download_data_wrds('ccm_links')
+    fisd = download_data_wrds('fisd')
+    trace_enhanced = download_data_wrds(
+        'trace_enhanced', cusips=['00101JAH9']
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -1674,19 +1696,21 @@ def _download_data_wrds_crsp(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_crsp
-    >>> crsp_monthly = download_data_wrds_crsp(
-    ...     'crsp_monthly', '2020-11-01', '2020-12-31'
-    ... )
-    >>> crsp_daily = download_data_wrds_crsp(
-    ...     'crsp_daily', '2020-12-01', '2020-12-31'
-    ... )
-    >>> download_data_wrds_crsp(
-    ...     'crsp_monthly',
-    ...     '2020-11-01',
-    ...     '2020-12-31',
-    ...     additional_columns=['mthvol', 'mthvolflg'],
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_crsp
+    crsp_monthly = download_data_wrds_crsp(
+        'crsp_monthly', '2020-11-01', '2020-12-31'
+    )
+    crsp_daily = download_data_wrds_crsp(
+        'crsp_daily', '2020-12-01', '2020-12-31'
+    )
+    download_data_wrds_crsp(
+        'crsp_monthly',
+        '2020-11-01',
+        '2020-12-31',
+        additional_columns=['mthvol', 'mthvolflg'],
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -1719,9 +1743,7 @@ def _download_data_wrds_crsp(
     if version not in ["v1", "v2"]:
         raise ValueError("version must be 'v1' or 'v2'.")
 
-    if version == "v1" and pd.Timestamp(end_date) > pd.Timestamp(
-        "2024-12-31"
-    ):
+    if version == "v1" and pd.Timestamp(end_date) > pd.Timestamp("2024-12-31"):
         raise ValueError(
             "end_date must not be later than December 2024 for "
             "version='v1'. CRSP discontinued the legacy version at the "
@@ -1757,9 +1779,8 @@ def _download_data_wrds_crsp(
             if version == "v1":
                 # Query 1: msf joined with msenames (shrcd 10/11)
                 additional_cols_select = (
-                    ", " + ", ".join(
-                        f"msf.{c}" for c in additional_columns_list
-                    )
+                    ", "
+                    + ", ".join(f"msf.{c}" for c in additional_columns_list)
                     if additional_columns_list
                     else ""
                 )
@@ -1784,8 +1805,7 @@ def _download_data_wrds_crsp(
 
                 # Query 2: msedelist (delisting events)
                 msedelist_query = text(
-                    "SELECT permno, dlstdt, dlret, dlstcd "
-                    "FROM crsp.msedelist"
+                    "SELECT permno, dlstdt, dlret, dlstcd FROM crsp.msedelist"
                 )
                 msedelist = pd.read_sql_query(
                     msedelist_query,
@@ -1809,18 +1829,22 @@ def _download_data_wrds_crsp(
                 # calculation_date + month-floored date
                 crsp_monthly = msf_data.assign(
                     calculation_date=lambda x: pd.to_datetime(x["date"]),
-                    date=lambda x: pd.to_datetime(x["date"])
-                    .dt.to_period("M")
-                    .dt.start_time,
+                    date=lambda x: (
+                        pd.to_datetime(x["date"])
+                        .dt.to_period("M")
+                        .dt.start_time
+                    ),
                     shrout=lambda x: x["shrout"] * 1000,
                 )
 
                 # Join delisting on (permno, month-floored dlstdt)
                 if len(msedelist) > 0:
                     msedelist = msedelist.assign(
-                        date=lambda x: pd.to_datetime(x["dlstdt"])
-                        .dt.to_period("M")
-                        .dt.start_time
+                        date=lambda x: (
+                            pd.to_datetime(x["dlstdt"])
+                            .dt.to_period("M")
+                            .dt.start_time
+                        )
                     )[["permno", "date", "dlret", "dlstcd"]]
                     crsp_monthly = crsp_monthly.merge(
                         msedelist, on=["permno", "date"], how="left"
@@ -1830,28 +1854,29 @@ def _download_data_wrds_crsp(
                     crsp_monthly["dlstcd"] = np.nan
 
                 # listing_age (months elapsed, clipped at 0)
-                crsp_monthly = crsp_monthly.merge(
-                    first_crsp_date, on="permno", how="left"
-                ).assign(
-                    listing_age=lambda df: (
-                        (df["date"].dt.year - df["first_crsp_date"].dt.year)
-                        * 12
-                        + (df["date"].dt.month - df["first_crsp_date"].dt.month)
-                        - (
-                            df["date"].dt.day
-                            < df["first_crsp_date"].dt.day
-                        ).astype(int)
-                    ).clip(lower=0)
-                ).drop(columns="first_crsp_date")
+                crsp_monthly = (
+                    crsp_monthly.merge(first_crsp_date, on="permno", how="left")
+                    .assign(
+                        listing_age=lambda df: (
+                            (df["date"].dt.year - df["first_crsp_date"].dt.year)
+                            * 12
+                            + (
+                                df["date"].dt.month
+                                - df["first_crsp_date"].dt.month
+                            )
+                            - (
+                                df["date"].dt.day < df["first_crsp_date"].dt.day
+                            ).astype(int)
+                        ).clip(lower=0)
+                    )
+                    .drop(columns="first_crsp_date")
+                )
 
                 # mktcap (millions); zero -> NaN
                 crsp_monthly["mktcap"] = (
-                    (crsp_monthly["shrout"] * crsp_monthly["altprc"]).abs()
-                    / 1e6
-                )
-                crsp_monthly.loc[
-                    crsp_monthly["mktcap"] == 0, "mktcap"
-                ] = np.nan
+                    crsp_monthly["shrout"] * crsp_monthly["altprc"]
+                ).abs() / 1e6
+                crsp_monthly.loc[crsp_monthly["mktcap"] == 0, "mktcap"] = np.nan
 
                 # mktcap_lag via self-join shifted by 1 month
                 mktcap_lag_df = crsp_monthly.assign(
@@ -1865,14 +1890,15 @@ def _download_data_wrds_crsp(
 
                 # exchange via exchcd (numeric, v1 codes)
                 exchange_map = {
-                    1: "NYSE", 31: "NYSE",
-                    2: "AMEX", 32: "AMEX",
-                    3: "NASDAQ", 33: "NASDAQ",
+                    1: "NYSE",
+                    31: "NYSE",
+                    2: "AMEX",
+                    32: "AMEX",
+                    3: "NASDAQ",
+                    33: "NASDAQ",
                 }
                 crsp_monthly["exchange"] = (
-                    crsp_monthly["exchcd"]
-                    .map(exchange_map)
-                    .fillna("Other")
+                    crsp_monthly["exchcd"].map(exchange_map).fillna("Other")
                 )
 
                 # industry from SIC code
@@ -1890,9 +1916,7 @@ def _download_data_wrds_crsp(
                     if not pd.isna(row["dlret"]):
                         return row["dlret"]
                     code = row["dlstcd"]
-                    if code in (500, 520, 580, 584) or (
-                        551 <= code <= 574
-                    ):
+                    if code in (500, 520, 580, 584) or (551 <= code <= 574):
                         return -0.30
                     if code == 100:
                         return row["ret"]
@@ -1901,9 +1925,7 @@ def _download_data_wrds_crsp(
                 crsp_monthly["ret_adj"] = crsp_monthly.apply(
                     _compute_ret_adj_v1, axis=1
                 )
-                crsp_monthly = crsp_monthly.drop(
-                    columns=["dlret", "dlstcd"]
-                )
+                crsp_monthly = crsp_monthly.drop(columns=["dlret", "dlstcd"])
 
                 # prc_adj = |altprc nullified-at-zero| / cfacpr
                 prc_zeroed = crsp_monthly["altprc"].replace(0, np.nan)
@@ -1916,13 +1938,8 @@ def _download_data_wrds_crsp(
                     start_date=start_date, end_date=end_date
                 )
                 crsp_monthly = (
-                    crsp_monthly.merge(
-                        risk_free_monthly, how="left", on="date"
-                    )
-                    .assign(
-                        ret_excess=lambda x: x["ret_adj"]
-                        - x["risk_free"]
-                    )
+                    crsp_monthly.merge(risk_free_monthly, how="left", on="date")
+                    .assign(ret_excess=lambda x: x["ret_adj"] - x["risk_free"])
                     .drop(columns="risk_free")
                     .dropna(subset=["ret_excess", "mktcap"])
                 )
@@ -2031,9 +2048,7 @@ def _download_data_wrds_crsp(
                 permnos = list(permnos["permno"].astype(str))
 
                 if len(permnos) > 0:
-                    batches = int(
-                        np.ceil(len(permnos) / batch_size)
-                    )
+                    batches = int(np.ceil(len(permnos) / batch_size))
                     risk_free_daily = _download_data_risk_free(
                         start_date=start_date,
                         end_date=end_date,
@@ -2042,7 +2057,7 @@ def _download_data_wrds_crsp(
 
                     for j in range(1, batches + 1):
                         permno_batch = permnos[
-                            ((j - 1) * batch_size):(
+                            ((j - 1) * batch_size) : (
                                 min(j * batch_size, len(permnos))
                             )
                         ]
@@ -2100,15 +2115,17 @@ def _download_data_wrds_crsp(
                             matched_dates = crsp_daily_sub[
                                 crsp_daily_sub["dlret"].notna()
                             ][["permno", "date"]].drop_duplicates()
-                            unmatched = msedelist_sub.merge(
-                                matched_dates.rename(
-                                    columns={"date": "dlstdt"}
-                                ),
-                                on=["permno", "dlstdt"],
-                                how="left",
-                                indicator=True,
-                            ).query("_merge == 'left_only'").drop(
-                                columns="_merge"
+                            unmatched = (
+                                msedelist_sub.merge(
+                                    matched_dates.rename(
+                                        columns={"date": "dlstdt"}
+                                    ),
+                                    on=["permno", "dlstdt"],
+                                    how="left",
+                                    indicator=True,
+                                )
+                                .query("_merge == 'left_only'")
+                                .drop(columns="_merge")
                             )
                             if not unmatched.empty:
                                 unmatched = unmatched.rename(
@@ -2117,9 +2134,7 @@ def _download_data_wrds_crsp(
                                 for col in crsp_daily_sub.columns:
                                     if col not in unmatched.columns:
                                         unmatched[col] = np.nan
-                                unmatched = unmatched[
-                                    crsp_daily_sub.columns
-                                ]
+                                unmatched = unmatched[crsp_daily_sub.columns]
                                 crsp_daily_sub = pd.concat(
                                     [crsp_daily_sub, unmatched],
                                     ignore_index=True,
@@ -2138,26 +2153,19 @@ def _download_data_wrds_crsp(
                             # Filter date <= permno's last delisting
                             # date (or end_date if no delisting)
                             permno_dlstdt = (
-                                msedelist_sub.groupby("permno")[
-                                    "dlstdt"
-                                ]
+                                msedelist_sub.groupby("permno")["dlstdt"]
                                 .max()
                                 .reset_index()
-                                .rename(
-                                    columns={
-                                        "dlstdt": "_permno_dlstdt"
-                                    }
-                                )
+                                .rename(columns={"dlstdt": "_permno_dlstdt"})
                             )
                             crsp_daily_sub = crsp_daily_sub.merge(
                                 permno_dlstdt,
                                 on="permno",
                                 how="left",
                             )
-                            crsp_daily_sub["_permno_dlstdt"] = (
-                                crsp_daily_sub["_permno_dlstdt"]
-                                .fillna(pd.Timestamp(end_date))
-                            )
+                            crsp_daily_sub["_permno_dlstdt"] = crsp_daily_sub[
+                                "_permno_dlstdt"
+                            ].fillna(pd.Timestamp(end_date))
                             crsp_daily_sub = crsp_daily_sub[
                                 crsp_daily_sub["date"]
                                 <= crsp_daily_sub["_permno_dlstdt"]
@@ -2171,15 +2179,12 @@ def _download_data_wrds_crsp(
                                 how="left",
                             )
                             .assign(
-                                ret_excess=lambda x: x["ret"]
-                                - x["risk_free"]
+                                ret_excess=lambda x: x["ret"] - x["risk_free"]
                             )
                             .drop(columns="risk_free")
                         )
 
-                        crsp_data = pd.concat(
-                            [crsp_data, crsp_daily_sub]
-                        )
+                        crsp_data = pd.concat([crsp_data, crsp_daily_sub])
 
                 # Gao-Ritter volume adjustment for NASDAQ (v1: exchcd==3)
                 if adjust_volume and not crsp_data.empty:
@@ -2190,12 +2195,8 @@ def _download_data_wrds_crsp(
                     crsp_data = (
                         crsp_data.sort_values(["permno", "date"])
                         .assign(
-                            vol=lambda df: df["vol"].replace(
-                                -99, np.nan
-                            ),
-                            prc=lambda df: df["prc"].replace(
-                                0, np.nan
-                            ),
+                            vol=lambda df: df["vol"].replace(-99, np.nan),
+                            prc=lambda df: df["prc"].replace(0, np.nan),
                         )
                         .assign(
                             prc_adj=lambda df: (
@@ -2477,16 +2478,18 @@ def _download_data_wrds_compustat(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_compustat
-    >>> download_data_wrds_compustat(
-    ...     'compustat_annual', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data_wrds_compustat(
-    ...     'compustat_quarterly', '2020-01-01', '2020-12-31'
-    ... )
-    >>> download_data_wrds_compustat(
-    ...     'compustat_annual', additional_columns=['aodo', 'aldo']
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_compustat
+    download_data_wrds_compustat(
+        'compustat_annual', '2020-01-01', '2020-12-31'
+    )
+    download_data_wrds_compustat(
+        'compustat_quarterly', '2020-01-01', '2020-12-31'
+    )
+    download_data_wrds_compustat(
+        'compustat_annual', additional_columns=['aodo', 'aldo']
+    )
+    ```
     """
     if type is not None:
         warnings.warn(
@@ -2528,19 +2531,45 @@ def _download_data_wrds_compustat(
 
     wrds_connection = get_wrds_connection()
     _base_annual_cols = {
-        "gvkey", "datadate", "seq", "ceq", "at", "lt", "txditc", "txdb",
-        "itcb", "pstkrv", "pstkl", "pstk", "capx", "oancf", "sale",
-        "cogs", "xint", "xsga", "ib", "curcd",
+        "gvkey",
+        "datadate",
+        "seq",
+        "ceq",
+        "at",
+        "lt",
+        "txditc",
+        "txdb",
+        "itcb",
+        "pstkrv",
+        "pstkl",
+        "pstk",
+        "capx",
+        "oancf",
+        "sale",
+        "cogs",
+        "xint",
+        "xsga",
+        "ib",
+        "curcd",
     }
     _base_quarterly_cols = {
-        "gvkey", "datadate", "rdq", "fqtr", "fyearq", "atq", "ceqq", "curcdq",
+        "gvkey",
+        "datadate",
+        "rdq",
+        "fqtr",
+        "fyearq",
+        "atq",
+        "ceqq",
+        "curcdq",
     }
     extra_annual = [
-        c for c in (additional_columns or [])
+        c
+        for c in (additional_columns or [])
         if c != "curcd" and c not in _base_annual_cols
     ]
     extra_quarterly = [
-        c for c in (additional_columns or [])
+        c
+        for c in (additional_columns or [])
         if c != "curcdq" and c not in _base_quarterly_cols
     ]
     additional_columns_annual = ", ".join(extra_annual) if extra_annual else ""
@@ -2694,11 +2723,13 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_fisd
-    >>> fisd = download_data_wrds_fisd()
-    >>> fisd_extended = download_data_wrds_fisd(
-    ...     additional_columns=['asset_backed', 'defeased']
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_fisd
+    fisd = download_data_wrds_fisd()
+    fisd_extended = download_data_wrds_fisd(
+        additional_columns=['asset_backed', 'defeased']
+    )
+    ```
     """
     wrds_connection = get_wrds_connection()
 
@@ -2828,10 +2859,12 @@ def _download_data_wrds_trace_enhanced(
 
     Examples
     --------
-    >>> from tidyfinance import download_data_wrds_trace_enhanced
-    >>> download_data_wrds_trace_enhanced(
-    ...     ['00101JAH9'], '2019-01-01', '2021-12-31'
-    ... )
+    ```python
+    from tidyfinance import download_data_wrds_trace_enhanced
+    download_data_wrds_trace_enhanced(
+        ['00101JAH9'], '2019-01-01', '2021-12-31'
+    )
+    ```
     """
     if not all(isinstance(cusip, str) and len(cusip) == 9 for cusip in cusips):
         raise ValueError("All CUSIPs must be 9-character strings.")
@@ -2869,6 +2902,7 @@ def _download_data_wrds_trace_enhanced(
 
 # %% hugging face functions for tidy finance data
 
+
 def _get_available_huggingface_files(
     organization: str, dataset: str
 ) -> pd.DataFrame:
@@ -2896,8 +2930,10 @@ def _get_available_huggingface_files(
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _get_available_huggingface_files
-    >>> _get_available_huggingface_files('voigtstefan', 'sp500')
+    ```python
+    from tidyfinance.data_download import _get_available_huggingface_files
+    _get_available_huggingface_files('voigtstefan', 'sp500')
+    ```
     """
     api_url = (
         f"https://huggingface.co/api/datasets/{organization}/{dataset}"
@@ -2948,8 +2984,10 @@ def _download_factor_library_grid() -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _download_factor_library_grid
-    >>> _download_factor_library_grid()
+    ```python
+    from tidyfinance.data_download import _download_factor_library_grid
+    _download_factor_library_grid()
+    ```
     """
     available = _get_available_huggingface_files(
         "tidy-finance", "factor-library-grid"
@@ -3062,7 +3100,7 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
         except Exception as e:
             last_err = e
             if attempt < retries - 1:
-                time.sleep(backoff * (2 ** attempt))
+                time.sleep(backoff * (2**attempt))
     raise ConnectionError(
         f"Failed to download {url} after {retries} attempts: {last_err}"
     ) from last_err
@@ -3113,8 +3151,10 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _download_factor_library_ids
-    >>> _download_factor_library_ids([1, 2, 3])
+    ```python
+    from tidyfinance.data_download import _download_factor_library_ids
+    _download_factor_library_ids([1, 2, 3])
+    ```
     """
     if not ids:
         raise ValueError(
@@ -3176,9 +3216,9 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
         )
 
     with ThreadPoolExecutor(max_workers=8) as ex:
-        frames = list(ex.map(_fetch_parquet_url,
-                             [_make_url(p) for p in unique_paths])
-                      )
+        frames = list(
+            ex.map(_fetch_parquet_url, [_make_url(p) for p in unique_paths])
+        )
 
     returns = pd.concat(frames, ignore_index=True)
 
@@ -3380,25 +3420,27 @@ def _download_data_huggingface(
 
     Examples
     --------
-    >>> from tidyfinance.data_download import _download_data_huggingface
-    >>> _download_data_huggingface(
-    ...     'high_frequency_sp500', '2007-07-26', '2007-07-27'
-    ... )
-    >>> _download_data_huggingface(
-    ...     'factor_library',
-    ...     sorting_variable='52w',
-    ...     rebalancing='annual',
-    ... )
-    >>> _download_data_huggingface(
-    ...     'factor_library', sorting_variable='ag', fill_all=True
-    ... )
-    >>> _download_data_huggingface(
-    ...     'factor_library',
-    ...     sorting_variable='me',
-    ...     start_date='2000-01-01',
-    ...     end_date='2020-12-31',
-    ... )
-    >>> _download_data_huggingface('factor_library', ids=[1, 2, 3])
+    ```python
+    from tidyfinance.data_download import _download_data_huggingface
+    _download_data_huggingface(
+        'high_frequency_sp500', '2007-07-26', '2007-07-27'
+    )
+    _download_data_huggingface(
+        'factor_library',
+        sorting_variable='52w',
+        rebalancing='annual',
+    )
+    _download_data_huggingface(
+        'factor_library', sorting_variable='ag', fill_all=True
+    )
+    _download_data_huggingface(
+        'factor_library',
+        sorting_variable='me',
+        start_date='2000-01-01',
+        end_date='2020-12-31',
+    )
+    _download_data_huggingface('factor_library', ids=[1, 2, 3])
+    ```
     """
     if type is not None:
         warnings.warn(

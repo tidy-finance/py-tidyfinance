@@ -14,7 +14,6 @@ sys.path.insert(
 
 from tidyfinance.core import assign_portfolio  # noqa: E402
 
-
 # %% mock breakpoint functions
 
 
@@ -31,9 +30,7 @@ def mock_breakpoint_percentiles(
     data, sorting_variable, bp_options=None, data_options=None
 ):
     """Percentile-based mock breakpoint function."""
-    percentiles = (bp_options or {}).get(
-        "percentiles", [0.2, 0.4, 0.6, 0.8]
-    )
+    percentiles = (bp_options or {}).get("percentiles", [0.2, 0.4, 0.6, 0.8])
     probs = [0] + list(percentiles) + [1]
     return np.quantile(data[sorting_variable].dropna().values, probs)
 
@@ -156,9 +153,7 @@ def test_constant_sorting_variable_returns_vector_of_correct_length():
 
 def test_two_distinct_values_with_2_portfolios_produces_two_groups():
     """Test two distinct values with 2 portfolios produces two groups."""
-    data = pd.DataFrame(
-        {"id": range(100), "value": [1] * 50 + [2] * 50}
-    )
+    data = pd.DataFrame({"id": range(100), "value": [1] * 50 + [2] * 50})
     result = assign_portfolio(
         data,
         "value",
@@ -189,9 +184,7 @@ def test_single_row_data_frame_with_constant_variable_triggers_warning():
 
 def test_warning_when_clusters_reduce_number_of_portfolios():
     """Test warning is issued when clusters reduce the number of portfolios."""
-    data = pd.DataFrame(
-        {"id": range(100), "value": [1] * 50 + [100] * 50}
-    )
+    data = pd.DataFrame({"id": range(100), "value": [1] * 50 + [100] * 50})
 
     def mock_bp_5(data, sv, bp_options=None, data_options=None):
         return np.array([1, 20, 40, 60, 80, 100])
@@ -335,9 +328,7 @@ def test_function_works_with_large_datasets():
     """Test function works with large datasets."""
     rng = np.random.default_rng(1)
     n = 100_000
-    data = pd.DataFrame(
-        {"id": np.arange(n), "value": rng.standard_normal(n)}
-    )
+    data = pd.DataFrame({"id": np.arange(n), "value": rng.standard_normal(n)})
     result = assign_portfolio(
         data,
         "value",
@@ -416,9 +407,7 @@ def test_percentile_based_breakpoints_produce_correct_number_of_groups():
 def test_two_portfolios_split_data_roughly_in_half():
     """Test two portfolios split data roughly in half."""
     rng = np.random.default_rng(10)
-    data = pd.DataFrame(
-        {"id": range(1000), "value": rng.standard_normal(1000)}
-    )
+    data = pd.DataFrame({"id": range(1000), "value": rng.standard_normal(1000)})
     result = assign_portfolio(
         data,
         "value",
@@ -444,9 +433,7 @@ def test_breakpoint_function_receives_all_four_arguments():
         received["data_options"] = data_options
         return np.array([0.0, 0.5, 1.0])
 
-    data = pd.DataFrame(
-        {"id": range(10), "value": np.linspace(0, 1, 10)}
-    )
+    data = pd.DataFrame({"id": range(10), "value": np.linspace(0, 1, 10)})
     my_bp_opts = {"n_portfolios": 2}
     my_data_opts = {"date": "date_col"}
     assign_portfolio(

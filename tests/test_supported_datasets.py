@@ -20,8 +20,8 @@ from tidyfinance.supported_datasets import (
     list_supported_datasets,
 )
 
-
 # %% Module-level table structure
+
 
 def test_ff_table_has_expected_columns_and_domain():
     assert _FF_DATASETS, "FF table should not be empty"
@@ -36,9 +36,7 @@ def test_ff_legacy_table_has_expected_columns_and_domain():
     assert {"type", "dataset_name", "file_url", "domain"} <= set(
         _FF_LEGACY_DATASETS[0].keys()
     )
-    assert all(
-        row["domain"] == "Fama-French" for row in _FF_LEGACY_DATASETS
-    )
+    assert all(row["domain"] == "Fama-French" for row in _FF_LEGACY_DATASETS)
 
 
 def test_q_table_has_expected_columns_and_domain():
@@ -49,36 +47,29 @@ def test_q_table_has_expected_columns_and_domain():
 
 def test_macro_table_has_expected_columns_and_domain():
     assert _MACRO_DATASETS, "Macro table should not be empty"
-    assert {"type", "dataset_name", "domain"} <= set(
-        _MACRO_DATASETS[0].keys()
-    )
+    assert {"type", "dataset_name", "domain"} <= set(_MACRO_DATASETS[0].keys())
     assert all(row["domain"] == "Goyal-Welch" for row in _MACRO_DATASETS)
 
 
 def test_wrds_table_has_expected_columns_and_domain():
     assert _WRDS_DATASETS, "WRDS table should not be empty"
-    assert {"type", "dataset_name", "domain"} <= set(
-        _WRDS_DATASETS[0].keys()
-    )
+    assert {"type", "dataset_name", "domain"} <= set(_WRDS_DATASETS[0].keys())
     assert all(row["domain"] == "WRDS" for row in _WRDS_DATASETS)
 
 
 def test_pseudo_table_has_expected_columns_and_domain():
     assert _PSEUDO_DATASETS, "Pseudo table should not be empty"
-    assert {"type", "dataset_name", "domain"} <= set(
-        _PSEUDO_DATASETS[0].keys()
-    )
+    assert {"type", "dataset_name", "domain"} <= set(_PSEUDO_DATASETS[0].keys())
     assert all(row["domain"] == "Pseudo Data" for row in _PSEUDO_DATASETS)
 
 
 def test_other_table_has_expected_columns():
     assert _OTHER_DATASETS, "Other table should not be empty"
-    assert {"type", "dataset_name", "domain"} <= set(
-        _OTHER_DATASETS[0].keys()
-    )
+    assert {"type", "dataset_name", "domain"} <= set(_OTHER_DATASETS[0].keys())
 
 
 # %% list_supported_datasets()
+
 
 def test_default_call_returns_dataframe_with_all_domains():
     result = list_supported_datasets()
@@ -130,6 +121,7 @@ def test_total_row_count_matches_sum_of_components():
 
 
 # %% _parse_type_to_domain_dataset
+
 
 def test_parse_type_ff():
     assert _parse_type_to_domain_dataset("factors_ff_3_monthly") == (
@@ -192,7 +184,9 @@ def test_parse_type_unknown_raises():
     with pytest.raises(ValueError, match="Cannot parse legacy type"):
         _parse_type_to_domain_dataset("unknown")
 
+
 # %% _is_legacy_type
+
 
 @pytest.mark.parametrize(
     "simple", ["constituents", "fred", "stock_prices", "osap"]
@@ -225,6 +219,7 @@ def test_is_legacy_type_false_for_unknown_string():
 
 # %% _check_supported_domain
 
+
 @pytest.mark.parametrize(
     "domain",
     [
@@ -251,6 +246,7 @@ def test_check_supported_domain_rejects_unknown():
 
 
 # %% _resolve_domain_alias
+
 
 @pytest.mark.parametrize(
     "alias,canonical",

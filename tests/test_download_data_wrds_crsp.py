@@ -2,10 +2,10 @@
 
 import os
 import sys
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from unittest.mock import patch
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -21,6 +21,7 @@ def test_crsp_dataset_validation_rejects_unsupported_values():
     from tidyfinance.data_download import (  # noqa
         _check_supported_dataset_wrds_crsp,
     )
+
     with pytest.raises(ValueError, match="Unsupported CRSP dataset"):
         _check_supported_dataset_wrds_crsp("bad")
     _check_supported_dataset_wrds_crsp("crsp_monthly")
@@ -29,9 +30,12 @@ def test_crsp_dataset_validation_rejects_unsupported_values():
 
 def test_crsp_argument_validation_covers_required_inputs():
     """Test CRSP argument validation covers required inputs."""
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"):
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+    ):
         with pytest.raises((ValueError, TypeError)):
             _download_data_wrds_crsp()
 
@@ -153,15 +157,18 @@ def test_monthly_crsp_v2_is_processed():
     """Test monthly CRSP v2 is processed."""
     monthly = _mock_monthly_query_result()
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query", return_value=monthly
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_monthly(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query", return_value=monthly
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_monthly(),
+        ),
     ):
         out = _download_data_wrds_crsp(
             dataset="crsp_monthly",
@@ -179,26 +186,44 @@ def test_monthly_crsp_v2_is_processed():
     # In particular listing_age precedes mktcap (regression test for the
     # swapped columns 9-10 reported in issue #36).
     assert list(out.columns) == [
-        "permno", "date", "calculation_date", "ret", "shrout", "prc",
-        "primaryexch", "siccd", "mthvol", "listing_age", "mktcap",
-        "mktcap_lag", "exchange", "industry", "ret_excess",
+        "permno",
+        "date",
+        "calculation_date",
+        "ret",
+        "shrout",
+        "prc",
+        "primaryexch",
+        "siccd",
+        "mthvol",
+        "listing_age",
+        "mktcap",
+        "mktcap_lag",
+        "exchange",
+        "industry",
+        "ret_excess",
     ]
     assert out.columns.get_loc("listing_age") < out.columns.get_loc("mktcap")
 
 
 def test_daily_crsp_v2_validates_and_adjusts_volume():
     """Test daily CRSP v2 validates and adjusts volume."""
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
-        "tidyfinance.data_download.pd.read_sql",
-        return_value=pd.DataFrame({"permno": [1, 2, 3]}),
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        return_value=_mock_daily_query_result(),
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_daily(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql",
+            return_value=pd.DataFrame({"permno": [1, 2, 3]}),
+        ),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            return_value=_mock_daily_query_result(),
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_daily(),
+        ),
     ):
         with pytest.raises(ValueError, match="adjust_volume"):
             _download_data_wrds_crsp(
@@ -232,17 +257,23 @@ def test_daily_crsp_v2_validates_and_adjusts_volume():
 
 def test_daily_crsp_v2_handles_empty_batches():
     """Test daily CRSP v2 handles empty batches."""
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
-        "tidyfinance.data_download.pd.read_sql",
-        return_value=pd.DataFrame({"permno": [1, 2, 3]}),
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        return_value=_mock_daily_query_result(),
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_daily(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql",
+            return_value=pd.DataFrame({"permno": [1, 2, 3]}),
+        ),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            return_value=_mock_daily_query_result(),
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_daily(),
+        ),
     ):
         out = _download_data_wrds_crsp(
             dataset="crsp_daily",
@@ -268,18 +299,22 @@ def test_ccm_links_are_added_when_requested():
         }
     )
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query", return_value=monthly
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_monthly(),
-    ), patch(
-        "tidyfinance.data_download._download_data_wrds_ccm_links",
-        return_value=ccm_links,
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query", return_value=monthly
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_monthly(),
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_wrds_ccm_links",
+            return_value=ccm_links,
+        ),
     ):
         out = _download_data_wrds_crsp(
             dataset="crsp_monthly",
@@ -343,16 +378,19 @@ def test_monthly_crsp_v1_is_processed():
     def fake_read_sql_query(sql, con, **kwargs):
         return next(sql_results)
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch(
-        "tidyfinance.data_download.disconnect_connection"
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        side_effect=fake_read_sql_query,
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_monthly(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_monthly(),
+        ),
     ):
         out = _download_data_wrds_crsp(
             dataset="crsp_monthly",
@@ -427,16 +465,20 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
     def fake_read_sql_query(sql, con, **kw):
         return next(sql_query_results)
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
-        "tidyfinance.data_download.pd.read_sql", return_value=permnos
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        side_effect=fake_read_sql_query,
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_daily(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.data_download.pd.read_sql", return_value=permnos),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_daily(),
+        ),
     ):
         # Wrong adjust_volume columns -> error
         with pytest.raises(ValueError, match="prc"):
@@ -452,16 +494,20 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
     # Reset iterators for the successful call
     sql_query_results = iter([dsf, msedelist])
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
-        "tidyfinance.data_download.pd.read_sql", return_value=permnos
-    ), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        side_effect=fake_read_sql_query,
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_daily(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.data_download.pd.read_sql", return_value=permnos),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_daily(),
+        ),
     ):
         out = _download_data_wrds_crsp(
             dataset="crsp_daily",
@@ -481,11 +527,15 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
 def test_daily_crsp_v1_handles_empty_batches():
     """Test daily CRSP v1 handles empty batches."""
     # No permnos -> processed_data stays empty
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
-        "tidyfinance.data_download.pd.read_sql",
-        return_value=pd.DataFrame({"permno": []}),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql",
+            return_value=pd.DataFrame({"permno": []}),
+        ),
     ):
         out = _download_data_wrds_crsp(
             dataset="crsp_daily",
@@ -543,14 +593,19 @@ def test_crsp_v1_end_date_boundary_2024_12_31_is_allowed():
     def fake_read_sql_query(sql, con, **kw):
         return next(sql_results)
 
-    with patch(
-        "tidyfinance.data_download.get_wrds_connection", return_value="con"
-    ), patch("tidyfinance.data_download.disconnect_connection"), patch(
-        "tidyfinance.data_download.pd.read_sql_query",
-        side_effect=fake_read_sql_query,
-    ), patch(
-        "tidyfinance.data_download._download_data_risk_free",
-        return_value=_mock_risk_free_monthly(),
+    with (
+        patch(
+            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.data_download.disconnect_connection"),
+        patch(
+            "tidyfinance.data_download.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+        patch(
+            "tidyfinance.data_download._download_data_risk_free",
+            return_value=_mock_risk_free_monthly(),
+        ),
     ):
         # Should not raise the boundary error
         out = _download_data_wrds_crsp(
