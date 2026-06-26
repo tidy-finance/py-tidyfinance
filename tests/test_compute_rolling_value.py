@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import compute_rolling_value  # noqa: E402
+from tidyfinance.lagging import compute_rolling_value  # noqa: E402
 
 
 def make_df(n_months=24, seed=42):

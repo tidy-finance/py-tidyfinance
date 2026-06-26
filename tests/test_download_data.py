@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import download_data  # noqa: E402
+from tidyfinance.download import download_data  # noqa: E402
 
 
 def test_download_data_factors_invalid_data_set():
@@ -61,7 +61,7 @@ def test_download_data_rejects_unsupported_domain():
 def test_download_data_legacy_type_kwarg_warns():
     """Emit DeprecationWarning when 'type=' is used and translate it."""
     with patch(
-        "tidyfinance.data_download._download_data_factors_ff",
+        "tidyfinance.download._download_data_factors_ff",
         return_value="sentinel",
     ):
         with pytest.warns(DeprecationWarning, match="'type' is deprecated"):
@@ -72,7 +72,7 @@ def test_download_data_legacy_type_kwarg_warns():
 def test_download_data_legacy_type_as_domain_warns():
     """Emit DeprecationWarning when a legacy type is passed as 'domain'."""
     with patch(
-        "tidyfinance.data_download._download_data_factors_ff",
+        "tidyfinance.download._download_data_factors_ff",
         return_value="sentinel",
     ):
         with pytest.warns(DeprecationWarning, match="legacy"):
@@ -98,7 +98,7 @@ def test_download_data_pseudo_dispatches_to_simulate():
 def test_download_data_legacy_domain_alias_warns():
     """Emit DeprecationWarning when a legacy machine-readable domain is used."""
     with patch(
-        "tidyfinance.data_download._download_data_factors_ff",
+        "tidyfinance.download._download_data_factors_ff",
         return_value="sentinel",
     ):
         with pytest.warns(DeprecationWarning, match="is deprecated"):

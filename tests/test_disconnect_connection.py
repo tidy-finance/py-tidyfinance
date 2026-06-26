@@ -10,7 +10,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.utilities import disconnect_connection  # noqa: E402
+from tidyfinance.download_wrds import disconnect_connection  # noqa: E402
 
 
 def test_returns_true_on_successful_disconnect():

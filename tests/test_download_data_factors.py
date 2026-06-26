@@ -13,11 +13,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (
-    _download_data_factors_ff,
-    _download_data_factors_q,
-    _famafrench_downloader,
-)  # noqa: E402
+from tidyfinance.download_open_source import _download_data_factors_ff, _download_data_factors_q, _famafrench_downloader  # noqa: E402
 from tidyfinance.supported_datasets import (
     _check_supported_dataset_ff,
     _check_supported_dataset_q,
@@ -111,11 +107,11 @@ def test_download_data_factors_ff_deprecated_type_warns():
     fake_raw.index.name = "date"
     with (
         patch(
-            "tidyfinance.data_download.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source.get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
-            "tidyfinance.data_download._famafrench_downloader",
+            "tidyfinance.download_open_source._famafrench_downloader",
             return_value=fake_raw,
         ),
     ):
@@ -132,11 +128,11 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
     fake_raw.index.name = "date"
     with (
         patch(
-            "tidyfinance.data_download.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source.get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
-            "tidyfinance.data_download._famafrench_downloader",
+            "tidyfinance.download_open_source._famafrench_downloader",
             return_value=fake_raw,
         ),
     ):
@@ -147,7 +143,7 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
 def test_download_data_factors_ff_empty_dataframe_on_download_fail():
     """Test download_data_factors_ff: empty dataframe on download fail."""
     with patch(
-        "tidyfinance.data_download._famafrench_downloader",
+        "tidyfinance.download_open_source._famafrench_downloader",
         side_effect=Exception("download fail"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
@@ -164,7 +160,7 @@ def test_download_data_factors_ff_monthly_path_with_date_filter():
     )
     raw.index.name = "date"
     with patch(
-        "tidyfinance.data_download._famafrench_downloader", return_value=raw
+        "tidyfinance.download_open_source._famafrench_downloader", return_value=raw
     ):
         result = _download_data_factors_ff(
             "Fama/French 3 Factors", "2020-01-01", "2020-01-31"
@@ -188,7 +184,7 @@ def test_download_data_factors_ff_threads_registry_url_to_downloader():
         return raw
 
     with patch(
-        "tidyfinance.data_download._famafrench_downloader",
+        "tidyfinance.download_open_source._famafrench_downloader",
         side_effect=fake_downloader,
     ):
         _download_data_factors_ff("Fama/French 3 Factors")
@@ -203,7 +199,7 @@ def test_download_data_factors_ff_daily_path_no_date_filter():
     )
     raw.index.name = "date"
     with patch(
-        "tidyfinance.data_download._famafrench_downloader", return_value=raw
+        "tidyfinance.download_open_source._famafrench_downloader", return_value=raw
     ):
         result = _download_data_factors_ff("Fama/French 3 Factors [Daily]")
     assert len(result) == 2
@@ -213,11 +209,11 @@ def test_download_data_factors_ff_aborts_on_unknown_frequency():
     """Test download_data_factors_ff: aborts on unknown frequency."""
     with (
         patch(
-            "tidyfinance.data_download._check_supported_dataset_ff",
+            "tidyfinance.download_open_source._check_supported_dataset_ff",
             return_value="ftp/some_CSV.zip",
         ),
         patch(
-            "tidyfinance.data_download._determine_frequency_ff",
+            "tidyfinance.download_open_source._determine_frequency_ff",
             return_value="unknown",
         ),
     ):
@@ -240,7 +236,7 @@ def test_download_data_factors_q_download_lambda_reads_csv():
             "R_MKT": [1.0, 2.0],
         }
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=mock_csv):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=mock_csv):
         result = _download_data_factors_q("q5_factors_monthly_2024")
     assert len(result) == 2
     assert "risk_free" in result.columns
@@ -255,7 +251,7 @@ def test_download_data_factors_q_aborts_when_dataset_is_none():
 def test_download_data_factors_q_deprecated_type_warns():
     """Test download_data_factors_q: deprecated type warns."""
     with patch(
-        "tidyfinance.data_download.pd.read_csv",
+        "tidyfinance.download_open_source.pd.read_csv",
         side_effect=Exception("stop after translation"),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
@@ -266,7 +262,7 @@ def test_download_data_factors_q_deprecated_type_warns():
 def test_download_data_factors_q_legacy_dataset_arg_warns():
     """Test download_data_factors_q: legacy dataset arg warns."""
     with patch(
-        "tidyfinance.data_download.pd.read_csv",
+        "tidyfinance.download_open_source.pd.read_csv",
         side_effect=Exception("stop after translation"),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
@@ -277,7 +273,7 @@ def test_download_data_factors_q_legacy_dataset_arg_warns():
 def test_download_data_factors_q_empty_dataframe_on_download_fail():
     """Test download_data_factors_q: empty dataframe on download fail."""
     with patch(
-        "tidyfinance.data_download.pd.read_csv",
+        "tidyfinance.download_open_source.pd.read_csv",
         side_effect=Exception("download fail"),
     ):
         with pytest.raises(ValueError):
@@ -294,7 +290,7 @@ def test_download_data_factors_q_monthly_path_with_date_filter():
             "R_MKT": [1.0, 2.0],
         }
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         result = _download_data_factors_q(
             "q5_factors_monthly_2024", "2020-01-01", "2020-01-31"
         )
@@ -312,7 +308,7 @@ def test_download_data_factors_q_daily_path_no_date_filter():
             "R_MKT": [1.0, 2.0],
         }
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         try:
             result = _download_data_factors_q("q5_factors_daily_2024")
             assert len(result) >= 0
@@ -325,7 +321,7 @@ def test_download_data_factors_q_annual_path():
     raw = pd.DataFrame(
         {"year": [2020, 2021], "R_F": [0.1, 0.1], "R_MKT": [1.0, 2.0]}
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         result = _download_data_factors_q("q5_factors_annual_2024")
     assert len(result) == 2
 
@@ -341,7 +337,7 @@ def test_download_data_factors_q_weekly_path():
             "R_MKT": [1.0, 2.0],
         }
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         try:
             result = _download_data_factors_q("q5_factors_weekly_2024")
             assert len(result) >= 0
@@ -366,11 +362,11 @@ def test_download_data_factors_ff_full_path_converts_integer_dates():
     raw.index.name = "date"
     with (
         patch(
-            "tidyfinance.data_download.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source.get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
-            "tidyfinance.data_download._famafrench_downloader", return_value=raw
+            "tidyfinance.download_open_source._famafrench_downloader", return_value=raw
         ),
     ):
         result = _download_data_factors_ff("Fama/French 3 Factors")
@@ -396,11 +392,11 @@ def test_download_data_factors_ff_does_not_rescale_breakpoints():
     raw.index.name = "date"
     with (
         patch(
-            "tidyfinance.data_download.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source.get_available_famafrench_datasets",
             return_value=["ME Breakpoints"],
         ),
         patch(
-            "tidyfinance.data_download._famafrench_downloader", return_value=raw
+            "tidyfinance.download_open_source._famafrench_downloader", return_value=raw
         ),
     ):
         result = _download_data_factors_ff("ME Breakpoints")
@@ -434,7 +430,7 @@ def test_famafrench_downloader_parses_first_table():
     )
     response = _make_french_zip(",Mkt-RF,RF\r\n" + rows)
 
-    with patch("tidyfinance.data_download.requests.get", return_value=response):
+    with patch("tidyfinance.download_open_source.requests.get", return_value=response):
         result = _famafrench_downloader("ftp/Some_File_CSV.zip")
 
     assert isinstance(result, pd.DataFrame)
@@ -450,7 +446,7 @@ def test_famafrench_downloader_applies_date_filter():
     )
     response = _make_french_zip(",Mkt-RF,RF\r\n" + rows)
 
-    with patch("tidyfinance.data_download.requests.get", return_value=response):
+    with patch("tidyfinance.download_open_source.requests.get", return_value=response):
         result = _famafrench_downloader(
             "ftp/Some_File_CSV.zip",
             start_date="2010-01-01",
@@ -467,7 +463,7 @@ def test_famafrench_downloader_propagates_download_error():
     response = MagicMock()
     response.raise_for_status.side_effect = Exception("404 error")
 
-    with patch("tidyfinance.data_download.requests.get", return_value=response):
+    with patch("tidyfinance.download_open_source.requests.get", return_value=response):
         with pytest.raises(Exception, match="404 error"):
             _famafrench_downloader("ftp/Missing_CSV.zip")
 

@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import _download_data_wrds_fisd  # noqa: E402
+from tidyfinance.download_wrds import _download_data_wrds_fisd  # noqa: E402
 
 
 def test_downloads_filtered_fisd_data_for_usa_issuers():
@@ -55,18 +55,18 @@ def test_downloads_filtered_fisd_data_for_usa_issuers():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
         patch(
-            "tidyfinance.data_download.disconnect_connection",
+            "tidyfinance.download_wrds.disconnect_connection",
             side_effect=fake_disconnect,
         ),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             side_effect=fake_read_sql_query,
         ),
         patch(
-            "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+            "tidyfinance.download_wrds.pd.read_sql", side_effect=fake_read_sql
         ),
     ):
         result = _download_data_wrds_fisd()
@@ -128,15 +128,15 @@ def test_returns_requested_additional_columns():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             side_effect=fake_read_sql_query,
         ),
         patch(
-            "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+            "tidyfinance.download_wrds.pd.read_sql", side_effect=fake_read_sql
         ),
     ):
         result = _download_data_wrds_fisd(

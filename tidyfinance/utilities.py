@@ -1,109 +1,144 @@
 """Utility functions module for tidyfinance."""
 
-import os
-import re
 import webbrowser
 
 import numpy as np
 import pandas as pd
-from dotenv import dotenv_values, load_dotenv, set_key
-from sqlalchemy import URL, create_engine
 
 
-def get_wrds_connection() -> object:
-    """Establish a connection to Wharton Research Data Services (WRDS).
+def create_summary_statistics(
+    data: pd.DataFrame,
+    variables: list,
+    by: str = None,
+    detail: bool = False,
+    drop_na: bool = False,
+) -> pd.DataFrame:
+    """Create summary statistics for specified variables.
 
-    Opens a SQLAlchemy connection to the WRDS PostgreSQL database. Credentials
-    are read from the 'WRDS_USER' and 'WRDS_PASSWORD' environment variables,
-    which can also be supplied through a '.env' file in the working directory
-    ('load_dotenv' is called before the lookup). The connection uses the
-    'postgresql+psycopg2' driver, requires SSL, and targets
-    'wrds-pgdata.wharton.upenn.edu' on port 9737. Pool pre-ping is enabled so
-    stale connections are detected and recycled automatically.
+    Computes a set of summary statistics for numeric and boolean
+    variables in a data frame. It allows users to select specific
+    variables for summarization and can calculate statistics for the
+    whole dataset or within groups specified by the 'by' argument.
+    Additional detail levels for quantiles can be included.
 
-    Returns
-    -------
-    sqlalchemy.engine.Connection
-        An open SQLAlchemy connection to the WRDS database. Pass it to any
-        'download_data_wrds_*' helper or use it directly with
-        'pd.read_sql_query'. Close it via 'disconnect_connection' when done.
+    The function first checks that all specified variables are of a
+    numeric dtype (int, float, or bool). If any variables fail this
+    check, a 'ValueError' is raised listing the offending columns.
+    Boolean columns are summarized as their numeric equivalent — for
+    example, the 'mean' of a boolean column is the proportion of True.
 
-    Raises
-    ------
-    ValueError
-        If 'WRDS_USER' or 'WRDS_PASSWORD' is not set in the environment or
-        '.env' file. The 'load_wrds_credentials' helper performs this check
-        before the connection is opened.
-    sqlalchemy.exc.OperationalError
-        If the database host is unreachable or the credentials are rejected.
+    The basic set of summary statistics includes the count of non-NaN
+    values (n), mean, standard deviation (sd), minimum (min), median
+    (q50), and maximum (max). If 'detail' is True, the function also
+    computes the 1st, 5th, 10th, 25th, 75th, 90th, 95th, and 99th
+    percentiles.
 
-    See Also
-    --------
-    set_wrds_credentials : Interactively prompts for credentials and writes
-        them to a '.env' file in the project or home directory.
-    disconnect_connection : Closes the connection returned by this function.
-
-    Examples
-    --------
-    ```python
-    import os
-    os.environ['WRDS_USER'] = 'your_username'
-    os.environ['WRDS_PASSWORD'] = 'your_password'
-    from tidyfinance import get_wrds_connection, disconnect_connection
-    con = get_wrds_connection()
-    # ... query WRDS via con ...
-    disconnect_connection(con)
-    ```
-    """
-    wrds_user, wrds_password = load_wrds_credentials()
-    url = URL.create(
-        drivername="postgresql+psycopg2",
-        username=wrds_user,
-        password=wrds_password,
-        host="wrds-pgdata.wharton.upenn.edu",
-        port=9737,
-        database="wrds",
-    )
-    engine = create_engine(
-        url,
-        connect_args={"sslmode": "require"},
-        pool_pre_ping=True,
-    )
-    return engine.connect()
-
-
-def disconnect_connection(connection: object) -> bool:
-    """Close an open WRDS database connection safely.
-
-    Attempts to close the supplied connection. Any exception raised by
-    the underlying driver is swallowed so the call can be used in
-    'finally' blocks without masking the original error.
+    For each selected variable the function reports the number of
+    observations (count), mean, standard deviation (std), minimum,
+    median (50%), and maximum. When ``detail`` is True, the additional
+    quantiles 1%, 5%, 10%, 25%, 75%, 90%, 95%, and 99% are included.
+    Statistics are computed for the whole dataset, or separately for
+    each group when ``by`` is supplied.
 
     Parameters
     ----------
-    connection : object
-        The connection object to close. Typically the value returned by
-        'get_wrds_connection'.
+    data : pd.DataFrame
+        Data frame containing the variables to be summarized.
+    variables : list of str
+        List of column names in the data frame to summarize. These
+        variables must be of a numeric dtype (int, float, or bool).
+    by : str, optional
+        Column name to group the data before summarizing. If None (the
+        default), summary statistics are computed across all
+        observations.
+    detail : bool, default False
+        Whether to compute detailed summary statistics, including
+        additional quantiles. When False, computes basic statistics
+        (n, mean, sd, min, median, max). When True, additional
+        quantiles (1%, 5%, 10%, 25%, 75%, 90%, 95%, 99%) are computed.
+    drop_na : bool, default False
+        Whether to drop missing values for each variable before
+        summarizing.
 
     Returns
     -------
-    bool
-        'True' on successful disconnection, 'False' if the close call
-        raised an exception.
+    pd.DataFrame
+        Data frame with summary statistics for each selected variable.
+        If 'by' is specified, the output includes the grouping variable
+        as well. Each row represents a variable (and a group if 'by' is
+        used), and each column contains the computed statistics.
 
     Examples
     --------
     ```python
-    from tidyfinance import get_wrds_connection, disconnect_connection
-    con = get_wrds_connection()
-    disconnect_connection(con)
+    import numpy as np
+    import pandas as pd
+    from tidyfinance import create_summary_statistics
+    data = pd.DataFrame({
+        'ret': [0.01, -0.02, 0.03, np.nan, 0.005],
+        'size': [100, 200, 150, 300, 250],
+        'group': ['A', 'A', 'B', 'B', 'A'],
+    })
+    # Basic summary across all observations
+    create_summary_statistics(data, ['ret', 'size'])
+    # Grouped summary
+    create_summary_statistics(data, ['ret', 'size'], by='group')
+    # Detailed quantiles
+    create_summary_statistics(data, ['ret'], detail=True)
     ```
     """
-    try:
-        connection.close()
-        return True
-    except Exception:
-        return False
+    # Check that all specified variables are numeric or boolean
+    non_numeric_vars = [
+        var
+        for var in variables
+        if not pd.api.types.is_numeric_dtype(data[var].dtype)
+    ]
+    if non_numeric_vars:
+        raise ValueError(
+            "The following columns are not numeric or boolean: "
+            f"{', '.join(non_numeric_vars)}"
+        )
+
+    # Cast boolean columns to float so they survive `describe()`, which
+    # drops bool dtype by default. The mean of the cast column then
+    # equals the proportion of True in the original.
+    bool_cols = [
+        v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)
+    ]
+    if bool_cols:
+        data = data.copy()
+        for c in bool_cols:
+            data[c] = data[c].astype(float)
+
+    # Drop missing values if specified
+    if drop_na:
+        data = data.dropna(subset=variables)
+
+    # Compute summary statistics using describe
+    percentiles = (
+        [0.5]
+        if not detail
+        else [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
+    )
+
+    if by:
+        summary_df = (
+            data.groupby(by)
+            .describe(percentiles=percentiles)
+            .get(variables)
+            .reset_index()
+            .rename(columns={"index": "variable"})
+        )
+    else:
+        summary_df = (
+            data.get(variables)
+            .describe(percentiles=percentiles)
+            .transpose()
+            .reset_index()
+            .rename(columns={"index": "variable"})
+        )
+
+    return summary_df
 
 
 def list_supported_indexes() -> pd.DataFrame:
@@ -252,40 +287,6 @@ def list_tidy_finance_chapters() -> list:
     ]
 
 
-def load_wrds_credentials() -> tuple:
-    """Load WRDS credentials from environment variables or a '.env' file.
-
-    Reads 'WRDS_USER' and 'WRDS_PASSWORD' from the process environment.
-    If neither is set, also looks for a '.env' file in the working
-    directory via 'load_dotenv'.
-
-    Returns
-    -------
-    tuple of (str, str)
-        '(wrds_user, wrds_password)' pair suitable for building a
-        SQLAlchemy connection URL.
-
-    Raises
-    ------
-    ValueError
-        If either 'WRDS_USER' or 'WRDS_PASSWORD' is missing after the
-        '.env' file has been loaded.
-    """
-    load_dotenv()
-
-    wrds_user: str = os.getenv("WRDS_USER")
-    wrds_password: str = os.getenv("WRDS_PASSWORD")
-
-    if not wrds_user or not wrds_password:
-        raise ValueError(
-            "WRDS credentials not found. Please set 'WRDS_USER' "
-            "and 'WRDS_PASSWORD' as environment variables, e.g. via a "
-            ".env file."
-        )
-
-    return wrds_user, wrds_password
-
-
 def open_tidy_finance_website(chapter: str = None) -> None:
     """Open the Tidy Finance website or a specific chapter.
 
@@ -326,459 +327,6 @@ def open_tidy_finance_website(chapter: str = None) -> None:
         final_url = base_url
 
     webbrowser.open(final_url)
-
-
-def _process_additional_columns(additional_columns):
-    """Validate and format additional column names for SQL queries.
-
-    Parameters
-    ----------
-    additional_columns : list of str or None
-        Column names to append to a SQL SELECT clause. Each name must
-        be a valid lowercase SQL identifier (letters, digits, underscores).
-
-    Returns
-    -------
-    str
-        A string like ", col1, col2" ready to splice into a SELECT,
-        or an empty string if no additional columns were provided.
-
-    Raises
-    ------
-    ValueError
-        If any column name contains characters other than lowercase
-        letters, digits, or underscores.
-    """
-    if not additional_columns:
-        return ""
-    if not all(
-        re.match(r"^[a-z_][a-z0-9_]*$", col) for col in additional_columns
-    ):
-        raise ValueError("Column names must be valid SQL identifiers.")
-    return ", " + ", ".join(additional_columns)
-
-
-def process_trace_data(trace_all: pd.DataFrame) -> pd.DataFrame:
-    """Clean Enhanced TRACE trade reports.
-
-    Applies the Dick-Nielsen cleaning protocol to the raw Enhanced
-    TRACE message stream, removing cancellations, corrections, and
-    reversals and producing one observation per executed corporate
-    bond trade.
-
-    Parameters
-    ----------
-    trace_all : pd.DataFrame
-        Raw Enhanced TRACE messages with the message-status columns
-        used by the cleaning protocol ('trc_st', 'msg_seq_nb',
-        'orig_msg_seq_nb', 'trd_rpt_dt', 'trd_rpt_tm',
-        'trd_exctn_dt', 'trd_exctn_tm', 'cusip_id', 'entrd_vol_qt',
-        'rptd_pr', 'rpt_side_cd', 'cntra_mp_id', 'asof_cd').
-
-    Returns
-    -------
-    pd.DataFrame
-        Cleaned trade panel containing only executed trades with
-        cancellations, corrections, and reversals already removed.
-
-    Notes
-    -----
-    Trades are cleaned under two regimes split by 2012-02-06, the date
-    the Enhanced TRACE message-status format changed. Trades reported
-    on or after this cutoff are cleaned with the post-2012 logic
-    (status flags 'T', 'R', 'X', 'C', 'Y'); earlier trades use the
-    pre-2012 logic (status flags 'T', 'C', 'W' plus 'asof_cd'
-    reversals). The cutoff date follows Dick-Nielsen (2014).
-
-    References
-    ----------
-    Dick-Nielsen, J. (2009). Liquidity biases in TRACE. Journal of
-    Fixed Income, 19(2), 43-55.
-    https://doi.org/10.3905/jfi.2009.19.2.043
-
-    Dick-Nielsen, J. (2014). How to clean enhanced TRACE data. Working
-    Paper. https://ssrn.com/abstract=2337908
-    """
-    # Post 2012-02-06
-    # Trades (trc_st = T) and correction (trc_st = R)
-    trace_post_TR = trace_all.query("trc_st in ['T', 'R']").query(
-        "trd_rpt_dt >= '2012-02-06'"
-    )
-
-    # Cancellations (trc_st = X) and correction cancellations (trc_st = C)
-    trace_post_XC = (
-        trace_all.query("trc_st in ['X', 'C']")
-        .query("trd_rpt_dt >= '2012-02-06'")
-        .get(
-            [
-                "cusip_id",
-                "msg_seq_nb",
-                "entrd_vol_qt",
-                "rptd_pr",
-                "rpt_side_cd",
-                "cntra_mp_id",
-                "trd_exctn_dt",
-                "trd_exctn_tm",
-            ]
-        )
-        .assign(drop=True)
-    )
-
-    # Cleaning corrected and cancelled trades
-    trace_post_TR = (
-        trace_post_TR.merge(trace_post_XC, how="left")
-        .query("drop != True")
-        .drop(columns="drop")
-    )
-
-    # Reversals (trc_st = Y)
-    trace_post_Y = (
-        trace_all.query("trc_st == 'Y'")
-        .query("trd_rpt_dt >= '2012-02-06'")
-        .get(
-            [
-                "cusip_id",
-                "orig_msg_seq_nb",
-                "entrd_vol_qt",
-                "rptd_pr",
-                "rpt_side_cd",
-                "cntra_mp_id",
-                "trd_exctn_dt",
-                "trd_exctn_tm",
-            ]
-        )
-        .assign(drop=True)
-        .rename(columns={"orig_msg_seq_nb": "msg_seq_nb"})
-    )
-
-    # Clean reversals
-    # Match the orig_msg_seq_nb of Y-message to msg_seq_nb of main message
-    trace_post = (
-        trace_post_TR.merge(trace_post_Y, how="left")
-        .query("drop != True")
-        .drop(columns="drop")
-    )
-
-    # Enhanced TRACE: Pre 2012-02-06
-    # Pre 2012-02-06
-    # Trades (trc_st = T)
-    trace_pre_T = trace_all.query("trd_rpt_dt < '2012-02-06'")
-
-    # Cancellations (trc_st = C)
-    trace_pre_C = (
-        trace_all.query("trc_st == 'C'")
-        .query("trd_rpt_dt < '2012-02-06'")
-        .get(
-            [
-                "cusip_id",
-                "orig_msg_seq_nb",
-                "entrd_vol_qt",
-                "rptd_pr",
-                "rpt_side_cd",
-                "cntra_mp_id",
-                "trd_exctn_dt",
-                "trd_exctn_tm",
-            ]
-        )
-        .assign(drop=True)
-        .rename(columns={"orig_msg_seq_nb": "msg_seq_nb"})
-    )
-
-    # Remove cancellations from trades
-    # Match orig_msg_seq_nb of C-message to msg_seq_nb of main message
-    trace_pre_T = (
-        trace_pre_T.merge(trace_pre_C, how="left")
-        .query("drop != True")
-        .drop(columns="drop")
-    )
-
-    # Corrections (trc_st = W)
-    trace_pre_W = trace_all.query("trc_st == 'W'").query(
-        "trd_rpt_dt < '2012-02-06'"
-    )
-
-    # Implement corrections in a loop
-    # Correction control
-    correction_control = len(trace_pre_W)
-    correction_control_last = len(trace_pre_W)
-
-    # Correction loop
-    while correction_control > 0:
-        # Create placeholder
-        ## Only identifying columns of trace_pre_T (for joins)
-        placeholder_trace_pre_T = (
-            trace_pre_T.get(["cusip_id", "trd_exctn_dt", "msg_seq_nb"])
-            .rename(columns={"msg_seq_nb": "orig_msg_seq_nb"})
-            .assign(matched_T=True)
-        )
-
-        # Corrections that correct some msg
-        trace_pre_W_correcting = (
-            trace_pre_W.merge(placeholder_trace_pre_T, how="left")
-            .query("matched_T == True")
-            .drop(columns="matched_T")
-        )
-
-        # Corrections that do not correct some msg
-        trace_pre_W = (
-            trace_pre_W.merge(placeholder_trace_pre_T, how="left")
-            .query("matched_T != True")
-            .drop(columns="matched_T")
-        )
-
-        # Create placeholder
-        # Only identifying columns of trace_pre_W_correcting (for anti-joins)
-        placeholder_trace_pre_W_correcting = (
-            trace_pre_W_correcting.get(
-                ["cusip_id", "trd_exctn_dt", "orig_msg_seq_nb"]
-            )
-            .rename(columns={"orig_msg_seq_nb": "msg_seq_nb"})
-            .assign(corrected=True)
-        )
-
-        # Delete msgs that are corrected
-        trace_pre_T = (
-            trace_pre_T.merge(placeholder_trace_pre_W_correcting, how="left")
-            .query("corrected != True")
-            .drop(columns="corrected")
-        )
-
-        # Add correction msgs
-        trace_pre_T = pd.concat([trace_pre_T, trace_pre_W_correcting])
-
-        # Escape if no corrections remain or they cannot be matched
-        correction_control = len(trace_pre_W)
-
-        if correction_control == correction_control_last:
-            break
-        else:
-            correction_control_last = len(trace_pre_W)
-            continue
-
-    # Reversals (asof_cd = R)
-    # Record reversals
-    trace_pre_R = trace_pre_T.query("asof_cd == 'R'").sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
-    )
-
-    # Prepare final data
-    trace_pre = trace_pre_T.query(
-        "asof_cd == None | asof_cd.isnull() | asof_cd not in ['R', 'X', 'D']"
-    ).sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm", "trd_rpt_dt", "trd_rpt_tm"]
-    )
-
-    # Add grouped row numbers
-    trace_pre_R["seq"] = trace_pre_R.groupby(
-        [
-            "cusip_id",
-            "trd_exctn_dt",
-            "entrd_vol_qt",
-            "rptd_pr",
-            "rpt_side_cd",
-            "cntra_mp_id",
-        ]
-    ).cumcount()
-
-    trace_pre["seq"] = trace_pre.groupby(
-        [
-            "cusip_id",
-            "trd_exctn_dt",
-            "entrd_vol_qt",
-            "rptd_pr",
-            "rpt_side_cd",
-            "cntra_mp_id",
-        ]
-    ).cumcount()
-
-    # Select columns for reversal cleaning
-    trace_pre_R = trace_pre_R.get(
-        [
-            "cusip_id",
-            "trd_exctn_dt",
-            "entrd_vol_qt",
-            "rptd_pr",
-            "rpt_side_cd",
-            "cntra_mp_id",
-            "seq",
-        ]
-    ).assign(reversal=True)
-
-    # Remove reversals and the reversed trade
-    trace_pre = (
-        trace_pre.merge(trace_pre_R, how="left")
-        .query("reversal != True")
-        .drop(columns=["reversal", "seq"])
-    )
-
-    # Combine pre and post trades
-    trace_clean = pd.concat([trace_pre, trace_post])
-
-    # Keep agency sells and unmatched agency buys
-    trace_agency_sells = trace_clean.query(
-        "cntra_mp_id == 'D' & rpt_side_cd == 'S'"
-    )
-
-    # Placeholder for trace_agency_sells with relevant columns
-    placeholder_trace_agency_sells = trace_agency_sells.get(
-        ["cusip_id", "trd_exctn_dt", "entrd_vol_qt", "rptd_pr"]
-    ).assign(matched=True)
-
-    # Agency buys that are unmatched
-    trace_agency_buys_filtered = (
-        trace_clean.query("cntra_mp_id == 'D' & rpt_side_cd == 'B'")
-        .merge(placeholder_trace_agency_sells, how="left")
-        .query("matched != True")
-        .drop(columns="matched")
-    )
-
-    # Non-agency
-    trace_nonagency = trace_clean.query("cntra_mp_id == 'C'")
-
-    # Agency cleaned
-    trace_clean = pd.concat(
-        [trace_nonagency, trace_agency_sells, trace_agency_buys_filtered]
-    )
-
-    # Additional Filters
-    trace_add_filters = (
-        trace_clean.assign(
-            days_to_sttl_ct2=lambda x: (
-                (x["stlmnt_dt"] - x["trd_exctn_dt"]).dt.days
-            )
-        )
-        .assign(
-            days_to_sttl_ct=lambda x: pd.to_numeric(
-                x["days_to_sttl_ct"], errors="coerce"
-            )
-        )
-        .query("days_to_sttl_ct.isnull() | days_to_sttl_ct <= 7")
-        .query("days_to_sttl_ct2.isnull() | days_to_sttl_ct2 <= 7")
-        .query("wis_fl == 'N'")
-        .query("spcl_trd_fl.isnull() | spcl_trd_fl == ''")
-        .query("asof_cd.isnull() | asof_cd == ''")
-    )
-
-    # Only keep necessary columns
-    trace_final = trace_add_filters.sort_values(
-        ["cusip_id", "trd_exctn_dt", "trd_exctn_tm"]
-    ).get(
-        [
-            "cusip_id",
-            "trd_exctn_dt",
-            "trd_exctn_tm",
-            "rptd_pr",
-            "entrd_vol_qt",
-            "yld_pt",
-            "rpt_side_cd",
-            "cntra_mp_id",
-        ]
-    )
-
-    return trace_final
-
-
-def set_wrds_credentials() -> None:
-    """Set WRDS credentials in a '.env' file.
-
-    Prompts interactively for the WRDS username and password and writes
-    them to a '.env' file as 'WRDS_USER' and 'WRDS_PASSWORD'. The
-    location is chosen at the prompt: 'project' writes to the current
-    working directory, 'home' writes to the user's home directory. If
-    a '.env' file already contains WRDS credentials, the user is asked
-    before overwriting. After saving, the user is offered to append
-    '.env' to a sibling '.gitignore' (recommended).
-
-    The resulting '.env' file is the credentials source consumed by
-    'get_wrds_connection' via 'load_wrds_credentials'.
-
-    Returns
-    -------
-    None
-        Called for its side effects: writing '.env' and, optionally,
-        updating '.gitignore'.
-
-    See Also
-    --------
-    get_wrds_connection : Opens a WRDS connection using the credentials
-        stored by this function.
-
-    Examples
-    --------
-    ```python
-    from tidyfinance import set_wrds_credentials
-    set_wrds_credentials()
-    ```
-    """
-    wrds_user = input("Enter your WRDS username: ")
-    wrds_password = input("Enter your WRDS password: ")
-    location_choice = (
-        input(
-            "Where do you want to store the .env "
-            "file? Enter 'project' for project directory or "
-            "'home' for home directory: "
-        )
-        .strip()
-        .lower()
-    )
-
-    if location_choice == "project":
-        env_path = os.path.join(os.getcwd(), ".env")
-        gitignore_path = os.path.join(os.getcwd(), ".gitignore")
-    elif location_choice == "home":
-        env_path = os.path.join(os.path.expanduser("~"), ".env")
-        gitignore_path = os.path.join(os.path.expanduser("~"), ".gitignore")
-    else:
-        print(
-            "Invalid choice. Please start again and enter 'project' or 'home'."
-        )
-        return
-
-    existing = dotenv_values(env_path) if os.path.exists(env_path) else {}
-
-    if existing.get("WRDS_USER") and existing.get("WRDS_PASSWORD"):
-        overwrite_choice = (
-            input(
-                "Credentials already exist. Do you want to "
-                "overwrite them? Enter 'yes' or 'no': "
-            )
-            .strip()
-            .lower()
-        )
-        if overwrite_choice != "yes":
-            print("Aborted. Credentials already exist.")
-            return
-
-    if os.path.exists(gitignore_path):
-        add_gitignore = (
-            input(
-                "Do you want to add .env to .gitignore? "
-                "It is highly recommended! "
-                "Enter 'yes' or 'no': "
-            )
-            .strip()
-            .lower()
-        )
-        if add_gitignore == "yes":
-            with open(gitignore_path, "r") as file:
-                gitignore_lines = file.readlines()
-            if ".env\n" not in gitignore_lines:
-                with open(gitignore_path, "a") as file:
-                    file.write(".env\n")
-                print(".env added to .gitignore.")
-        elif add_gitignore == "no":
-            print(".env NOT added to .gitignore.")
-        else:
-            print("Invalid choice. Please start again and enter 'yes' or 'no'.")
-            return
-
-    set_key(env_path, "WRDS_USER", wrds_user)
-    set_key(env_path, "WRDS_PASSWORD", wrds_password)
-
-    print(
-        "WRDS credentials have been set and saved in .env in your "
-        f"{location_choice} directory."
-    )
 
 
 def winsorize(x: np.ndarray, cut: float) -> np.ndarray:

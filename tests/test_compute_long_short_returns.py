@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import compute_long_short_returns  # noqa: E402
+from tidyfinance.portfolios import compute_long_short_returns  # noqa: E402
 
 
 def make_portfolio_panel(n_portfolios=5, n_months=12, seed=42):

@@ -10,11 +10,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import (  # noqa: E402
-    _ar1_ols_residuals,
-    _newey_west_bandwidth,
-    _newey_west_se,
-)
+from tidyfinance.regression import _ar1_ols_residuals, _newey_west_bandwidth, _newey_west_se  # noqa: E402
 
 
 def make_ar1_series(

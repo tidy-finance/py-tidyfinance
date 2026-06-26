@@ -9,7 +9,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import breakpoint_options  # noqa: E402
+from tidyfinance.portfolios import breakpoint_options  # noqa: E402
 
 
 def test_returns_correct_structure_with_all_arguments_including_kwargs():

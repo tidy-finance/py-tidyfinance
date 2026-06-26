@@ -185,7 +185,7 @@ def test_in_module_implementations_remain_unwrapped():
     e.g. implement_portfolio_sort -> filter_sorting_data ->
     compute_portfolio_returns -> assign_portfolio) must stay pandas-only
     so internal callers never receive polars under the polars backend."""
-    import tidyfinance.core as core
+    import tidyfinance.lagging as core
 
     tf.set_backend("polars")
     out = core.add_lagged_columns(

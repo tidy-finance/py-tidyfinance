@@ -11,10 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import (  # noqa: E402
-    breakpoint_options,
-    compute_portfolio_returns,
-)
+from tidyfinance.portfolios import breakpoint_options, compute_portfolio_returns  # noqa: E402
 
 # %% test data helper
 

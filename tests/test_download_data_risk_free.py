@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import _download_data_risk_free  # noqa: E402
+from tidyfinance.download_tidy_finance import _download_data_risk_free  # noqa: E402
 
 
 def test_invalid_frequency_aborts_with_informative_message():
@@ -23,7 +23,7 @@ def test_invalid_frequency_aborts_with_informative_message():
 def test_download_failure_is_caught_and_re_thrown():
     """Test download failure is caught and re-thrown."""
     with patch(
-        "tidyfinance.data_download.pd.read_parquet",
+        "tidyfinance.download_tidy_finance.pd.read_parquet",
         side_effect=Exception("connection refused"),
     ):
         with pytest.raises(
@@ -41,7 +41,7 @@ def test_full_dataset_returned_when_no_dates_are_supplied():
         }
     )
     with patch(
-        "tidyfinance.data_download.pd.read_parquet", return_value=mock_data
+        "tidyfinance.download_tidy_finance.pd.read_parquet", return_value=mock_data
     ):
         result = _download_data_risk_free()
     pd.testing.assert_frame_equal(result, mock_data)
@@ -56,7 +56,7 @@ def test_data_is_filtered_when_start_and_end_dates_are_supplied():
         }
     )
     with patch(
-        "tidyfinance.data_download.pd.read_parquet", return_value=mock_data
+        "tidyfinance.download_tidy_finance.pd.read_parquet", return_value=mock_data
     ):
         result = _download_data_risk_free("2020-01-01", "2020-02-01")
 

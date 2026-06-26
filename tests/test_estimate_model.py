@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import estimate_model  # noqa: E402
+from tidyfinance.regression import estimate_model  # noqa: E402
 
 
 def _ols_reference(df, dep, regressors):

@@ -10,7 +10,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import add_lagged_columns  # noqa: E402
+from tidyfinance.lagging import add_lagged_columns  # noqa: E402
 
 
 def test_exact_lag_with_by_returns_correct_lagged_values():
@@ -214,7 +214,7 @@ def test_error_when_upper_helper_column_already_exists():
 
 def test_data_options_specifies_date_column_name():
     """Test data_options dict specifies the date column name."""
-    from tidyfinance.core import data_options
+    from tidyfinance.portfolios import data_options
 
     data = pd.DataFrame(
         {

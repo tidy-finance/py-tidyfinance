@@ -11,16 +11,12 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (
-    _download_data_wrds_crsp,
-)  # noqa: E402
+from tidyfinance.download_wrds import _download_data_wrds_crsp  # noqa: E402
 
 
 def test_crsp_dataset_validation_rejects_unsupported_values():
     """Test CRSP dataset validation rejects unsupported values."""
-    from tidyfinance.data_download import (  # noqa
-        _check_supported_dataset_wrds_crsp,
-    )
+    from tidyfinance.supported_datasets import _check_supported_dataset_wrds_crsp  # noqa: E402
 
     with pytest.raises(ValueError, match="Unsupported CRSP dataset"):
         _check_supported_dataset_wrds_crsp("bad")
@@ -32,9 +28,9 @@ def test_crsp_argument_validation_covers_required_inputs():
     """Test CRSP argument validation covers required inputs."""
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
     ):
         with pytest.raises((ValueError, TypeError)):
             _download_data_wrds_crsp()
@@ -58,7 +54,7 @@ def test_deprecated_type_inputs_are_translated_to_dataset():
         raise ValueError("stop after translation")
 
     with patch(
-        "tidyfinance.data_download._check_supported_dataset_wrds_crsp",
+        "tidyfinance.download_wrds._check_supported_dataset_wrds_crsp",
         side_effect=fake_check,
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
@@ -159,14 +155,14 @@ def test_monthly_crsp_v2_is_processed():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query", return_value=monthly
+            "tidyfinance.download_wrds.pd.read_sql_query", return_value=monthly
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
@@ -209,19 +205,19 @@ def test_daily_crsp_v2_validates_and_adjusts_volume():
     """Test daily CRSP v2 validates and adjusts volume."""
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql",
+            "tidyfinance.download_wrds.pd.read_sql",
             return_value=pd.DataFrame({"permno": [1, 2, 3]}),
         ),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             return_value=_mock_daily_query_result(),
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
@@ -259,19 +255,19 @@ def test_daily_crsp_v2_handles_empty_batches():
     """Test daily CRSP v2 handles empty batches."""
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql",
+            "tidyfinance.download_wrds.pd.read_sql",
             return_value=pd.DataFrame({"permno": [1, 2, 3]}),
         ),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             return_value=_mock_daily_query_result(),
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
@@ -301,18 +297,18 @@ def test_ccm_links_are_added_when_requested():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query", return_value=monthly
+            "tidyfinance.download_wrds.pd.read_sql_query", return_value=monthly
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
         patch(
-            "tidyfinance.data_download._download_data_wrds_ccm_links",
+            "tidyfinance.download_wrds._download_data_wrds_ccm_links",
             return_value=ccm_links,
         ),
     ):
@@ -380,15 +376,15 @@ def test_monthly_crsp_v1_is_processed():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             side_effect=fake_read_sql_query,
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
@@ -467,16 +463,16 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=permnos),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=permnos),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             side_effect=fake_read_sql_query,
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
@@ -496,16 +492,16 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=permnos),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=permnos),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             side_effect=fake_read_sql_query,
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
@@ -529,11 +525,11 @@ def test_daily_crsp_v1_handles_empty_batches():
     # No permnos -> processed_data stays empty
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql",
+            "tidyfinance.download_wrds.pd.read_sql",
             return_value=pd.DataFrame({"permno": []}),
         ),
     ):
@@ -595,15 +591,15 @@ def test_crsp_v1_end_date_boundary_2024_12_31_is_allowed():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
         patch(
-            "tidyfinance.data_download.pd.read_sql_query",
+            "tidyfinance.download_wrds.pd.read_sql_query",
             side_effect=fake_read_sql_query,
         ),
         patch(
-            "tidyfinance.data_download._download_data_risk_free",
+            "tidyfinance.download_wrds._download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
