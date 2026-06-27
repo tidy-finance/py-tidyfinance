@@ -12,7 +12,7 @@ sys.path.insert(
 )
 
 from tidyfinance._internal import _transfrom_to_snake_case  # noqa: E402
-from tidyfinance.data_download import _download_data_osap  # noqa: E402
+from tidyfinance.download_open_source import _download_data_osap  # noqa: E402
 
 
 def test_downloads_and_processes_all_rows():
@@ -23,7 +23,7 @@ def test_downloads_and_processes_all_rows():
             "LongName": [1, 2],
         }
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         result = _download_data_osap(sheet_id="abc")
 
     assert isinstance(result, pd.DataFrame)
@@ -42,7 +42,7 @@ def test_filters_rows_when_both_dates_are_supplied():
             "value": [1, 2, 3],
         }
     )
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         result = _download_data_osap(
             start_date="2020-02-01", end_date="2020-02-28"
         )
@@ -55,7 +55,7 @@ def test_filters_rows_when_both_dates_are_supplied():
 def test_returns_empty_dataframe_after_download_failure():
     """Test returns empty dataframe after download failure."""
     with patch(
-        "tidyfinance.data_download.pd.read_csv",
+        "tidyfinance.download_open_source.pd.read_csv",
         side_effect=Exception("download failure"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):

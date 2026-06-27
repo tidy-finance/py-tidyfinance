@@ -11,7 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import _download_data_fred  # noqa: E402
+from tidyfinance.download_open_source import _download_data_fred  # noqa: E402
 
 
 def test_downloads_parses_and_filters_fred_data():
@@ -23,7 +23,7 @@ def test_downloads_parses_and_filters_fred_data():
     response_mock.raise_for_status = MagicMock()
 
     with patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
+        "tidyfinance.download_open_source.requests.get", return_value=response_mock
     ):
         result = _download_data_fred(
             "GDP", start_date="2020-02-01", end_date="2020-02-01"
@@ -42,7 +42,7 @@ def test_returns_empty_data_when_fred_responds_with_non_200_status():
     response_mock.raise_for_status.side_effect = Exception("404 error")
 
     with patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
+        "tidyfinance.download_open_source.requests.get", return_value=response_mock
     ):
         with pytest.warns(
             UserWarning, match="Failed to retrieve data for series GDP"
@@ -57,7 +57,7 @@ def test_returns_empty_data_when_fred_responds_with_non_200_status():
 def test_returns_empty_data_when_download_handling_returns_none():
     """Test returns empty data when download handling returns NULL."""
     with patch(
-        "tidyfinance.data_download.requests.get",
+        "tidyfinance.download_open_source.requests.get",
         side_effect=Exception("connection failed"),
     ):
         with pytest.warns(

@@ -10,7 +10,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import join_lagged_values  # noqa: E402
+from tidyfinance.lagging import join_lagged_values  # noqa: E402
 
 
 def test_normal_join_adds_lagged_columns_for_matching_date_windows():
@@ -232,7 +232,7 @@ def test_error_when_new_data_column_already_exists_in_original_data():
 
 def test_data_options_specifies_date_column_name():
     """Test data_options dict specifies the date column name."""
-    from tidyfinance.core import data_options
+    from tidyfinance.portfolios import data_options
 
     orig = pd.DataFrame(
         {

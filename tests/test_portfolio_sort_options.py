@@ -9,11 +9,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import (  # noqa: E402
-    breakpoint_options,
-    filter_options,
-    portfolio_sort_options,
-)
+from tidyfinance.portfolios import breakpoint_options, filter_options, portfolio_sort_options  # noqa: E402
 
 
 def test_portfolio_sort_options_returns_dict():

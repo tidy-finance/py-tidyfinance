@@ -11,13 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import (  # noqa: E402
-    breakpoint_options,
-    data_options,
-    filter_options,
-    implement_portfolio_sort,
-    portfolio_sort_options,
-)
+from tidyfinance.portfolios import breakpoint_options, data_options, filter_options, implement_portfolio_sort, portfolio_sort_options  # noqa: E402
 
 
 def make_data(n_stocks=30, n_months=6, seed=42):

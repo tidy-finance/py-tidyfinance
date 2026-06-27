@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import assign_portfolio  # noqa: E402
+from tidyfinance.portfolios import assign_portfolio  # noqa: E402
 
 # %% mock breakpoint functions
 

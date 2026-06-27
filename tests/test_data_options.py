@@ -9,7 +9,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import data_options  # noqa: E402
+from tidyfinance.portfolios import data_options  # noqa: E402
 
 
 def test_data_options_returns_dict():

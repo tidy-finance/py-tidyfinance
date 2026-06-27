@@ -11,9 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (  # noqa: E402
-    _download_data_stock_prices,
-)
+from tidyfinance.download_open_source import _download_data_stock_prices  # noqa: E402
 
 
 def test_symbols_must_be_a_character_vector_without_missing_values():
@@ -67,7 +65,7 @@ def test_downloads_data_replaces_null_and_warns_on_failures():
             resp.json.return_value = success_body
         return resp
 
-    with patch("tidyfinance.data_download.requests.get", side_effect=fake_get):
+    with patch("tidyfinance.download_open_source.requests.get", side_effect=fake_get):
         with pytest.warns(
             UserWarning, match="Failed to retrieve data for symbol FAIL"
         ):

@@ -12,14 +12,8 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance._pseudo import (
-    _download_data_pseudo_ccm_links,
-    _download_data_pseudo_compustat,
-    _download_data_pseudo_crsp,
-    _simulate_pseudo_data,
-    _simulate_pseudo_identifiers,
-)
-from tidyfinance.data_download import download_data  # noqa: E402
+from tidyfinance.download_pseudo import _download_data_pseudo_ccm_links, _download_data_pseudo_compustat, _download_data_pseudo_crsp, _simulate_pseudo_data, _simulate_pseudo_identifiers
+from tidyfinance.download import download_data  # noqa: E402
 
 # %% router
 
@@ -51,7 +45,7 @@ def test_simulate_pseudo_data_dispatches_to_crsp():
     """Route crsp_* datasets through _download_data_pseudo_crsp."""
     with (
         patch(
-            "tidyfinance._pseudo._download_data_pseudo_crsp",
+            "tidyfinance.download_pseudo._download_data_pseudo_crsp",
             return_value=pd.DataFrame({"kind": ["crsp"]}),
         ),
         pytest.warns(UserWarning),
@@ -64,7 +58,7 @@ def test_simulate_pseudo_data_dispatches_to_compustat():
     """Route compustat_* datasets through _download_data_pseudo_compustat."""
     with (
         patch(
-            "tidyfinance._pseudo._download_data_pseudo_compustat",
+            "tidyfinance.download_pseudo._download_data_pseudo_compustat",
             return_value=pd.DataFrame({"kind": ["compustat"]}),
         ),
         pytest.warns(UserWarning),
@@ -77,7 +71,7 @@ def test_simulate_pseudo_data_dispatches_to_ccm():
     """Route ccm_links through _download_data_pseudo_ccm_links."""
     with (
         patch(
-            "tidyfinance._pseudo._download_data_pseudo_ccm_links",
+            "tidyfinance.download_pseudo._download_data_pseudo_ccm_links",
             return_value=pd.DataFrame({"kind": ["ccm"]}),
         ),
         pytest.warns(UserWarning),
@@ -89,7 +83,7 @@ def test_simulate_pseudo_data_dispatches_to_ccm():
 def test_download_data_routes_pseudo():
     """download_data(domain='Pseudo Data', ...) reaches _simulate_pseudo_data."""
     with patch(
-        "tidyfinance.data_download._simulate_pseudo_data",
+        "tidyfinance.download._simulate_pseudo_data",
         return_value=pd.DataFrame({"sentinel": [1]}),
     ):
         out = download_data(

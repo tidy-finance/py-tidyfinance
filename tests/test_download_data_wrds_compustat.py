@@ -12,9 +12,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (  # noqa: E402
-    _download_data_wrds_compustat,
-)
+from tidyfinance.download_wrds import _download_data_wrds_compustat  # noqa: E402
 
 
 def test_dataset_is_required_and_validated():
@@ -24,10 +22,10 @@ def test_dataset_is_required_and_validated():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection",
+            "tidyfinance.download_wrds.get_wrds_connection",
             return_value="con",
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
     ):
         with pytest.raises(ValueError, match="Invalid dataset"):
             _download_data_wrds_compustat("bad")
@@ -65,10 +63,10 @@ def test_annual_data_are_downloaded_and_transformed():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=funda),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=funda),
     ):
         out = _download_data_wrds_compustat(
             "compustat_annual",
@@ -117,10 +115,10 @@ def test_annual_data_handle_pi_and_invalid_lagged_assets():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=funda),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=funda),
     ):
         out = _download_data_wrds_compustat(
             "compustat_annual",
@@ -169,10 +167,10 @@ def test_quarterly_data_are_cleaned_and_filtered():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=fundq),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=fundq),
     ):
         out = _download_data_wrds_compustat(
             "compustat_quarterly",
@@ -211,10 +209,10 @@ def test_quarterly_data_can_return_non_usd_observations():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=fundq),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=fundq),
     ):
         out = _download_data_wrds_compustat(
             "compustat_quarterly", "2020-01-01", "2020-12-31"
@@ -252,10 +250,10 @@ def test_deprecated_arguments_are_supported():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=funda),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=funda),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             out = _download_data_wrds_compustat(
@@ -283,9 +281,9 @@ def test_defensive_unsupported_branch_is_covered():
     """Test defensive unsupported branch is covered."""
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
     ):
         with pytest.raises(ValueError, match="Invalid dataset"):
             _download_data_wrds_compustat("other")

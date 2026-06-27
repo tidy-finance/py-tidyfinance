@@ -11,12 +11,8 @@ from dotenv import dotenv_values
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-from tidyfinance.utilities import (
-    list_supported_indexes,
-    set_wrds_credentials,
-    trim,
-    winsorize,
-)
+from tidyfinance.download_wrds import set_wrds_credentials
+from tidyfinance.utilities import list_supported_indexes, trim, winsorize
 
 
 def test_set_wrds_credentials(tmp_path, monkeypatch):

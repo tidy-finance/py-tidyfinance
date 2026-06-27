@@ -12,11 +12,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.core import (  # noqa: E402
-    breakpoint_options,
-    compute_breakpoints,
-    data_options,
-)
+from tidyfinance.portfolios import breakpoint_options, compute_breakpoints, data_options  # noqa: E402
 
 # %% validation tests
 
@@ -546,7 +542,7 @@ def test_100_portfolios_work_with_sufficient_data():
 
 def test_breakpoints_produce_valid_portfolio_assignments():
     """Test breakpoints produce valid portfolio assignments."""
-    from tidyfinance.core import assign_portfolio
+    from tidyfinance.portfolios import assign_portfolio
 
     rng = np.random.default_rng(42)
     data = pd.DataFrame({"id": range(1000), "value": rng.standard_normal(1000)})
@@ -560,7 +556,7 @@ def test_breakpoints_produce_valid_portfolio_assignments():
 
 def test_exchange_filtered_breakpoints_produce_valid_assignments():
     """Test exchange-filtered breakpoints produce valid assignments on full data."""
-    from tidyfinance.core import assign_portfolio
+    from tidyfinance.portfolios import assign_portfolio
 
     rng = np.random.default_rng(1)
     data = pd.DataFrame(

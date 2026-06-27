@@ -11,14 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (
-    _download_data_huggingface,
-    _download_data_huggingface_factor_library,
-    _download_factor_library_grid,
-    _download_factor_library_ids,
-    _filter_factor_library_grid,
-    _get_available_huggingface_files,
-)  # noqa: E402
+from tidyfinance.download_tidy_finance import _download_data_huggingface, _download_data_huggingface_factor_library, _download_factor_library_grid, _download_factor_library_ids, _filter_factor_library_grid, _get_available_huggingface_files  # noqa: E402
 
 
 def _make_grid(grid_id=1):
@@ -58,7 +51,7 @@ def test_single_page_returns_only_parquet_files():
     response_mock.raise_for_status = MagicMock()
 
     with patch(
-        "tidyfinance.data_download.requests.get", return_value=response_mock
+        "tidyfinance.download_tidy_finance.requests.get", return_value=response_mock
     ):
         result = _get_available_huggingface_files("org", "ds")
 
@@ -85,7 +78,7 @@ def test_multi_page_paginates_until_rel_next_link_absent():
     r2.raise_for_status = MagicMock()
     responses.append(r2)
 
-    with patch("tidyfinance.data_download.requests.get", side_effect=responses):
+    with patch("tidyfinance.download_tidy_finance.requests.get", side_effect=responses):
         result = _get_available_huggingface_files("org", "ds")
 
     assert len(result) == 2
@@ -103,7 +96,7 @@ def test_aborts_when_dataset_is_none():
 def test_deprecated_type_arg_warns_and_strips_hf_prefix():
     """Test deprecated type arg warns and strips hf_ prefix."""
     with patch(
-        "tidyfinance.data_download._download_factor_library_grid",
+        "tidyfinance.download_tidy_finance._download_factor_library_grid",
         return_value=pd.DataFrame(),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
@@ -113,7 +106,7 @@ def test_deprecated_type_arg_warns_and_strips_hf_prefix():
 def test_legacy_hf_dataset_value_warns_and_strips_prefix():
     """Test legacy hf_ dataset value warns and strips prefix."""
     with patch(
-        "tidyfinance.data_download._download_data_huggingface_factor_library",
+        "tidyfinance.download_tidy_finance._download_data_huggingface_factor_library",
         return_value=pd.DataFrame({"id": []}),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
@@ -133,7 +126,7 @@ def test_factor_library_grid_delegates_to_helper():
     """Test factor_library_grid: delegates to helper."""
     mock_grid = pd.DataFrame({"id": [1]})
     with patch(
-        "tidyfinance.data_download._download_factor_library_grid",
+        "tidyfinance.download_tidy_finance._download_factor_library_grid",
         return_value=mock_grid,
         create=True,
     ):
@@ -153,11 +146,11 @@ def test_high_frequency_sp500_filters_by_date_and_downloads():
 
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
         patch(
-            "tidyfinance.data_download.pd.read_parquet",
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
             return_value=mock_trades,
         ),
     ):
@@ -173,7 +166,7 @@ def test_factor_library_delegates_to_inner_helper():
     """Test factor_library: delegates to inner helper."""
     mock_returns = pd.DataFrame({"id": [1], "ret": [0.01]})
     with patch(
-        "tidyfinance.data_download._download_data_huggingface_factor_library",
+        "tidyfinance.download_tidy_finance._download_data_huggingface_factor_library",
         return_value=mock_returns,
     ):
         result = _download_data_huggingface(
@@ -191,7 +184,7 @@ def test_factor_library_forwards_start_date_and_end_date():
         return pd.DataFrame({"id": [1]})
 
     with patch(
-        "tidyfinance.data_download._download_data_huggingface_factor_library",
+        "tidyfinance.download_tidy_finance._download_data_huggingface_factor_library",
         side_effect=fake_inner,
     ):
         _download_data_huggingface(
@@ -215,11 +208,11 @@ def test_high_frequency_sp500_uses_sample_window_when_no_dates():
     )
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
         patch(
-            "tidyfinance.data_download.pd.read_parquet",
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
             return_value=pd.DataFrame({"price": [100.0]}),
         ),
     ):
@@ -267,10 +260,10 @@ def test_fill_all_false_defaults_applied_row_filtered_out():
     available = pd.DataFrame({"path": ["grid.parquet"], "size": [100]})
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.data_download.pd.read_parquet", return_value=grid),
+        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
     ):
         ids = _filter_factor_library_grid(sorting_variable="me")
 
@@ -300,10 +293,10 @@ def test_fill_all_true_only_explicit_filters_applied():
     available = pd.DataFrame({"path": ["grid.parquet"], "size": [100]})
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.data_download.pd.read_parquet", return_value=grid),
+        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
     ):
         ids = _filter_factor_library_grid(sorting_variable="me", fill_all=True)
 
@@ -319,11 +312,11 @@ def test_pulls_url_from_available_files_and_reads_parquet():
     mock_grid = pd.DataFrame({"id": [1]})
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
         patch(
-            "tidyfinance.data_download.pd.read_parquet", return_value=mock_grid
+            "tidyfinance.download_tidy_finance.pd.read_parquet", return_value=mock_grid
         ),
     ):
         result = _download_factor_library_grid()
@@ -339,10 +332,10 @@ def test_aborts_when_no_grid_rows_match_requested_ids():
     available = pd.DataFrame({"path": [], "size": []})
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.data_download.pd.read_parquet", return_value=grid),
+        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
     ):
         with pytest.raises(ValueError):
             _download_factor_library_ids([999])
@@ -356,10 +349,10 @@ def test_aborts_when_ids_have_no_matching_parquet_file():
     )
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.data_download.pd.read_parquet", return_value=grid),
+        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
     ):
         with pytest.raises(ValueError):
             _download_factor_library_ids([1])
@@ -382,15 +375,15 @@ def test_downloads_returns_and_joins_grid_metadata():
 
     with (
         patch(
-            "tidyfinance.data_download._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
         patch(
-            "tidyfinance.data_download._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance._download_factor_library_grid",
             return_value=grid,
         ),
         patch(
-            "tidyfinance.data_download._fetch_parquet_url",
+            "tidyfinance.download_tidy_finance._fetch_parquet_url",
             return_value=mock_returns,
         ),
     ):
@@ -415,7 +408,7 @@ def test_with_ids_delegates_to_download_factor_library_ids():
     """Test with ids: delegates to download_factor_library_ids."""
     mock_result = pd.DataFrame({"id": [1], "ret": [0.01]})
     with patch(
-        "tidyfinance.data_download._download_factor_library_ids",
+        "tidyfinance.download_tidy_finance._download_factor_library_ids",
         return_value=mock_result,
     ):
         result = _download_data_huggingface_factor_library(ids=[1])
@@ -427,11 +420,11 @@ def test_without_ids_resolves_via_grid_then_downloads():
     mock_result = pd.DataFrame({"id": [1], "ret": [0.01]})
     with (
         patch(
-            "tidyfinance.data_download._filter_factor_library_grid",
+            "tidyfinance.download_tidy_finance._filter_factor_library_grid",
             return_value=[1],
         ),
         patch(
-            "tidyfinance.data_download._download_factor_library_ids",
+            "tidyfinance.download_tidy_finance._download_factor_library_ids",
             return_value=mock_result,
         ),
     ):
@@ -451,7 +444,7 @@ def test_filters_returns_to_the_requested_date_range():
         }
     )
     with patch(
-        "tidyfinance.data_download._download_factor_library_ids",
+        "tidyfinance.download_tidy_finance._download_factor_library_ids",
         return_value=mock_returns,
     ):
         result = _download_data_huggingface_factor_library(
@@ -470,7 +463,7 @@ def test_returns_full_history_when_dates_omitted():
         }
     )
     with patch(
-        "tidyfinance.data_download._download_factor_library_ids",
+        "tidyfinance.download_tidy_finance._download_factor_library_ids",
         return_value=mock_returns,
     ):
         result = _download_data_huggingface_factor_library(ids=[1])
@@ -488,11 +481,11 @@ def test_date_filtering_also_applies_on_the_grid_resolved_path():
     )
     with (
         patch(
-            "tidyfinance.data_download._filter_factor_library_grid",
+            "tidyfinance.download_tidy_finance._filter_factor_library_grid",
             return_value=[1],
         ),
         patch(
-            "tidyfinance.data_download._download_factor_library_ids",
+            "tidyfinance.download_tidy_finance._download_factor_library_ids",
             return_value=mock_returns,
         ),
     ):

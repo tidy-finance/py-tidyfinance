@@ -25,11 +25,44 @@ dynamic: true
 #   - InternalClass
 #   - helper_function
 
-# Force-include modules that Great Docs auto-excludes as generic
-# "re-export" names. Our analytics functions live in 'core', which is
-# on that blocklist, so it must be re-included for them to be documented.
-auto_include:
-  - core
+# API Reference Structure
+# -----------------------
+# One section per module (each module mirrors an R @family). Great Docs
+# expands each listed module into its public members, so adding a
+# function shows up automatically without editing this list.
+reference:
+  title: Reference
+  sections:
+    - title: Download data
+      contents:
+        - download
+    - title: Open Source
+      contents:
+        - download_open_source
+    - title: Tidy Finance
+      contents:
+        - download_tidy_finance
+    - title: WRDS
+      contents:
+        - download_wrds
+    - title: Portfolio analysis
+      contents:
+        - portfolios
+    - title: Estimation
+      contents:
+        - regression
+    - title: Rolling and lagging
+      contents:
+        - lagging
+    - title: Supported datasets
+      contents:
+        - supported_datasets
+    - title: Utilities
+      contents:
+        - utilities
+    - title: Backend
+      contents:
+        - backend
 
 # Logo & Favicon
 # ---------------

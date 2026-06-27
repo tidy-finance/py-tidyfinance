@@ -11,9 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (
-    _download_data_wrds_ccm_links,
-)  # noqa: E402
+from tidyfinance.download_wrds import _download_data_wrds_ccm_links  # noqa: E402
 
 
 def test_downloads_default_ccm_links_and_replaces_missing_end_dates():
@@ -29,10 +27,10 @@ def test_downloads_default_ccm_links_and_replaces_missing_end_dates():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="conn"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="conn"
         ),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=sql_result),
-        patch("tidyfinance.data_download.disconnect_connection") as mock_disc,
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=sql_result),
+        patch("tidyfinance.download_wrds.disconnect_connection") as mock_disc,
     ):
         result = _download_data_wrds_ccm_links()
 
@@ -67,12 +65,12 @@ def test_passes_custom_link_filters_to_the_ccm_query():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="conn"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="conn"
         ),
         patch(
-            "tidyfinance.data_download.pd.read_sql", side_effect=fake_read_sql
+            "tidyfinance.download_wrds.pd.read_sql", side_effect=fake_read_sql
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
     ):
         result = _download_data_wrds_ccm_links(linktype=["LU"], linkprim=["C"])
 

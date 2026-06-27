@@ -5,74 +5,6 @@ import pandas as pd
 import re
 
 
-def _assign_exchange(primaryexch):
-    """
-    Map a CRSP primary-exchange code to a readable label.
-
-    Parameters
-    ----------
-    primaryexch : str
-        Single-letter primary-exchange code from CRSP CIZ
-        ('stksecurityinfohist.primaryexch').
-
-    Returns
-    -------
-    str
-        'NYSE', 'AMEX', 'NASDAQ', or 'Other'.
-    """
-    if primaryexch == "N":
-        return "NYSE"
-    elif primaryexch == "A":
-        return "AMEX"
-    elif primaryexch == "Q":
-        return "NASDAQ"
-    else:
-        return "Other"
-
-
-def _assign_industry(siccd):
-    """
-    Map a Standard Industrial Classification code to a coarse industry label.
-
-    Parameters
-    ----------
-    siccd : int
-        Four-digit SIC code (CRSP 'siccd' or Compustat 'sich').
-
-    Returns
-    -------
-    str
-        One of 'Agriculture', 'Mining', 'Construction',
-        'Manufacturing', 'Transportation', 'Utilities', 'Wholesale',
-        'Retail', 'Finance', 'Services', 'Public', or 'Missing'
-        (when the SIC code is outside the documented ranges).
-    """
-    if 1 <= siccd <= 999:
-        return "Agriculture"
-    elif 1000 <= siccd <= 1499:
-        return "Mining"
-    elif 1500 <= siccd <= 1799:
-        return "Construction"
-    elif 2000 <= siccd <= 3999:
-        return "Manufacturing"
-    elif 4000 <= siccd <= 4899:
-        return "Transportation"
-    elif 4900 <= siccd <= 4999:
-        return "Utilities"
-    elif 5000 <= siccd <= 5199:
-        return "Wholesale"
-    elif 5200 <= siccd <= 5999:
-        return "Retail"
-    elif 6000 <= siccd <= 6799:
-        return "Finance"
-    elif 7000 <= siccd <= 8999:
-        return "Services"
-    elif 9000 <= siccd <= 9999:
-        return "Public"
-    else:
-        return "Missing"
-
-
 def _parse_date(d: str, is_end: bool = False) -> pd.Timestamp:
     """
     Parse a date-like string into a normalized 'pd.Timestamp'.
@@ -159,28 +91,6 @@ def _validate_dates(
     if start_date > end_date:
         raise ValueError("start_date cannot be after end_date.")
     return start_date, end_date
-
-
-def _format_cusips(cusips):
-    """
-    Format a list of CUSIPs as a parenthesized SQL 'IN' clause.
-
-    Parameters
-    ----------
-    cusips : list of str
-        CUSIP identifiers.
-
-    Returns
-    -------
-    str
-        SQL-ready string of the form "('cusip1', 'cusip2', ...)" or
-        "()" when the input is empty.
-    """
-    if not cusips:
-        return "()"
-
-    cusip_batch_formatted = ", ".join(f"'{cusip}'" for cusip in cusips)
-    return f"({cusip_batch_formatted})"
 
 
 def _return_datetime(dates):

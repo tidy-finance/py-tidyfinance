@@ -11,10 +11,8 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (  # noqa: E402
-    _download_data_wrds_trace_enhanced,
-)
-from tidyfinance.utilities import process_trace_data  # noqa: E402
+from tidyfinance.download_wrds import _download_data_wrds_trace_enhanced  # noqa: E402
+from tidyfinance.download_wrds import process_trace_data  # noqa: E402
 
 
 def test_download_data_wrds_trace_enhanced_validates_cusips():
@@ -106,10 +104,10 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
 
     with (
         patch(
-            "tidyfinance.data_download.get_wrds_connection", return_value="con"
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
         ),
-        patch("tidyfinance.data_download.disconnect_connection"),
-        patch("tidyfinance.data_download.pd.read_sql", return_value=trace),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=trace),
     ):
         out = _download_data_wrds_trace_enhanced(
             ["00101JAH9"], "2010-01-01", "2014-01-01"

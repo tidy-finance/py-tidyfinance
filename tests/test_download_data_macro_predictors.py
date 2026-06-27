@@ -11,9 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.data_download import (  # noqa: E402
-    _download_data_macro_predictors,
-)
+from tidyfinance.download_open_source import _download_data_macro_predictors  # noqa: E402
 
 
 def _macro_raw(date_col, values):
@@ -49,7 +47,7 @@ def test_dataset_is_required_and_must_be_supported():
 def test_monthly_data_is_downloaded_and_processed():
     """Test monthly data is downloaded and processed."""
     raw = _macro_raw("yyyymm", ["202001", "202002", "202003"])
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         out = _download_data_macro_predictors("monthly")
     assert isinstance(out, pd.DataFrame)
     # The middle row survives the diff()/dropna pipeline
@@ -60,7 +58,7 @@ def test_monthly_data_is_downloaded_and_processed():
 def test_quarterly_data_is_downloaded_and_filtered():
     """Test quarterly data is downloaded and filtered."""
     raw = _macro_raw("yyyyq", ["20201", "20202", "20203"])
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         out = _download_data_macro_predictors(
             "quarterly",
             start_date="2020-04-01",
@@ -73,7 +71,7 @@ def test_quarterly_data_is_downloaded_and_filtered():
 def test_annual_data_is_downloaded_and_processed():
     """Test annual data is downloaded and processed."""
     raw = _macro_raw("yyyy", ["2019", "2020", "2021"])
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         out = _download_data_macro_predictors("annual")
     assert len(out) == 1
     assert out["date"].iloc[0] == pd.Timestamp("2020-01-01")
@@ -82,7 +80,7 @@ def test_annual_data_is_downloaded_and_processed():
 def test_empty_downloads_return_an_empty_dataframe():
     """Test empty downloads return an empty dataframe."""
     with patch(
-        "tidyfinance.data_download.pd.read_csv",
+        "tidyfinance.download_open_source.pd.read_csv",
         side_effect=Exception("download failed"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
@@ -94,7 +92,7 @@ def test_empty_downloads_return_an_empty_dataframe():
 def test_explicit_deprecated_type_is_still_handled():
     """Test explicit deprecated type is still handled."""
     raw = _macro_raw("yyyymm", ["202001", "202002", "202003"])
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             out = _download_data_macro_predictors(
                 type="macro_predictors_monthly"
@@ -105,7 +103,7 @@ def test_explicit_deprecated_type_is_still_handled():
 def test_legacy_dataset_names_are_still_handled():
     """Test legacy dataset names are still handled."""
     raw = _macro_raw("yyyymm", ["202001", "202002", "202003"])
-    with patch("tidyfinance.data_download.pd.read_csv", return_value=raw):
+    with patch("tidyfinance.download_open_source.pd.read_csv", return_value=raw):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             out = _download_data_macro_predictors("macro_predictors_monthly")
         assert out["date"].iloc[0] == pd.Timestamp("2020-02-01")
@@ -120,7 +118,7 @@ def test_correct_google_sheets_url_is_constructed():
         return _macro_raw("yyyymm", ["202001", "202002", "202003"])
 
     with patch(
-        "tidyfinance.data_download.pd.read_csv", side_effect=fake_read_csv
+        "tidyfinance.download_open_source.pd.read_csv", side_effect=fake_read_csv
     ):
         _download_data_macro_predictors(
             dataset="monthly", sheet_id="test_sheet"
@@ -137,7 +135,7 @@ def test_correct_google_sheets_url_is_constructed():
 def test_empty_download_informs_and_returns_empty_dataframe():
     """Test empty download informs and returns empty dataframe."""
     with patch(
-        "tidyfinance.data_download.pd.read_csv",
+        "tidyfinance.download_open_source.pd.read_csv",
         side_effect=Exception("download failed"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):

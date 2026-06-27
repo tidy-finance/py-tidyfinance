@@ -10,15 +10,10 @@ import pytest
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
-from tidyfinance.core import (
-    _newey_west_se,
-    add_lagged_columns,
-    breakpoint_options,
-    compute_breakpoints,
-    create_summary_statistics,
-    estimate_betas,
-    estimate_fama_macbeth,
-)  # noqa: E402
+from tidyfinance.lagging import add_lagged_columns  # noqa: E402
+from tidyfinance.portfolios import breakpoint_options, compute_breakpoints  # noqa: E402
+from tidyfinance.regression import _newey_west_se, estimate_betas, estimate_fama_macbeth  # noqa: E402
+from tidyfinance.utilities import create_summary_statistics  # noqa: E402
 
 
 # %% Helper function to create test data
