@@ -35,7 +35,7 @@
 
 - Added support for Hugging Face datasets via `domain="tidyfinance"`, including `high_frequency_sp500` and `factor_library`
 
-## Unreleased
+## v0.3.0 (2026-06-28)
 
 - **Dependencies (removed statsmodels):** The `statsmodels` dependency was dropped; the regression-based functions now use [`pyfixest`](https://github.com/py-econometrics/pyfixest) instead. `estimate_model` and the cross-sectional / IID-variance steps of `estimate_fama_macbeth` call `pyfixest.feols`, and `estimate_betas` was rewritten to estimate rolling betas via closed-form OLS on cumulative cross-product sums (the design Gram matrix `X'X` and moment vector `X'y` are accumulated and rolled by cumulative-sum differencing, then solved once per window). This follows the [fast beta estimation](https://www.tidy-finance.org/blog/fast-beta-estimation/) approach, generalized to multiple regressors, and returns coefficients identical to ordinary least squares while avoiding a full refit per window (#49).
 - **Docs (Great Docs):** Added a [Great Docs](https://opensource.posit.co/blog/2026-04-15_great-docs-introduction/) documentation site configured via `great-docs.yml`, including LLM-friendly artifacts (`llms.txt`, `llms-full.txt`). The API reference is generated from the numpydoc docstrings; build locally with `great-docs build` (on Windows set `PYTHONUTF8=1` to avoid a cp1252 decode error during post-processing). The generated `great-docs/` build directory is gitignored. (#29)
