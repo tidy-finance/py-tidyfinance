@@ -5,7 +5,81 @@ import warnings
 
 import numpy as np
 import pandas as pd
-from pyfixest.estimation import feols
+from formulaic import model_matrix
+
+
+class _OLSFit:
+    """Minimal OLS fit mirroring the parts of the pyfixest API used here.
+
+    Exposes ``coef``, ``se``, ``tstat`` and ``resid``, reproducing
+    ``pyfixest.feols(...)`` for linear models without fixed effects:
+    classical (iid) inference with an ``n - k`` degrees-of-freedom
+    correction (``sigma^2 * (X'X)^-1`` with ``sigma^2 = RSS / (n - k)``).
+    """
+
+    def __init__(self, names, coef, se, tstat, resid):
+        self._coef = pd.Series(coef, index=names)
+        self._se = pd.Series(se, index=names)
+        self._tstat = pd.Series(tstat, index=names)
+        self._resid = resid
+
+    def coef(self):
+        return self._coef
+
+    def se(self):
+        return self._se
+
+    def tstat(self):
+        return self._tstat
+
+    def resid(self):
+        return self._resid
+
+
+def _fit_ols(model: str, data: pd.DataFrame) -> _OLSFit:
+    """Fit an OLS model from a formula via formulaic and numpy.
+
+    Replaces ``pyfixest.feols`` for the simple regressions used in this
+    package. Supports the full formulaic grammar (additive terms,
+    interactions, transformations, ``- 1`` to drop the intercept) and
+    returns classical (iid) standard errors identical to ``feols`` for
+    models without fixed effects.
+
+    Parameters
+    ----------
+    model : str
+        A formulaic formula string, e.g. ``'y ~ x1 + x2'``. An
+        intercept (named ``'Intercept'``) is included unless ``- 1`` is
+        present.
+    data : pd.DataFrame
+        Data containing the formula's variables.
+
+    Returns
+    -------
+    _OLSFit
+        Fitted model exposing ``coef``, ``se``, ``tstat`` and ``resid``.
+    """
+    y, x = model_matrix(model, data)
+    names = list(x.columns)
+    x_mat = np.asarray(x, dtype=float)
+    y_vec = np.asarray(y, dtype=float).ravel()
+
+    n, k = x_mat.shape
+    beta, _, _, _ = np.linalg.lstsq(x_mat, y_vec, rcond=None)
+    resid = y_vec - x_mat @ beta
+
+    dof = n - k
+    if dof > 0:
+        sigma2 = float(resid @ resid) / dof
+        xtx_inv = np.linalg.pinv(x_mat.T @ x_mat)
+        se = np.sqrt(np.maximum(sigma2 * np.diag(xtx_inv), 0.0))
+    else:
+        se = np.full(k, np.nan)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        tstat = np.where(se > 0, beta / se, np.nan)
+
+    return _OLSFit(names, beta, se, tstat, resid)
 
 
 def estimate_betas(
@@ -528,7 +602,7 @@ def estimate_fama_macbeth(
         if len(group) <= len(model.split("~")[1].split("+")):
             continue
 
-        model_fit = feols(model, data=group)
+        model_fit = _fit_ols(model, data=group)
         params = model_fit.coef().to_dict()
         params[date_col] = date
         cross_section_results.append(params)
@@ -568,9 +642,9 @@ def estimate_fama_macbeth(
                 adjust=nw_adjust,
             )
         else:
-            se = feols("estimate ~ 1", data=x.dropna(subset=["estimate"])).se()[
-                "Intercept"
-            ]
+            se = _fit_ols(
+                "estimate ~ 1", data=x.dropna(subset=["estimate"])
+            ).se()["Intercept"]
         if se is None or np.isnan(se) or se == 0:
             t_stat = np.nan
         else:
@@ -726,7 +800,7 @@ def estimate_model(
     fit = None
     if not insufficient:
         try:
-            fit = feols(model, data=data[complete])
+            fit = _fit_ols(model, data=data[complete])
         except Exception:
             insufficient = True
 
