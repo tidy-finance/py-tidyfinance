@@ -271,7 +271,8 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
         grid. Each value may be a scalar or a list/tuple to match multiple
         levels. Supported columns and their defaults are:
 
-        - 'sorting_variable': no default, required.
+        - 'sorting_variable': no default. When omitted, all sorting
+          variables are returned (subject to the remaining defaults).
         - 'min_size_quantile': 0.2
         - 'exclude_financials': False
         - 'exclude_utilities': False
@@ -302,9 +303,6 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
             f"Unsupported filter name(s): {sorted(unsupported)}. "
             f"Supported filters: {list(_FACTOR_LIBRARY_SUPPORTED_FILTERS)}."
         )
-
-    if "sorting_variable" not in filters:
-        raise ValueError("'sorting_variable' is required in filters.")
 
     if filters.get("sorting_method", "univariate") != "univariate":
         if filters.get("n_portfolios_secondary") is None:
@@ -577,9 +575,11 @@ def _download_data_huggingface(
     matches the intended design. Supported filter columns and their
     defaults are:
 
-    - 'sorting_variable': required. The firm characteristic used to
+    - 'sorting_variable': optional. The firm characteristic used to
       sort stocks into portfolios (e.g., 'me' for market equity, 'bm'
-      for book-to-market). No default is applied.
+      for book-to-market). No default is applied; when omitted, all
+      sorting variables are returned (subject to the remaining
+      defaults).
     - 'min_size_quantile' (defaults to 0.2): fraction of the smallest
       stocks (by market cap) excluded from the portfolio universe; 0.2
       drops the bottom 20%.

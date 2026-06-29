@@ -11,7 +11,14 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_tidy_finance import _download_data_huggingface, _download_data_huggingface_factor_library, _download_factor_library_grid, _download_factor_library_ids, _filter_factor_library_grid, _get_available_huggingface_files  # noqa: E402
+from tidyfinance.download_tidy_finance import (
+    _download_data_huggingface,
+    _download_data_huggingface_factor_library,
+    _download_factor_library_grid,
+    _download_factor_library_ids,
+    _filter_factor_library_grid,
+    _get_available_huggingface_files,
+)  # noqa: E402
 
 
 def _make_grid(grid_id=1):
@@ -51,7 +58,8 @@ def test_single_page_returns_only_parquet_files():
     response_mock.raise_for_status = MagicMock()
 
     with patch(
-        "tidyfinance.download_tidy_finance.requests.get", return_value=response_mock
+        "tidyfinance.download_tidy_finance.requests.get",
+        return_value=response_mock,
     ):
         result = _get_available_huggingface_files("org", "ds")
 
@@ -78,7 +86,9 @@ def test_multi_page_paginates_until_rel_next_link_absent():
     r2.raise_for_status = MagicMock()
     responses.append(r2)
 
-    with patch("tidyfinance.download_tidy_finance.requests.get", side_effect=responses):
+    with patch(
+        "tidyfinance.download_tidy_finance.requests.get", side_effect=responses
+    ):
         result = _get_available_huggingface_files("org", "ds")
 
     assert len(result) == 2
@@ -237,6 +247,43 @@ def test_aborts_non_univariate_sort_without_secondary_n():
         )
 
 
+def test_sorting_variable_optional_returns_all_with_defaults():
+    """Test sorting_variable omitted: all sorting variables, defaults."""
+    grid = pd.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "sorting_variable": ["sv_me", "sv_bm", "sv_me"],
+            "min_size_quantile": [0.2, 0.2, 0.4],
+            "exclude_financials": [False, False, False],
+            "exclude_utilities": [False, False, False],
+            "exclude_negative_earnings": [False, False, False],
+            "sorting_variable_lag": ["6m", "6m", "6m"],
+            "rebalancing": ["monthly", "monthly", "monthly"],
+            "n_portfolios_main": [10, 10, 10],
+            "sorting_method": ["univariate", "univariate", "univariate"],
+            "n_portfolios_secondary": [None, None, None],
+            "breakpoints_exchanges": ["NYSE", "NYSE", "NYSE"],
+            "breakpoints_min_size_threshold": [None, None, None],
+            "weighting_scheme": ["VW", "VW", "VW"],
+        }
+    )
+    available = pd.DataFrame({"path": ["grid.parquet"], "size": [100]})
+    with (
+        patch(
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
+            return_value=available,
+        ),
+        patch(
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=grid,
+        ),
+    ):
+        ids = _filter_factor_library_grid()
+
+    # Both sorting variables returned; the non-default row (id 3) dropped.
+    assert ids == [1, 2]
+
+
 def test_fill_all_false_defaults_applied_row_filtered_out():
     """Test fill_all = FALSE: defaults applied, row filtered out."""
     grid = pd.DataFrame(
@@ -263,7 +310,10 @@ def test_fill_all_false_defaults_applied_row_filtered_out():
             "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
+        patch(
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=grid,
+        ),
     ):
         ids = _filter_factor_library_grid(sorting_variable="me")
 
@@ -296,7 +346,10 @@ def test_fill_all_true_only_explicit_filters_applied():
             "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
+        patch(
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=grid,
+        ),
     ):
         ids = _filter_factor_library_grid(sorting_variable="me", fill_all=True)
 
@@ -316,7 +369,8 @@ def test_pulls_url_from_available_files_and_reads_parquet():
             return_value=available,
         ),
         patch(
-            "tidyfinance.download_tidy_finance.pd.read_parquet", return_value=mock_grid
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=mock_grid,
         ),
     ):
         result = _download_factor_library_grid()
@@ -335,7 +389,10 @@ def test_aborts_when_no_grid_rows_match_requested_ids():
             "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
+        patch(
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=grid,
+        ),
     ):
         with pytest.raises(ValueError):
             _download_factor_library_ids([999])
@@ -352,7 +409,10 @@ def test_aborts_when_ids_have_no_matching_parquet_file():
             "tidyfinance.download_tidy_finance._get_available_huggingface_files",
             return_value=available,
         ),
-        patch("tidyfinance.download_tidy_finance.pd.read_parquet", return_value=grid),
+        patch(
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=grid,
+        ),
     ):
         with pytest.raises(ValueError):
             _download_factor_library_ids([1])
