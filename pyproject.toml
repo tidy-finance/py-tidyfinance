@@ -23,7 +23,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "curl_cffi>=0.10.0",
     "lxml>=5.3.1",
-    "pyfixest>=0.60.0",
+    "formulaic>=1.0.0",
 ]
 
 [project.optional-dependencies]
