@@ -284,6 +284,45 @@ def test_sorting_variable_optional_returns_all_with_defaults():
     assert ids == [1, 2]
 
 
+def test_explicit_none_removes_filter_returning_all_values():
+    """Test passing None for a column returns all values for it."""
+    grid = pd.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "sorting_variable": ["sv_me", "sv_me", "sv_me"],
+            "min_size_quantile": [0.2, 0.4, 0.6],
+            "exclude_financials": [False, False, False],
+            "exclude_utilities": [False, False, False],
+            "exclude_negative_earnings": [False, False, False],
+            "sorting_variable_lag": ["6m", "6m", "6m"],
+            "rebalancing": ["monthly", "monthly", "monthly"],
+            "n_portfolios_main": [10, 10, 10],
+            "sorting_method": ["univariate", "univariate", "univariate"],
+            "n_portfolios_secondary": [None, None, None],
+            "breakpoints_exchanges": ["NYSE", "NYSE", "NYSE"],
+            "breakpoints_min_size_threshold": [None, None, None],
+            "weighting_scheme": ["VW", "VW", "VW"],
+        }
+    )
+    available = pd.DataFrame({"path": ["grid.parquet"], "size": [100]})
+    with (
+        patch(
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
+            return_value=available,
+        ),
+        patch(
+            "tidyfinance.download_tidy_finance.pd.read_parquet",
+            return_value=grid,
+        ),
+    ):
+        ids = _filter_factor_library_grid(
+            sorting_variable="me", min_size_quantile=None
+        )
+
+    # The default 0.2 screen is removed, so all size groups are returned.
+    assert ids == [1, 2, 3]
+
+
 def test_fill_all_false_defaults_applied_row_filtered_out():
     """Test fill_all = FALSE: defaults applied, row filtered out."""
     grid = pd.DataFrame(

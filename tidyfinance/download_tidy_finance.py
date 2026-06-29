@@ -269,7 +269,10 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
     **filters : dict
         Named arguments of the form 'column=value' used to filter the
         grid. Each value may be a scalar or a list/tuple to match multiple
-        levels. Supported columns and their defaults are:
+        levels. Passing 'None' for a column removes that filter entirely,
+        returning all values for that column (e.g.,
+        'min_size_quantile=None' includes all size groups). Supported
+        columns and their defaults are:
 
         - 'sorting_variable': no default. When omitted, all sorting
           variables are returned (subject to the remaining defaults).
@@ -311,8 +314,19 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
                 "n_portfolios_secondary must be provided."
             )
 
+    # A filter the caller explicitly sets to None is removed entirely so
+    # all values for that column are returned, mirroring purrr::compact()
+    # on NULL in the R implementation. These columns are recorded so the
+    # defaults below do not reintroduce a filter for them. Default None
+    # values (e.g. n_portfolios_secondary) are applied afterwards and
+    # instead match rows where the column is null.
+    unrestricted = {col for col, value in filters.items() if value is None}
+    filters = {col: v for col, v in filters.items() if v is not None}
+
     if not fill_all:
-        filters = {**_FACTOR_LIBRARY_DEFAULTS, **filters}
+        for col, default in _FACTOR_LIBRARY_DEFAULTS.items():
+            if col not in filters and col not in unrestricted:
+                filters[col] = default
 
     grid = _download_factor_library_grid().assign(
         sorting_variable=lambda x: x["sorting_variable"].str.replace(
@@ -610,6 +624,10 @@ def _download_data_huggingface(
       breakpoints. None means no minimum-size screen is applied.
     - 'weighting_scheme' (defaults to 'VW'): return weighting within
       portfolios; 'VW' for value-weighted or 'EW' for equal-weighted.
+
+    Passing 'None' for any filter column removes that filter entirely,
+    returning all values for that column (e.g., 'min_size_quantile=None'
+    includes all size groups).
 
     Parameters
     ----------
