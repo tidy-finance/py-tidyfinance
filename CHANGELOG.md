@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **OSAP download aligned with beginning-of-month and scaled returns:**
+  `download_data("Open Source Asset Pricing")` now aligns the `date`
+  column to the beginning of the month (the dataset previously returned
+  end-of-month dates), matching the convention used by the other
+  download functions. All predictor columns are monthly long-short
+  returns expressed in percent and are now divided by 100 to return
+  plain numeric (decimal) returns.
 - **`sorting_variable` is now optional for `factor_library`:** Calling
   `download_data("Tidy Finance", "factor_library")` without a
   `sorting_variable` now returns the default portfolio construction for
