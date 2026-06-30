@@ -19,7 +19,7 @@ def test_downloads_and_processes_all_rows():
     """Test downloads and processes all rows."""
     raw = pd.DataFrame(
         {
-            "date": ["2020-01-01", "2020-02-01"],
+            "date": ["2020-01-31", "2020-02-29"],
             "LongName": [1, 2],
         }
     )
@@ -28,17 +28,20 @@ def test_downloads_and_processes_all_rows():
 
     assert isinstance(result, pd.DataFrame)
     assert list(result.columns) == ["date", "long_name"]
+    # Dates are aligned to the beginning of the month.
     assert list(result["date"]) == [
         pd.Timestamp("2020-01-01"),
         pd.Timestamp("2020-02-01"),
     ]
+    # Percentage returns are scaled to numeric (decimal) values.
+    assert list(result["long_name"]) == [0.01, 0.02]
 
 
 def test_filters_rows_when_both_dates_are_supplied():
     """Test filters rows when both dates are supplied."""
     raw = pd.DataFrame(
         {
-            "date": ["2020-01-01", "2020-02-01", "2020-03-01"],
+            "date": ["2020-01-31", "2020-02-29", "2020-03-31"],
             "value": [1, 2, 3],
         }
     )
@@ -49,7 +52,7 @@ def test_filters_rows_when_both_dates_are_supplied():
 
     assert len(result) == 1
     assert result["date"].iloc[0] == pd.Timestamp("2020-02-01")
-    assert result["value"].iloc[0] == 2
+    assert result["value"].iloc[0] == 0.02
 
 
 def test_returns_empty_dataframe_after_download_failure():
