@@ -1127,9 +1127,11 @@ def _download_data_osap(
     -------
     pd.DataFrame
         A data frame containing the processed data. The column names
-        are converted to snake_case, and the data is filtered by the
-        specified date range if 'start_date' and 'end_date' are
-        provided.
+        are converted to snake_case, the ``date`` column is aligned to
+        the beginning of the month, all predictor columns (long-short
+        returns in percent) are divided by 100 to obtain plain numeric
+        (decimal) returns, and the data is filtered by the specified
+        date range if 'start_date' and 'end_date' are provided.
 
     Examples
     --------
