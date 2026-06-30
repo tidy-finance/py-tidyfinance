@@ -1099,8 +1099,14 @@ def _download_data_osap(
     Downloads the data from the Open Source Asset Pricing project at
     https://www.openassetpricing.com/data/ from Google Sheets using a
     specified sheet ID, processes the data by converting column names
-    to snake_case, and optionally filters the data based on a provided
-    date range.
+    to snake_case, aligning the date to the beginning of the month,
+    scaling the percentage long-short returns to numeric values, and
+    optionally filters the data based on a provided date range.
+
+    The dataset contains monthly long-short returns of the predictor
+    portfolios. Every column other than ``date`` is a return expressed
+    in percent, so all of them are divided by 100 to convert them into
+    plain numeric (decimal) returns.
 
     Parameters
     ----------
@@ -1158,11 +1164,20 @@ def _download_data_osap(
         return raw_data
 
     if "date" in raw_data.columns:
-        raw_data["date"] = pd.to_datetime(raw_data["date"], errors="coerce")
+        raw_data["date"] = (
+            pd.to_datetime(raw_data["date"], errors="coerce")
+            .dt.to_period("M")
+            .dt.start_time
+        )
 
     raw_data.columns = [
         _transfrom_to_snake_case(col) for col in raw_data.columns
     ]
+
+    # All columns except the date are long-short returns in percent, so
+    # scale them to plain numeric (decimal) returns.
+    return_columns = [col for col in raw_data.columns if col != "date"]
+    raw_data[return_columns] = raw_data[return_columns] / 100
 
     if start_date and end_date:
         raw_data = raw_data.query("@start_date <= date <= @end_date")
