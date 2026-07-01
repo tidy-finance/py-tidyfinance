@@ -72,6 +72,20 @@ def test_convert_output_preserves_named_index_as_column():
     df.index.name = "date"
     out = _convert_output(df)
     assert "date" in out.columns
+    assert out.schema["date"] == pl.Date
+
+
+def test_convert_output_casts_date_column_to_polars_date():
+    tf.set_backend("polars")
+    df = pd.DataFrame(
+        {"date": pd.to_datetime(["2020-01-31", "2020-02-29"]), "v": [1.0, 2.0]}
+    )
+    out = _convert_output(df)
+    assert out.schema["date"] == pl.Date
+    assert out["date"].dt.strftime("%Y-%m-%d").to_list() == [
+        "2020-01-31",
+        "2020-02-29",
+    ]
 
 
 def test_convert_output_drops_default_rangeindex():

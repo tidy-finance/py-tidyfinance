@@ -611,9 +611,7 @@ def estimate_fama_macbeth(
 
     # Compute time-series averages
     price_of_risk = (
-        risk_premiums.melt(
-            id_vars=date_col, var_name="factor", value_name="estimate"
-        )
+        risk_premiums.melt(id_vars=date_col, var_name="factor", value_name="estimate")
         .groupby("factor")["estimate"]
         .mean()
         .reset_index()
@@ -642,9 +640,9 @@ def estimate_fama_macbeth(
                 adjust=nw_adjust,
             )
         else:
-            se = _fit_ols(
-                "estimate ~ 1", data=x.dropna(subset=["estimate"])
-            ).se()["Intercept"]
+            se = _fit_ols("estimate ~ 1", data=x.dropna(subset=["estimate"])).se()[
+                "Intercept"
+            ]
         if se is None or np.isnan(se) or se == 0:
             t_stat = np.nan
         else:
@@ -658,9 +656,7 @@ def estimate_fama_macbeth(
         )
 
     price_of_risk_se_t_n = (
-        risk_premiums.melt(
-            id_vars=date_col, var_name="factor", value_name="estimate"
-        )
+        risk_premiums.melt(id_vars=date_col, var_name="factor", value_name="estimate")
         .groupby("factor")
         .apply(compute_se_and_t, include_groups=False)
         .reset_index()
@@ -793,9 +789,7 @@ def estimate_model(
     complete = data[model_vars].notna().all(axis=1)
     n_complete = int(complete.sum())
 
-    insufficient = (n_complete < min_obs) or (
-        n_complete <= len(independent_vars)
-    )
+    insufficient = (n_complete < min_obs) or (n_complete <= len(independent_vars))
 
     fit = None
     if not insufficient:

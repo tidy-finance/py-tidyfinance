@@ -149,9 +149,7 @@ def _download_data_risk_free(
 # %% hugging face functions for tidy finance data
 
 
-def _get_available_huggingface_files(
-    organization: str, dataset: str
-) -> pd.DataFrame:
+def _get_available_huggingface_files(organization: str, dataset: str) -> pd.DataFrame:
     """
     List parquet files in a Hugging Face dataset.
 
@@ -235,9 +233,7 @@ def _download_factor_library_grid() -> pd.DataFrame:
     _download_factor_library_grid()
     ```
     """
-    available = _get_available_huggingface_files(
-        "tidy-finance", "factor-library-grid"
-    )
+    available = _get_available_huggingface_files("tidy-finance", "factor-library-grid")
     if available.empty or "path" not in available.columns:
         raise ValueError(
             "No parquet files were found in the Hugging Face dataset repo "
@@ -423,22 +419,16 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
     organization = "tidy-finance"
     dataset_name = "factor-library"
 
-    path_pattern = re.compile(
-        r"sorting_variable=([^/]+)/sorting_variable_lag=([^/]+)/"
-    )
-    available_files = _get_available_huggingface_files(
-        organization, dataset_name
-    )
+    path_pattern = re.compile(r"sorting_variable=([^/]+)/sorting_variable_lag=([^/]+)/")
+    available_files = _get_available_huggingface_files(organization, dataset_name)
 
     def _extract_keys(path: str) -> tuple:
         m = path_pattern.search(path)
         return (m.group(1), m.group(2)) if m else (None, None)
 
-    available_files[["sorting_variable", "sorting_variable_lag"]] = (
-        pd.DataFrame(
-            available_files["path"].apply(_extract_keys).tolist(),
-            index=available_files.index,
-        )
+    available_files[["sorting_variable", "sorting_variable_lag"]] = pd.DataFrame(
+        available_files["path"].apply(_extract_keys).tolist(),
+        index=available_files.index,
     )
 
     grid = _download_factor_library_grid().assign(
@@ -474,9 +464,7 @@ def _download_factor_library_ids(ids: list) -> pd.DataFrame:
         )
 
     with ThreadPoolExecutor(max_workers=8) as ex:
-        frames = list(
-            ex.map(_fetch_parquet_url, [_make_url(p) for p in unique_paths])
-        )
+        frames = list(ex.map(_fetch_parquet_url, [_make_url(p) for p in unique_paths]))
 
     returns = pd.concat(frames, ignore_index=True)
 
@@ -747,18 +735,14 @@ def _download_data_huggingface(
             end_date = "2007-07-27"
 
         date_pattern = re.compile(r"date=(\d{4}-\d{2}-\d{2})")
-        available_files = _get_available_huggingface_files(
-            organization, dataset_name
-        )
+        available_files = _get_available_huggingface_files(organization, dataset_name)
         available_files["date"] = pd.to_datetime(
             available_files["path"].str.extract(date_pattern, expand=False),
             format="%Y-%m-%d",
         ).dt.date
 
         requested_dates = set(
-            pd.date_range(
-                start=str(start_date), end=str(end_date), freq="D"
-            ).date
+            pd.date_range(start=str(start_date), end=str(end_date), freq="D").date
         )
         files_to_download = available_files.loc[
             available_files["date"].isin(requested_dates)

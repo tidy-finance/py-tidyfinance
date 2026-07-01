@@ -10,12 +10,15 @@ import numpy as np
 import pandas as pd
 from curl_cffi import requests
 
-from ._internal import (_get_random_user_agent, _transfrom_to_snake_case,
-                        _validate_dates)
-from .supported_datasets import (_check_supported_dataset_ff,
-                                 _determine_frequency_ff, _is_breakpoints_ff,
-                                 _is_legacy_type_ff, _is_legacy_type_q,
-                                 _parse_type_to_domain_dataset)
+from ._internal import _get_random_user_agent, _transfrom_to_snake_case, _validate_dates
+from .supported_datasets import (
+    _check_supported_dataset_ff,
+    _determine_frequency_ff,
+    _is_breakpoints_ff,
+    _is_legacy_type_ff,
+    _is_legacy_type_q,
+    _parse_type_to_domain_dataset,
+)
 from .utilities import list_supported_indexes
 
 # %% functions
@@ -44,14 +47,11 @@ def get_available_famafrench_datasets():
     response = requests.get(f"{ff_url}data_library.html")
     root = document_fromstring(response.content)
 
-    datasets = [
-        e.attrib["href"] for e in root.findall(".//a") if "href" in e.attrib
-    ]
+    datasets = [e.attrib["href"] for e in root.findall(".//a") if "href" in e.attrib]
     datasets = [
         dataset_i
         for dataset_i in datasets
-        if dataset_i.startswith(ff_url_prefix)
-        and dataset_i.endswith(ff_url_suffix)
+        if dataset_i.startswith(ff_url_prefix) and dataset_i.endswith(ff_url_suffix)
     ]
     datasets_list = list(
         map(lambda x: x[len(ff_url_prefix) : -len(ff_url_suffix)], datasets)
@@ -282,18 +282,14 @@ def _download_data_factors_ff(
                 raw_downloaded.reset_index()
                 .rename(
                     columns=lambda x: (
-                        x.lower()
-                        .replace("-rf", "_excess")
-                        .replace("rf", "risk_free")
+                        x.lower().replace("-rf", "_excess").replace("rf", "risk_free")
                         if isinstance(x, str)
                         else x
                     )
                 )
                 .apply(
                     lambda x: (
-                        x.replace([-99.99, -999], np.nan)
-                        if x.name != "date"
-                        else x
+                        x.replace([-99.99, -999], np.nan) if x.name != "date" else x
                     )
                 )
             )
@@ -409,22 +405,16 @@ def _download_data_factors_q(
         )
     try:
         raw_data = (
-            pd.read_csv(
-                f"{url}{dataset}.csv", engine="python", on_bad_lines="skip"
-            )
+            pd.read_csv(f"{url}{dataset}.csv", engine="python", on_bad_lines="skip")
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
     except Exception as e:
-        raise ValueError(
-            f"Could not download or parse dataset '{dataset}': {e}"
-        ) from e
+        raise ValueError(f"Could not download or parse dataset '{dataset}': {e}") from e
 
     if "monthly" in dataset:
         raw_data = raw_data.assign(
-            date=pd.to_datetime(
-                dict(year=raw_data.year, month=raw_data.month, day=1)
-            )
+            date=pd.to_datetime(dict(year=raw_data.year, month=raw_data.month, day=1))
         ).drop(columns=["year", "month"])
     if "weekly" in dataset:
         raw_data = raw_data.assign(
@@ -569,9 +559,7 @@ def _download_data_macro_predictors(
             date=lambda x: pd.to_datetime(
                 x["yyyyq"].astype(str).str[:4]
                 + "-"
-                + (x["yyyyq"].astype(str).str[4].astype(int) * 3 - 2).astype(
-                    str
-                )
+                + (x["yyyyq"].astype(str).str[4].astype(int) * 3 - 2).astype(str)
                 + "-01"
             )
         ).drop(columns=["yyyyq"])
@@ -596,9 +584,7 @@ def _download_data_macro_predictors(
     ).assign(
         IndexDiv=lambda df: df["Index"] + df["D12"],
         logret=lambda df: (
-            df["IndexDiv"]
-            .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
-            .diff()
+            df["IndexDiv"].apply(lambda x: np.nan if pd.isna(x) else np.log(x)).diff()
         ),
         rp_div=lambda df: df["logret"].shift(-1) - df["Rfree"],
         log_d12=lambda df: df["D12"].apply(
@@ -613,9 +599,7 @@ def _download_data_macro_predictors(
         ),
         dy=lambda df: (
             df["log_d12"]
-            - df["Index"]
-            .shift(1)
-            .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+            - df["Index"].shift(1).apply(lambda x: np.nan if pd.isna(x) else np.log(x))
         ),
         ep=lambda df: (
             df["log_e12"]
@@ -729,9 +713,7 @@ def _download_data_constituents(
             f"Supported indexes: {', '.join(supported_indexes['index'])}"
         )
 
-    url = supported_indexes.loc[
-        supported_indexes["index"] == index, "url"
-    ].values[0]
+    url = supported_indexes.loc[supported_indexes["index"] == index, "url"].values[0]
     skip_rows = supported_indexes.loc[
         supported_indexes["index"] == index, "skip"
     ].values[0]
@@ -925,11 +907,7 @@ def _download_data_fred(
                                 x[x.columns[x.columns.str.contains("date")][0]]
                             ),
                             value=lambda x: pd.to_numeric(
-                                x[
-                                    x.columns[~x.columns.str.contains("date")][
-                                        0
-                                    ]
-                                ],
+                                x[x.columns[~x.columns.str.contains("date")][0]],
                                 errors="coerce",
                             ),
                             series=s,
@@ -955,9 +933,9 @@ def _download_data_fred(
 
     fred_data = pd.concat(fred_data, ignore_index=True)
     if start_date and end_date:
-        fred_data = fred_data.query(
-            "@start_date <= date <= @end_date"
-        ).reset_index(drop=True)
+        fred_data = fred_data.query("@start_date <= date <= @end_date").reset_index(
+            drop=True
+        )
     return fred_data
 
 
@@ -1008,9 +986,7 @@ def _download_data_stock_prices(
     ):
         raise ValueError("symbols must be a list of stock symbols (strings).")
 
-    start_date, end_date = _validate_dates(
-        start_date, end_date, use_default_range=True
-    )
+    start_date, end_date = _validate_dates(start_date, end_date, use_default_range=True)
 
     start_timestamp = int(start_date.timestamp())
     end_timestamp = int(end_date.timestamp())
@@ -1026,9 +1002,7 @@ def _download_data_stock_prices(
 
         headers = {"User-Agent": _get_random_user_agent()}
         try:
-            response = requests.get(
-                url, impersonate="chrome120", headers=headers
-            )
+            response = requests.get(url, impersonate="chrome120", headers=headers)
         except Exception:
             response = requests.get(url, impersonate="chrome120")
 
@@ -1045,9 +1019,7 @@ def _download_data_stock_prices(
 
             timestamps = raw_data[0]["timestamp"]
             indicators = raw_data[0]["indicators"]["quote"][0]
-            adjusted_close = raw_data[0]["indicators"]["adjclose"][0][
-                "adjclose"
-            ]
+            adjusted_close = raw_data[0]["indicators"]["adjclose"][0]["adjclose"]
 
             df_symbol = pd.DataFrame().assign(
                 date=pd.to_datetime(
@@ -1172,9 +1144,7 @@ def _download_data_osap(
             .dt.start_time
         )
 
-    raw_data.columns = [
-        _transfrom_to_snake_case(col) for col in raw_data.columns
-    ]
+    raw_data.columns = [_transfrom_to_snake_case(col) for col in raw_data.columns]
 
     # All columns except the date are long-short returns in percent, so
     # scale them to plain numeric (decimal) returns.
