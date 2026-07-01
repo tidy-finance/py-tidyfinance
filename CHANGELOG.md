@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Added Global Factor Data, Pastor-Stambaugh, and Stambaugh-Yuan
+  downloads:** `download_data("Global Factor Data")` downloads
+  characteristic-managed portfolio returns, the underlying long-short
+  portfolios, industry returns, or reference cutoff files from
+  [Global Factor Data](https://jkpfactors.com/data) (Jensen, Kelly, and
+  Pedersen, 2023); the requested selection is validated against the
+  library's live availability manifest, and
+  `list_supported_jkp_factors()` lists the available regions and
+  factors. `download_data("Pastor-Stambaugh")` downloads the liquidity
+  factors of Pastor and Stambaugh (2003). `download_data("Stambaugh-Yuan")`
+  downloads the mispricing factors of Stambaugh and Yuan (2017), with a
+  `dataset` argument selecting `"monthly"` (default) or `"daily"` data.
 - **OSAP download aligned with beginning-of-month and scaled returns:**
   `download_data("Open Source Asset Pricing")` now aligns the `date`
   column to the beginning of the month (the dataset previously returned

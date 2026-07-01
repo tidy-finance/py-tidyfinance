@@ -2066,6 +2066,21 @@ _OTHER_DATASETS = [
         "domain": "Open Source Asset Pricing",
     },
     {
+        "type": "jkp",
+        "dataset_name": "Global Factor Data",
+        "domain": "Global Factor Data",
+    },
+    {
+        "type": "liquidity",
+        "dataset_name": "Liquidity Factors",
+        "domain": "Pastor-Stambaugh",
+    },
+    {
+        "type": "mispricing",
+        "dataset_name": "Mispricing Factors",
+        "domain": "Stambaugh-Yuan",
+    },
+    {
         "type": "risk_free",
         "dataset_name": "Risk-Free Rate",
         "domain": "Tidy Finance",
@@ -2157,6 +2172,7 @@ _SIMPLE_DOMAINS: tuple[str, ...] = (
     "fred",
     "stock_prices",
     "osap",
+    "jkp",
 )
 
 
@@ -2172,6 +2188,9 @@ _SUPPORTED_DOMAINS: tuple[str, ...] = (
     "FRED",
     "Stock Prices",
     "Open Source Asset Pricing",
+    "Global Factor Data",
+    "Pastor-Stambaugh",
+    "Stambaugh-Yuan",
     "Tidy Finance",
 )
 
@@ -2192,6 +2211,7 @@ _DOMAIN_ALIASES: dict[str, str] = {
     "fred": "FRED",
     "stock_prices": "Stock Prices",
     "osap": "Open Source Asset Pricing",
+    "jkp": "Global Factor Data",
     "tidyfinance": "Tidy Finance",
 }
 
@@ -2330,7 +2350,10 @@ def _is_legacy_type(x: str) -> bool:
     would succeed on it and it is not one of the simple domain names
     listed in '_SIMPLE_DOMAINS' (those are already valid domains in
     their own right). 'Tidy Finance' domain 'other' datasets such as
-    'risk_free' or 'factor_library' are not treated as legacy either.
+    'risk_free' or 'factor_library' are not treated as legacy either,
+    nor are the 'liquidity' and 'mispricing' 'other' rows (the
+    'Pastor-Stambaugh' and 'Stambaugh-Yuan' domains have no short
+    legacy alias).
 
     Parameters
     ----------
@@ -2351,11 +2374,15 @@ def _is_legacy_type(x: str) -> bool:
     known_types.update(row["type"] for row in _Q_DATASETS)
     known_types.update(row["type"] for row in _MACRO_DATASETS)
     known_types.update(row["type"] for row in _WRDS_DATASETS)
-    # "other" rows that are NOT in the tidyfinance domain and NOT "osap"
+    # "other" rows that are NOT in the tidyfinance domain and are not
+    # one of the domains with their own simple-domain alias/"other" row
+    # ("osap", "jkp", "liquidity", "mispricing")
+    excluded_other_types = {"osap", "jkp", "liquidity", "mispricing"}
     known_types.update(
         row["type"]
         for row in _OTHER_DATASETS
-        if row["domain"] != "Tidy Finance" and row["type"] != "osap"
+        if row["domain"] != "Tidy Finance"
+        and row["type"] not in excluded_other_types
     )
 
     return x in known_types

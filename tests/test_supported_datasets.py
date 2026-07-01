@@ -174,6 +174,7 @@ def test_parse_type_hf_prefix():
         ("fred", "FRED"),
         ("stock_prices", "Stock Prices"),
         ("osap", "Open Source Asset Pricing"),
+        ("jkp", "Global Factor Data"),
     ],
 )
 def test_parse_type_simple_domain(simple, canonical):
@@ -189,10 +190,17 @@ def test_parse_type_unknown_raises():
 
 
 @pytest.mark.parametrize(
-    "simple", ["constituents", "fred", "stock_prices", "osap"]
+    "simple", ["constituents", "fred", "stock_prices", "osap", "jkp"]
 )
 def test_is_legacy_type_false_for_simple_domains(simple):
     assert _is_legacy_type(simple) is False
+
+
+@pytest.mark.parametrize("other_type", ["liquidity", "mispricing"])
+def test_is_legacy_type_false_for_other_domain_specific_types(other_type):
+    # 'liquidity' (Pastor-Stambaugh) and 'mispricing' (Stambaugh-Yuan)
+    # have no short legacy alias and must not be treated as legacy.
+    assert _is_legacy_type(other_type) is False
 
 
 def test_is_legacy_type_true_for_ff_type():
@@ -232,6 +240,9 @@ def test_is_legacy_type_false_for_unknown_string():
         "FRED",
         "Stock Prices",
         "Open Source Asset Pricing",
+        "Global Factor Data",
+        "Pastor-Stambaugh",
+        "Stambaugh-Yuan",
         "Tidy Finance",
     ],
 )
@@ -262,6 +273,7 @@ def test_check_supported_domain_rejects_unknown():
         ("fred", "FRED"),
         ("stock_prices", "Stock Prices"),
         ("osap", "Open Source Asset Pricing"),
+        ("jkp", "Global Factor Data"),
         ("tidyfinance", "Tidy Finance"),
     ],
 )

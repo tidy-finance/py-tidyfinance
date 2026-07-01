@@ -9,12 +9,18 @@ from .download_open_source import (
     _download_data_factors_ff,
     _download_data_factors_q,
     _download_data_fred,
+    _download_data_jkp,
     _download_data_macro_predictors,
     _download_data_osap,
+    _download_data_pastor_stambaugh,
+    _download_data_stambaugh_yuan,
     _download_data_stock_prices,
 )
 from .download_pseudo import _simulate_pseudo_data
-from .download_tidy_finance import _download_data_huggingface, _download_data_risk_free
+from .download_tidy_finance import (
+    _download_data_huggingface,
+    _download_data_risk_free,
+)
 from .download_wrds import _download_data_wrds
 from .supported_datasets import (
     _check_supported_domain,
@@ -48,9 +54,11 @@ def download_data(
         canonical names returned by 'list_supported_datasets()':
         'Fama-French', 'Global Q', 'Goyal-Welch', 'WRDS', 'Pseudo Data',
         'Index Constituents', 'FRED', 'Stock Prices',
-        'Open Source Asset Pricing', 'Tidy Finance'. The previous
-        short names (e.g. 'famafrench', 'wrds', 'pseudo') are still
-        accepted but deprecated and will be removed in a future release.
+        'Open Source Asset Pricing', 'Global Factor Data',
+        'Pastor-Stambaugh', 'Stambaugh-Yuan', 'Tidy Finance'. The
+        previous short names (e.g. 'famafrench', 'wrds', 'pseudo') are
+        still accepted but deprecated and will be removed in a future
+        release.
     dataset : str, optional
         The specific dataset to download within the domain.
     start_date : str, optional
@@ -70,7 +78,11 @@ def download_data(
         Additional arguments passed to specific download functions
         depending on 'domain'. For instance, if 'domain' is
         'Index Constituents', arguments are passed to
-        '_download_data_constituents'. If 'domain' is 'Tidy Finance' and
+        '_download_data_constituents'. If 'domain' is
+        'Global Factor Data', the 'dataset' argument and arguments
+        such as 'region', 'factors', 'classification', 'frequency',
+        and 'weighting' are passed to '_download_data_jkp'. If
+        'domain' is 'Tidy Finance' and
         'dataset' is 'factor_library', arguments are either filter
         inputs (e.g., 'sorting_variable', 'rebalancing', 'fill_all') or
         an explicit 'ids' vector that bypasses the grid filter and
@@ -101,6 +113,19 @@ def download_data(
     download_data('Index Constituents', index='DAX')
     download_data('FRED', series=['GDP', 'CPIAUCNS'])
     download_data('Stock Prices', symbols=['AAPL', 'MSFT'])
+    download_data(
+        'Global Factor Data',
+        region='usa',
+        factors='mkt',
+        start_date='2000-01-01',
+        end_date='2020-12-31',
+    )
+    download_data(
+        'Pastor-Stambaugh', '2020-01-01', '2020-12-31'
+    )
+    download_data(
+        'Stambaugh-Yuan', 'monthly', '2015-01-01', '2016-12-31'
+    )
     download_data(
         'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
     )
@@ -174,6 +199,24 @@ def download_data(
     elif domain == "Open Source Asset Pricing":
         processed_data = _download_data_osap(
             start_date=start_date, end_date=end_date, **kwargs
+        )
+    elif domain == "Global Factor Data":
+        processed_data = _download_data_jkp(
+            dataset=dataset if dataset is not None else "factors",
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
+        )
+    elif domain == "Pastor-Stambaugh":
+        processed_data = _download_data_pastor_stambaugh(
+            start_date=start_date, end_date=end_date, **kwargs
+        )
+    elif domain == "Stambaugh-Yuan":
+        processed_data = _download_data_stambaugh_yuan(
+            dataset=dataset if dataset is not None else "monthly",
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
         )
     elif domain == "Tidy Finance":
         if dataset == "risk_free":
