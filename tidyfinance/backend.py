@@ -101,7 +101,9 @@ def _convert_output(obj):
     unchanged. With the '"polars"' backend, a pandas data frame is
     converted via :func:'polars.from_pandas'. A non-default index (a
     named index or a non-'RangeIndex', such as a date index) is
-    preserved as a column, since polars has no concept of an index.
+    preserved as a column, since polars has no concept of an index. A
+    'date' column is cast to 'polars.Date' so it prints as
+    'YYYY-MM-DD' instead of a datetime with a trailing zero time.
     """
     if get_backend() != "polars":
         return obj
@@ -116,7 +118,10 @@ def _convert_output(obj):
     include_index = not (
         isinstance(obj.index, pd.RangeIndex) and obj.index.name is None
     )
-    return pl.from_pandas(obj, include_index=include_index)
+    out = pl.from_pandas(obj, include_index=include_index)
+    if "date" in out.columns and out.schema["date"] == pl.Datetime:
+        out = out.with_columns(pl.col("date").cast(pl.Date))
+    return out
 
 
 def _use_backend(func):

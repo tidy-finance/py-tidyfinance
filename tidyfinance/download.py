@@ -4,20 +4,24 @@ import warnings
 
 import pandas as pd
 
-from .download_open_source import (_download_data_constituents,
-                                   _download_data_factors_ff,
-                                   _download_data_factors_q,
-                                   _download_data_fred,
-                                   _download_data_macro_predictors,
-                                   _download_data_osap,
-                                   _download_data_stock_prices)
+from .download_open_source import (
+    _download_data_constituents,
+    _download_data_factors_ff,
+    _download_data_factors_q,
+    _download_data_fred,
+    _download_data_macro_predictors,
+    _download_data_osap,
+    _download_data_stock_prices,
+)
 from .download_pseudo import _simulate_pseudo_data
-from .download_tidy_finance import (_download_data_huggingface,
-                                    _download_data_risk_free)
+from .download_tidy_finance import _download_data_huggingface, _download_data_risk_free
 from .download_wrds import _download_data_wrds
-from .supported_datasets import (_check_supported_domain, _is_legacy_type,
-                                 _parse_type_to_domain_dataset,
-                                 _resolve_domain_alias)
+from .supported_datasets import (
+    _check_supported_domain,
+    _is_legacy_type,
+    _parse_type_to_domain_dataset,
+    _resolve_domain_alias,
+)
 
 
 def download_data(

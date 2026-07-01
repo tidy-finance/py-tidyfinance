@@ -89,9 +89,7 @@ def create_summary_statistics(
     """
     # Check that all specified variables are numeric or boolean
     non_numeric_vars = [
-        var
-        for var in variables
-        if not pd.api.types.is_numeric_dtype(data[var].dtype)
+        var for var in variables if not pd.api.types.is_numeric_dtype(data[var].dtype)
     ]
     if non_numeric_vars:
         raise ValueError(
@@ -102,9 +100,7 @@ def create_summary_statistics(
     # Cast boolean columns to float so they survive `describe()`, which
     # drops bool dtype by default. The mean of the cast column then
     # equals the proportion of True in the original.
-    bool_cols = [
-        v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)
-    ]
+    bool_cols = [v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)]
     if bool_cols:
         data = data.copy()
         for c in bool_cols:
@@ -116,9 +112,7 @@ def create_summary_statistics(
 
     # Compute summary statistics using describe
     percentiles = (
-        [0.5]
-        if not detail
-        else [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
+        [0.5] if not detail else [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
     )
 
     if by:

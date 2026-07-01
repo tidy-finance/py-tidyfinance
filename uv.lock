@@ -2750,7 +2750,7 @@ wheels = [
 
 [[package]]
 name = "tidyfinance"
-version = "0.3.1.dev1"
+version = "0.3.1.dev2"
 source = { editable = "." }
 dependencies = [
     { name = "curl-cffi" },

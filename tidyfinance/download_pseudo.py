@@ -97,10 +97,7 @@ def _simulate_pseudo_identifiers(
     exchange = rng.choice(exchanges, size=n_assets, p=exchange_probs)
     industry = rng.choice(industries, size=n_assets, p=industry_probs)
     siccd = np.array(
-        [
-            rng.integers(_SIC_RANGES[ind][0], _SIC_RANGES[ind][1] + 1)
-            for ind in industry
-        ]
+        [rng.integers(_SIC_RANGES[ind][0], _SIC_RANGES[ind][1] + 1) for ind in industry]
     )
 
     return pd.DataFrame(
@@ -312,9 +309,7 @@ def _download_data_pseudo_crsp(
             "datasets: 'crsp_monthly', 'crsp_daily'."
         )
 
-    start_date, end_date = _validate_dates(
-        start_date, end_date, use_default_range=True
-    )
+    start_date, end_date = _validate_dates(start_date, end_date, use_default_range=True)
 
     identifiers = _simulate_pseudo_identifiers(n_assets=n_assets, seed=seed)
 
@@ -328,9 +323,7 @@ def _download_data_pseudo_crsp(
         )
 
     if add_ccm_links:
-        panel = panel.merge(
-            identifiers[["permno", "gvkey"]], on="permno", how="left"
-        )
+        panel = panel.merge(identifiers[["permno", "gvkey"]], on="permno", how="left")
 
     return panel
 
@@ -585,9 +578,7 @@ def _download_data_pseudo_compustat(
             "'compustat_quarterly'."
         )
 
-    start_date, end_date = _validate_dates(
-        start_date, end_date, use_default_range=True
-    )
+    start_date, end_date = _validate_dates(start_date, end_date, use_default_range=True)
 
     identifiers = _simulate_pseudo_identifiers(n_assets=n_assets, seed=seed)
 
@@ -639,9 +630,7 @@ def _simulate_pseudo_compustat_annual(
         Compustat-style accounting columns, followed by any requested
         'additional_columns'.
     """
-    years = np.arange(
-        pd.Timestamp(start_date).year, pd.Timestamp(end_date).year + 1
-    )
+    years = np.arange(pd.Timestamp(start_date).year, pd.Timestamp(end_date).year + 1)
     rng = np.random.default_rng(seed + 4)
 
     panel = (
@@ -702,9 +691,7 @@ def _simulate_pseudo_compustat_annual(
             panel["seq"]
             .combine_first(panel["ceq"] + panel["pstk"])
             .combine_first(panel["at"] - panel["lt"])
-            + panel["txditc"]
-            .combine_first(panel["txdb"] + panel["itcb"])
-            .fillna(0)
+            + panel["txditc"].combine_first(panel["txdb"] + panel["itcb"]).fillna(0)
             - panel["pstkrv"]
             .combine_first(panel["pstkl"])
             .combine_first(panel["pstk"])
@@ -728,9 +715,7 @@ def _simulate_pseudo_compustat_annual(
     )
     panel = panel.merge(lag, on=["gvkey", "year"], how="left")
     panel = panel.assign(
-        inv=np.where(
-            panel["at_lag"] <= 0, np.nan, panel["at"] / panel["at_lag"] - 1
-        )
+        inv=np.where(panel["at_lag"] <= 0, np.nan, panel["at"] / panel["at_lag"] - 1)
     )
 
     first_cols = ["gvkey", "date", "datadate"]

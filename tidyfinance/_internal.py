@@ -72,9 +72,7 @@ def _validate_dates(
             )
             return start_date.date(), end_date.date()
         else:
-            print("No start_date or end_date provided. "
-                  "Returning the full dataset."
-                  )
+            print("No start_date or end_date provided. " "Returning the full dataset.")
             return None, None
 
     start_date = _parse_date(start_date, is_end=False) if start_date else None
@@ -132,9 +130,7 @@ def _transfrom_to_snake_case(column_name):
     """
     column_name = re.sub(r"(?<!^)(?=[A-Z])", "_", column_name)
     column_name = column_name.replace(" ", "_").replace("-", "_").lower()
-    column_name = "".join(
-        c if c.isalnum() or c == "_" else "_" for c in column_name
-    )
+    column_name = "".join(c if c.isalnum() or c == "_" else "_" for c in column_name)
 
     while "__" in column_name:
         column_name = column_name.replace("__", "_")

@@ -128,9 +128,7 @@ def add_lagged_columns(
     if by_list:
         missing_by = [c for c in by_list if c not in data.columns]
         if missing_by:
-            raise ValueError(
-                f"'data' is missing grouping column(s): {missing_by}."
-            )
+            raise ValueError(f"'data' is missing grouping column(s): {missing_by}.")
 
     join_cols = by_list + [date_col]
     if data[join_cols].duplicated().any():
@@ -149,9 +147,7 @@ def add_lagged_columns(
     for col in cols:
         lag_col_name = f"{col}_lag"
         if lag_col_name in result.columns:
-            raise ValueError(
-                f"Column '{lag_col_name}' already exists in 'data'."
-            )
+            raise ValueError(f"Column '{lag_col_name}' already exists in 'data'.")
 
         lagged = data[join_cols + [col]].copy()
 
@@ -240,9 +236,9 @@ def _window_lag_join(
     left_sorted["_upper"] = pd.to_datetime(left_sorted["_upper"]).astype(
         "datetime64[ns]"
     )
-    right_sorted["_src_date"] = pd.to_datetime(
-        right_sorted["_src_date"]
-    ).astype("datetime64[ns]")
+    right_sorted["_src_date"] = pd.to_datetime(right_sorted["_src_date"]).astype(
+        "datetime64[ns]"
+    )
 
     merged = pd.merge_asof(
         left_sorted,
@@ -253,15 +249,11 @@ def _window_lag_join(
         direction="backward",
     )
 
-    mask = merged["_src_date"].notna() & (
-        merged["_src_date"] >= merged["_lower"]
-    )
+    mask = merged["_src_date"].notna() & (merged["_src_date"] >= merged["_lower"])
     merged.loc[~mask, lag_col_name] = np.nan
 
     merged = merged.sort_values("_orig_idx", kind="mergesort")
-    merged = merged.drop(columns=["_orig_idx", "_src_date"]).reset_index(
-        drop=True
-    )
+    merged = merged.drop(columns=["_orig_idx", "_src_date"]).reset_index(drop=True)
     return merged
 
 
@@ -343,18 +335,14 @@ def join_lagged_values(
 
     if isinstance(id_keys, str):
         id_keys = [id_keys]
-    if not isinstance(id_keys, list) or not all(
-        isinstance(k, str) for k in id_keys
-    ):
+    if not isinstance(id_keys, list) or not all(isinstance(k, str) for k in id_keys):
         raise ValueError("'id_keys' must be a string or list of strings.")
 
     min_lag_offset = _to_offset(min_lag)
     max_lag_offset = _to_offset(max_lag)
 
     if date_col not in original_data.columns:
-        raise ValueError(
-            f"'original_data' must contain the column '{date_col}'."
-        )
+        raise ValueError(f"'original_data' must contain the column '{date_col}'.")
     if date_col not in new_data.columns:
         raise ValueError(f"'new_data' must contain the column '{date_col}'.")
 
@@ -368,13 +356,10 @@ def join_lagged_values(
     if missing_new:
         raise ValueError(f"'new_data' is missing id column(s): {missing_new}.")
 
-    new_column_names = [
-        c for c in new_data.columns if c not in id_keys + [date_col]
-    ]
+    new_column_names = [c for c in new_data.columns if c not in id_keys + [date_col]]
     if not new_column_names:
         raise ValueError(
-            f"'new_data' must contain columns besides {id_keys} and "
-            f"'{date_col}'."
+            f"'new_data' must contain columns besides {id_keys} and " f"'{date_col}'."
         )
 
     original_non_key = [
@@ -409,9 +394,7 @@ def join_lagged_values(
         if ff_adjustment:
             grp_cols = id_keys + ["_year"]
             max_dates = tmp.groupby(grp_cols)[date_col].transform("max")
-            tmp = tmp[tmp[date_col] == max_dates].drop(
-                columns=[date_col, "_year"]
-            )
+            tmp = tmp[tmp[date_col] == max_dates].drop(columns=[date_col, "_year"])
         else:
             tmp = tmp.drop(columns=[date_col])
 
@@ -444,9 +427,9 @@ def join_lagged_values(
         merged.loc[~mask, col] = np.nan
 
         merged = merged.sort_values("_orig_idx", kind="mergesort")
-        merged = merged.drop(
-            columns=["_orig_idx", "_lower", "_upper"]
-        ).reset_index(drop=True)
+        merged = merged.drop(columns=["_orig_idx", "_lower", "_upper"]).reset_index(
+            drop=True
+        )
         result = merged
 
     return result
@@ -522,9 +505,7 @@ def compute_rolling_value(
     date_col = data_options.get("date")
 
     if not isinstance(date_col, str):
-        raise ValueError(
-            "'date' in data_options must be a single non-missing string."
-        )
+        raise ValueError("'date' in data_options must be a single non-missing string.")
 
     if date_col not in data.columns:
         raise ValueError(f"'data' must contain a '{date_col}' column.")
