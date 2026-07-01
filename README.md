@@ -106,6 +106,56 @@ tf.download_data(
 )
 ```
 
+To download characteristic-managed portfolio (factor) returns from [Global Factor Data](https://jkpfactors.com/data), select a region, the factor content (a single factor, a theme, `"all_themes"`, or `"all_factors"`), a frequency, and a weighting scheme:
+
+```python
+tf.download_data(
+  domain="Global Factor Data",
+  region="usa",
+  factors="all_factors",
+  frequency="monthly",
+  weighting="vw_cap",
+  start_date="2020-01-01",
+  end_date="2020-12-31"
+)
+```
+
+The `dataset` argument also gives access to the underlying long-short portfolios (`"portfolios"`), industry returns (`"industry"`), and the reference files `"nyse_cutoffs"` and `"return_cutoffs"`:
+
+```python
+tf.download_data(
+  domain="Global Factor Data",
+  dataset="industry",
+  region="usa",
+  classification="gics",
+  start_date="2020-01-01",
+  end_date="2020-12-31"
+)
+```
+
+Use `tf.list_supported_jkp_factors()` to see the available regions, or `tf.list_supported_jkp_factors("usa")` to see the factors available for a region.
+
+To download the liquidity factors of Pastor and Stambaugh (2003) from [Lubos Pastor's data library](https://faculty.chicagobooth.edu/lubos-pastor/data):
+
+```python
+tf.download_data(
+  domain="Pastor-Stambaugh",
+  start_date="2020-01-01",
+  end_date="2020-12-31"
+)
+```
+
+To download the mispricing factors of Stambaugh and Yuan (2017) from [Robert Stambaugh's data library](https://finance.wharton.upenn.edu/~stambaug/), optionally selecting `"monthly"` (the default) or `"daily"` data. Note that the source files currently end in December 2016:
+
+```python
+tf.download_data(
+  domain="Stambaugh-Yuan",
+  dataset="monthly",
+  start_date="2015-01-01",
+  end_date="2016-12-31"
+)
+```
+
 To download multiple series from the Federal Reserve Economic Data (FRED):
 
 ```python

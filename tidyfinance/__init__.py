@@ -87,6 +87,7 @@ _BACKEND_WRAPPED = (
     "download_data",
     "list_supported_datasets",
     "list_supported_indexes",
+    "list_supported_jkp_factors",
     "process_trace_data",
 )
 for _name in _BACKEND_WRAPPED:

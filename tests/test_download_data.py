@@ -95,6 +95,47 @@ def test_download_data_pseudo_dispatches_to_simulate():
     assert {"permno", "date", "ret"}.issubset(result.columns)
 
 
+def test_download_data_forwards_dataset_to_global_factor_data():
+    """A missing 'dataset' defaults to 'factors'; explicit values pass through."""
+    with patch("tidyfinance.download._download_data_jkp") as mock_jkp:
+        mock_jkp.return_value = "sentinel"
+
+        download_data(domain="Global Factor Data")
+        assert mock_jkp.call_args.kwargs["dataset"] == "factors"
+
+        download_data(domain="Global Factor Data", dataset="industry")
+        assert mock_jkp.call_args.kwargs["dataset"] == "industry"
+
+
+def test_download_data_forwards_dataset_to_stambaugh_yuan():
+    """A missing 'dataset' defaults to 'monthly'; explicit values pass through."""
+    with patch("tidyfinance.download._download_data_stambaugh_yuan") as mock_sy:
+        mock_sy.return_value = "sentinel"
+
+        download_data(domain="Stambaugh-Yuan")
+        assert mock_sy.call_args.kwargs["dataset"] == "monthly"
+
+        download_data(domain="Stambaugh-Yuan", dataset="daily")
+        assert mock_sy.call_args.kwargs["dataset"] == "daily"
+
+
+def test_download_data_dispatches_pastor_stambaugh():
+    """domain='Pastor-Stambaugh' routes to _download_data_pastor_stambaugh."""
+    with patch(
+        "tidyfinance.download._download_data_pastor_stambaugh",
+        return_value="sentinel",
+    ) as mock_ps:
+        result = download_data(
+            domain="Pastor-Stambaugh",
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+        )
+    assert result == "sentinel"
+    mock_ps.assert_called_once_with(
+        start_date="2020-01-01", end_date="2020-12-31"
+    )
+
+
 def test_download_data_legacy_domain_alias_warns():
     """Emit DeprecationWarning when a legacy machine-readable domain is used."""
     with patch(

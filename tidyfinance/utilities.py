@@ -1,5 +1,6 @@
 """Utility functions module for tidyfinance."""
 
+import warnings
 import webbrowser
 
 import numpy as np
@@ -89,7 +90,9 @@ def create_summary_statistics(
     """
     # Check that all specified variables are numeric or boolean
     non_numeric_vars = [
-        var for var in variables if not pd.api.types.is_numeric_dtype(data[var].dtype)
+        var
+        for var in variables
+        if not pd.api.types.is_numeric_dtype(data[var].dtype)
     ]
     if non_numeric_vars:
         raise ValueError(
@@ -100,7 +103,9 @@ def create_summary_statistics(
     # Cast boolean columns to float so they survive `describe()`, which
     # drops bool dtype by default. The mean of the cast column then
     # equals the proportion of True in the original.
-    bool_cols = [v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)]
+    bool_cols = [
+        v for v in variables if pd.api.types.is_bool_dtype(data[v].dtype)
+    ]
     if bool_cols:
         data = data.copy()
         for c in bool_cols:
@@ -112,7 +117,9 @@ def create_summary_statistics(
 
     # Compute summary statistics using describe
     percentiles = (
-        [0.5] if not detail else [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
+        [0.5]
+        if not detail
+        else [0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
     )
 
     if by:
@@ -228,6 +235,82 @@ def list_supported_indexes() -> pd.DataFrame:
         ),
     ]
     return pd.DataFrame(data, columns=["index", "url", "skip"])
+
+
+def list_supported_jkp_factors(
+    region: str = None, dataset: str = "factors"
+) -> pd.DataFrame:
+    """Return the regions and factors supported by Global Factor Data.
+
+    Queries the live availability manifest of
+    `Global Factor Data <https://jkpfactors.com/data>`_ and returns the
+    regions and selectors that can be passed to 'download_data_jkp'.
+
+    Parameters
+    ----------
+    region : str, optional
+        A region or country code. If provided, the function returns
+        the selectors (factor codes, or industry classifications when
+        'dataset="industry"') available for that region. If 'None'
+        (the default), it returns the available region codes.
+    dataset : str, default 'factors'
+        The Global Factor Data product to query, one of 'factors',
+        'portfolios', or 'industry'.
+
+    Returns
+    -------
+    pd.DataFrame
+        When 'region' is 'None', a data frame with a single 'region'
+        column listing the available region codes. When 'region' is
+        provided, a data frame with a 'region' column and a 'factor'
+        column listing the selectors (factor codes, or industry
+        classifications when 'dataset="industry"') available for that
+        region.
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import list_supported_jkp_factors
+    list_supported_jkp_factors()
+    list_supported_jkp_factors('usa')
+    list_supported_jkp_factors('usa', dataset='portfolios')
+    ```
+    """
+    # Imported lazily to avoid a circular import: 'download_open_source'
+    # imports 'list_supported_indexes' from this module at load time.
+    from .download_open_source import _fetch_jkp_availability
+
+    supported_datasets = ("factors", "portfolios", "industry")
+    if dataset not in supported_datasets:
+        raise ValueError(
+            f"Unsupported dataset: {dataset!r}. "
+            f"Supported datasets: {', '.join(supported_datasets)}."
+        )
+
+    try:
+        availability = _fetch_jkp_availability()
+    except Exception:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pd.DataFrame({"region": []})
+
+    regions = list(availability.get(dataset, {}).keys())
+
+    if region is None:
+        return pd.DataFrame({"region": regions})
+
+    if region not in regions:
+        raise ValueError(
+            f"Unsupported region: {region!r}. Use "
+            "list_supported_jkp_factors() to see valid regions."
+        )
+
+    return pd.DataFrame(
+        {"region": region, "factor": availability[dataset][region]}
+    )
 
 
 def list_tidy_finance_chapters() -> list:

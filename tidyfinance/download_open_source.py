@@ -10,7 +10,11 @@ import numpy as np
 import pandas as pd
 from curl_cffi import requests
 
-from ._internal import _get_random_user_agent, _transfrom_to_snake_case, _validate_dates
+from ._internal import (
+    _get_random_user_agent,
+    _transfrom_to_snake_case,
+    _validate_dates,
+)
 from .supported_datasets import (
     _check_supported_dataset_ff,
     _determine_frequency_ff,
@@ -47,11 +51,14 @@ def get_available_famafrench_datasets():
     response = requests.get(f"{ff_url}data_library.html")
     root = document_fromstring(response.content)
 
-    datasets = [e.attrib["href"] for e in root.findall(".//a") if "href" in e.attrib]
+    datasets = [
+        e.attrib["href"] for e in root.findall(".//a") if "href" in e.attrib
+    ]
     datasets = [
         dataset_i
         for dataset_i in datasets
-        if dataset_i.startswith(ff_url_prefix) and dataset_i.endswith(ff_url_suffix)
+        if dataset_i.startswith(ff_url_prefix)
+        and dataset_i.endswith(ff_url_suffix)
     ]
     datasets_list = list(
         map(lambda x: x[len(ff_url_prefix) : -len(ff_url_suffix)], datasets)
@@ -282,14 +289,18 @@ def _download_data_factors_ff(
                 raw_downloaded.reset_index()
                 .rename(
                     columns=lambda x: (
-                        x.lower().replace("-rf", "_excess").replace("rf", "risk_free")
+                        x.lower()
+                        .replace("-rf", "_excess")
+                        .replace("rf", "risk_free")
                         if isinstance(x, str)
                         else x
                     )
                 )
                 .apply(
                     lambda x: (
-                        x.replace([-99.99, -999], np.nan) if x.name != "date" else x
+                        x.replace([-99.99, -999], np.nan)
+                        if x.name != "date"
+                        else x
                     )
                 )
             )
@@ -405,16 +416,22 @@ def _download_data_factors_q(
         )
     try:
         raw_data = (
-            pd.read_csv(f"{url}{dataset}.csv", engine="python", on_bad_lines="skip")
+            pd.read_csv(
+                f"{url}{dataset}.csv", engine="python", on_bad_lines="skip"
+            )
             .rename(columns=lambda x: x.lower().replace("r_", ""))
             .rename(columns={"f": "risk_free", "mkt": "mkt_excess"})
         )
     except Exception as e:
-        raise ValueError(f"Could not download or parse dataset '{dataset}': {e}") from e
+        raise ValueError(
+            f"Could not download or parse dataset '{dataset}': {e}"
+        ) from e
 
     if "monthly" in dataset:
         raw_data = raw_data.assign(
-            date=pd.to_datetime(dict(year=raw_data.year, month=raw_data.month, day=1))
+            date=pd.to_datetime(
+                dict(year=raw_data.year, month=raw_data.month, day=1)
+            )
         ).drop(columns=["year", "month"])
     if "weekly" in dataset:
         raw_data = raw_data.assign(
@@ -559,7 +576,9 @@ def _download_data_macro_predictors(
             date=lambda x: pd.to_datetime(
                 x["yyyyq"].astype(str).str[:4]
                 + "-"
-                + (x["yyyyq"].astype(str).str[4].astype(int) * 3 - 2).astype(str)
+                + (x["yyyyq"].astype(str).str[4].astype(int) * 3 - 2).astype(
+                    str
+                )
                 + "-01"
             )
         ).drop(columns=["yyyyq"])
@@ -584,7 +603,9 @@ def _download_data_macro_predictors(
     ).assign(
         IndexDiv=lambda df: df["Index"] + df["D12"],
         logret=lambda df: (
-            df["IndexDiv"].apply(lambda x: np.nan if pd.isna(x) else np.log(x)).diff()
+            df["IndexDiv"]
+            .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+            .diff()
         ),
         rp_div=lambda df: df["logret"].shift(-1) - df["Rfree"],
         log_d12=lambda df: df["D12"].apply(
@@ -599,7 +620,9 @@ def _download_data_macro_predictors(
         ),
         dy=lambda df: (
             df["log_d12"]
-            - df["Index"].shift(1).apply(lambda x: np.nan if pd.isna(x) else np.log(x))
+            - df["Index"]
+            .shift(1)
+            .apply(lambda x: np.nan if pd.isna(x) else np.log(x))
         ),
         ep=lambda df: (
             df["log_e12"]
@@ -713,7 +736,9 @@ def _download_data_constituents(
             f"Supported indexes: {', '.join(supported_indexes['index'])}"
         )
 
-    url = supported_indexes.loc[supported_indexes["index"] == index, "url"].values[0]
+    url = supported_indexes.loc[
+        supported_indexes["index"] == index, "url"
+    ].values[0]
     skip_rows = supported_indexes.loc[
         supported_indexes["index"] == index, "skip"
     ].values[0]
@@ -907,7 +932,11 @@ def _download_data_fred(
                                 x[x.columns[x.columns.str.contains("date")][0]]
                             ),
                             value=lambda x: pd.to_numeric(
-                                x[x.columns[~x.columns.str.contains("date")][0]],
+                                x[
+                                    x.columns[~x.columns.str.contains("date")][
+                                        0
+                                    ]
+                                ],
                                 errors="coerce",
                             ),
                             series=s,
@@ -933,9 +962,9 @@ def _download_data_fred(
 
     fred_data = pd.concat(fred_data, ignore_index=True)
     if start_date and end_date:
-        fred_data = fred_data.query("@start_date <= date <= @end_date").reset_index(
-            drop=True
-        )
+        fred_data = fred_data.query(
+            "@start_date <= date <= @end_date"
+        ).reset_index(drop=True)
     return fred_data
 
 
@@ -986,7 +1015,9 @@ def _download_data_stock_prices(
     ):
         raise ValueError("symbols must be a list of stock symbols (strings).")
 
-    start_date, end_date = _validate_dates(start_date, end_date, use_default_range=True)
+    start_date, end_date = _validate_dates(
+        start_date, end_date, use_default_range=True
+    )
 
     start_timestamp = int(start_date.timestamp())
     end_timestamp = int(end_date.timestamp())
@@ -1002,7 +1033,9 @@ def _download_data_stock_prices(
 
         headers = {"User-Agent": _get_random_user_agent()}
         try:
-            response = requests.get(url, impersonate="chrome120", headers=headers)
+            response = requests.get(
+                url, impersonate="chrome120", headers=headers
+            )
         except Exception:
             response = requests.get(url, impersonate="chrome120")
 
@@ -1019,7 +1052,9 @@ def _download_data_stock_prices(
 
             timestamps = raw_data[0]["timestamp"]
             indicators = raw_data[0]["indicators"]["quote"][0]
-            adjusted_close = raw_data[0]["indicators"]["adjclose"][0]["adjclose"]
+            adjusted_close = raw_data[0]["indicators"]["adjclose"][0][
+                "adjclose"
+            ]
 
             df_symbol = pd.DataFrame().assign(
                 date=pd.to_datetime(
@@ -1144,7 +1179,9 @@ def _download_data_osap(
             .dt.start_time
         )
 
-    raw_data.columns = [_transfrom_to_snake_case(col) for col in raw_data.columns]
+    raw_data.columns = [
+        _transfrom_to_snake_case(col) for col in raw_data.columns
+    ]
 
     # All columns except the date are long-short returns in percent, so
     # scale them to plain numeric (decimal) returns.
@@ -1155,3 +1192,762 @@ def _download_data_osap(
         raw_data = raw_data.query("@start_date <= date <= @end_date")
 
     return raw_data.reset_index(drop=True)
+
+
+def _download_data_pastor_stambaugh(
+    start_date: str = None,
+    end_date: str = None,
+    url: str = (
+        "https://faculty.chicagobooth.edu/-/media/faculty/lubos-pastor/"
+        "data/liq_data_1962_2025.txt"
+    ),
+) -> pd.DataFrame:
+    """
+    Download and process Pastor-Stambaugh liquidity factors.
+
+    Downloads and processes the liquidity factor data of Pastor and
+    Stambaugh (2003) from
+    `Pastor's data library
+    <https://faculty.chicagobooth.edu/lubos-pastor/data>`_. The source
+    is a whitespace-delimited text file whose header lines start with
+    a percent sign. The function reads the three liquidity series,
+    aligns the monthly date to the beginning of the month, and
+    optionally filters the data based on a provided date range.
+
+    The series are already expressed as plain numeric (decimal) values
+    in the source data, so no rescaling is applied. The traded
+    liquidity factor is only available from 1968 onward; earlier
+    observations are coded as -99 in the source file and are returned
+    as NaN.
+
+    Parameters
+    ----------
+    start_date : str, optional
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full
+        dataset is returned.
+    end_date : str, optional
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
+    url : str, optional
+        The URL of the liquidity data file. Because the file name
+        embeds the last year of data, the default points to the most
+        recent file known at release time; override it when a newer
+        file becomes available.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame with the columns 'date' (aligned to the
+        beginning of the month), 'agg_liq' (levels of aggregate
+        liquidity), 'innov_liq' (innovations in aggregate liquidity,
+        the non-traded liquidity factor), and 'traded_liq' (the traded
+        liquidity factor LIQ_V), filtered by the specified date range
+        if 'start_date' and 'end_date' are provided.
+
+    References
+    ----------
+    Pastor, L., and Stambaugh, R. F. (2003). Liquidity risk and
+    expected stock returns. Journal of Political Economy, 111(3),
+    642-685. https://doi.org/10.1086/374184
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import download_data_pastor_stambaugh
+    pastor_stambaugh = download_data_pastor_stambaugh(
+        start_date='2020-01-01', end_date='2020-12-31'
+    )
+    ```
+    """
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    try:
+        raw_data = pd.read_csv(
+            url,
+            sep=r"\s+",
+            comment="%",
+            header=None,
+            names=["month", "agg_liq", "innov_liq", "traded_liq"],
+        )
+    except Exception:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pd.DataFrame()
+
+    if raw_data.empty:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return raw_data
+
+    # The traded factor is coded -99 before it becomes available (1968).
+    processed_data = raw_data.assign(
+        date=lambda x: pd.to_datetime(x["month"].astype(str), format="%Y%m")
+    )
+    liquidity_columns = ["agg_liq", "innov_liq", "traded_liq"]
+    processed_data[liquidity_columns] = processed_data[
+        liquidity_columns
+    ].replace(-99, np.nan)
+    processed_data = processed_data[["date", *liquidity_columns]]
+
+    if start_date and end_date:
+        processed_data = processed_data.query(
+            "@start_date <= date <= @end_date"
+        )
+
+    return processed_data.reset_index(drop=True)
+
+
+def _download_data_stambaugh_yuan(
+    dataset: str = "monthly",
+    start_date: str = None,
+    end_date: str = None,
+    url: str = "https://finance.wharton.upenn.edu/~stambaug/",
+) -> pd.DataFrame:
+    """
+    Download and process Stambaugh-Yuan mispricing factors.
+
+    Downloads and processes the mispricing factor data of Stambaugh
+    and Yuan (2017) from
+    `Stambaugh's data library
+    <https://finance.wharton.upenn.edu/~stambaug/>`_. The four-factor
+    model (M4) combines the market and size factors with two
+    mispricing factors, 'mgmt' (management) and 'perf' (performance).
+    The function downloads the requested frequency, aligns the date,
+    renames the columns to the package conventions, and optionally
+    filters the data based on a provided date range.
+
+    Returns are already expressed as plain numeric (decimal) values in
+    the source data, so no rescaling is applied. The source files
+    currently end in December 2016; a requested date range that lies
+    entirely outside the available data emits a warning and returns
+    an empty data frame.
+
+    Parameters
+    ----------
+    dataset : str, default 'monthly'
+        The data frequency to download, either 'monthly' or 'daily'.
+    start_date : str, optional
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full
+        dataset is returned.
+    end_date : str, optional
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
+    url : str, optional
+        The base URL from which to download the dataset files. The
+        file name ('M4.csv' or 'M4d.csv') is appended based on
+        'dataset'.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame with the columns 'date' (aligned to the
+        beginning of the month for monthly data), 'mkt_excess' (the
+        market excess return), 'smb' (size), 'mgmt' (the management
+        mispricing factor), 'perf' (the performance mispricing
+        factor), and 'risk_free' (the risk-free rate). All returns are
+        plain numeric (decimal) values, filtered by the specified
+        date range if 'start_date' and 'end_date' are provided.
+
+    References
+    ----------
+    Stambaugh, R. F., and Yuan, Y. (2017). Mispricing factors. Review
+    of Financial Studies, 30(4), 1270-1315.
+    https://doi.org/10.1093/rfs/hhw107
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import download_data_stambaugh_yuan
+    download_data_stambaugh_yuan(
+        start_date='2015-01-01', end_date='2016-12-31'
+    )
+    download_data_stambaugh_yuan(
+        dataset='daily', start_date='2016-01-01', end_date='2016-12-31'
+    )
+    ```
+    """
+    if dataset not in ("monthly", "daily"):
+        raise ValueError("'dataset' must be 'monthly' or 'daily'.")
+
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    file = "M4d.csv" if dataset == "daily" else "M4.csv"
+
+    try:
+        raw_data = pd.read_csv(f"{url}{file}")
+    except Exception:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pd.DataFrame()
+
+    if raw_data.empty:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return raw_data
+
+    # The monthly file keys rows by YYYYMM, the daily file by YYYYMMDD.
+    if dataset == "daily":
+        processed_data = raw_data.assign(
+            date=lambda x: pd.to_datetime(
+                x["DATE"].astype(str), format="%Y%m%d"
+            )
+        )
+    else:
+        processed_data = raw_data.assign(
+            date=lambda x: pd.to_datetime(
+                x["YYYYMM"].astype(str), format="%Y%m"
+            )
+        )
+
+    processed_data = processed_data.rename(
+        columns={
+            "MKTRF": "mkt_excess",
+            "SMB": "smb",
+            "MGMT": "mgmt",
+            "PERF": "perf",
+            "RF": "risk_free",
+        }
+    )[["date", "mkt_excess", "smb", "mgmt", "perf", "risk_free"]]
+
+    if start_date and end_date:
+        filtered_data = processed_data.query("@start_date <= date <= @end_date")
+
+        if filtered_data.empty:
+            available_start = processed_data["date"].min().date()
+            available_end = processed_data["date"].max().date()
+            warnings.warn(
+                "The requested date range lies outside the available "
+                "Stambaugh-Yuan data. Available data range: "
+                f"{available_start} to {available_end}.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        processed_data = filtered_data
+
+    return processed_data.reset_index(drop=True)
+
+
+_JKP_BASE_URL = "https://jkpfactors-data.s3.amazonaws.com"
+
+
+def _fetch_jkp_availability(max_tries: int = 3) -> dict:
+    """
+    Fetch the Global Factor Data availability manifest.
+
+    Downloads and parses the JSON availability manifest that lists the
+    regions, factors, and frequency restrictions offered by
+    `Global Factor Data <https://jkpfactors.com/data>`_.
+
+    Parameters
+    ----------
+    max_tries : int, default 3
+        Number of download attempts before giving up.
+
+    Returns
+    -------
+    dict
+        The parsed manifest, including the 'factors', 'portfolios',
+        and 'industry' keys (each mapping region codes to the
+        available selectors) and 'factors_monthly_only' (region codes
+        mapped to factors available at monthly frequency only).
+
+    Raises
+    ------
+    Exception
+        If the manifest could not be downloaded after 'max_tries'
+        attempts.
+    """
+    url = f"{_JKP_BASE_URL}/public/availability.json"
+    headers = {"User-Agent": _get_random_user_agent()}
+    last_error = None
+    for _ in range(max_tries):
+        try:
+            response = requests.get(
+                url, headers=headers, timeout=60, impersonate="chrome120"
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            last_error = e
+    raise last_error
+
+
+def _validate_jkp_selection(
+    availability: dict,
+    dataset: str,
+    region: str,
+    selector: str,
+    frequency: str,
+) -> None:
+    """
+    Validate a Global Factor Data selection against the manifest.
+
+    Parameters
+    ----------
+    availability : dict
+        The manifest returned by '_fetch_jkp_availability'.
+    dataset : str
+        One of 'factors', 'portfolios', or 'industry'.
+    region : str
+        The region or country code to validate.
+    selector : str
+        The factor code, theme, or industry classification to
+        validate.
+    frequency : str
+        Either 'monthly' or 'daily'.
+
+    Raises
+    ------
+    ValueError
+        If 'region' is not available for 'dataset', if 'selector' is
+        not available for 'region', or if 'selector' is only
+        available at monthly frequency but 'frequency' is 'daily'.
+    """
+    regions = list(availability.get(dataset, {}).keys())
+    if region not in regions:
+        raise ValueError(
+            f"Unsupported region: {region!r} for dataset {dataset!r}. "
+            "Use list_supported_jkp_factors(dataset="
+            f"{dataset!r}) to see valid regions."
+        )
+
+    available = availability[dataset][region]
+    if selector not in available:
+        raise ValueError(
+            f"Unsupported selection {selector!r} for region {region!r} "
+            f"in dataset {dataset!r}. Use list_supported_jkp_factors("
+            f"{region!r}, {dataset!r}) to see valid values."
+        )
+
+    if dataset == "factors":
+        monthly_only = availability.get("factors_monthly_only", {}).get(
+            region, []
+        )
+        if frequency == "daily" and selector in monthly_only:
+            raise ValueError(
+                f"{selector!r} is only available at monthly frequency "
+                f"for region {region!r}. Set frequency='monthly'."
+            )
+
+
+def _build_jkp_url(
+    dataset: str, region: str, selector: str, frequency: str, weighting: str
+) -> str:
+    """
+    Build the S3 download URL for a Global Factor Data archive.
+
+    Parameters
+    ----------
+    dataset : str
+        One of 'factors', 'portfolios', or 'industry'.
+    region : str
+        The region or country code.
+    selector : str
+        The factor code, theme, or industry classification.
+    frequency : str
+        Either 'monthly' or 'daily'. Ignored for 'industry', which is
+        only published at monthly frequency.
+    weighting : str
+        The portfolio weighting scheme.
+
+    Returns
+    -------
+    str
+        The URL of the zipped CSV archive.
+    """
+
+    def b(x: str) -> str:
+        # The S3 object keys wrap each selector in literal square
+        # brackets, which are URL-encoded as %5B and %5D.
+        return f"%5B{x}%5D"
+
+    if dataset == "factors":
+        return (
+            f"{_JKP_BASE_URL}/public/"
+            f"{b(region)}_{b(selector)}_{b(frequency)}_{b(weighting)}.zip"
+        )
+    elif dataset == "portfolios":
+        return (
+            f"{_JKP_BASE_URL}/public/portfolios/"
+            f"{b(region)}_{b(selector)}_{b(frequency)}_{b(weighting)}.zip"
+        )
+    else:
+        # The industry dataset is only published at monthly frequency.
+        return (
+            f"{_JKP_BASE_URL}/public/industry/"
+            f"{b(region)}_{b(selector)}_{b('monthly')}_{b(weighting)}.zip"
+        )
+
+
+def _build_jkp_reference_url(dataset: str, frequency: str) -> str:
+    """
+    Build the S3 download URL for a Global Factor Data reference file.
+
+    Parameters
+    ----------
+    dataset : str
+        Either 'nyse_cutoffs' or 'return_cutoffs'.
+    frequency : str
+        Either 'monthly' or 'daily'. Selects between the monthly and
+        daily 'return_cutoffs' file; ignored for 'nyse_cutoffs'.
+
+    Returns
+    -------
+    str
+        The URL of the plain CSV reference file.
+    """
+    base_url = f"{_JKP_BASE_URL}/public/other"
+
+    if dataset == "nyse_cutoffs":
+        return f"{base_url}/nyse_cutoffs.csv"
+    elif frequency == "daily":
+        return f"{base_url}/return_cutoffs_daily.csv"
+    else:
+        return f"{base_url}/return_cutoffs.csv"
+
+
+def _download_jkp_file(url: str, max_tries: int = 5) -> pd.DataFrame:
+    """
+    Download and read a zipped Global Factor Data CSV file.
+
+    Parameters
+    ----------
+    url : str
+        URL of the zipped CSV archive.
+    max_tries : int, default 5
+        Number of download attempts before giving up.
+
+    Returns
+    -------
+    pd.DataFrame
+        The first CSV file found in the archive.
+
+    Raises
+    ------
+    Exception
+        If the archive could not be downloaded after 'max_tries'
+        attempts.
+    ValueError
+        If no CSV file is found in the downloaded archive.
+    """
+    headers = {"User-Agent": _get_random_user_agent()}
+    last_error = None
+    response = None
+    for _ in range(max_tries):
+        try:
+            response = requests.get(
+                url, headers=headers, timeout=180, impersonate="chrome120"
+            )
+            response.raise_for_status()
+            break
+        except Exception as e:
+            last_error = e
+            response = None
+    if response is None:
+        raise last_error
+
+    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+        csv_names = [n for n in zf.namelist() if n.lower().endswith(".csv")]
+        if not csv_names:
+            raise ValueError("No CSV file found in the downloaded archive.")
+        with zf.open(csv_names[0]) as f:
+            return pd.read_csv(f, na_values=["na"])
+
+
+def _download_jkp_csv(url: str, max_tries: int = 5) -> pd.DataFrame:
+    """
+    Download and read a plain Global Factor Data CSV file.
+
+    Parameters
+    ----------
+    url : str
+        URL of the plain CSV file.
+    max_tries : int, default 5
+        Number of download attempts before giving up.
+
+    Returns
+    -------
+    pd.DataFrame
+        The parsed CSV file.
+
+    Raises
+    ------
+    Exception
+        If the file could not be downloaded after 'max_tries' attempts.
+    """
+    headers = {"User-Agent": _get_random_user_agent()}
+    last_error = None
+    for _ in range(max_tries):
+        try:
+            response = requests.get(
+                url, headers=headers, timeout=180, impersonate="chrome120"
+            )
+            response.raise_for_status()
+            return pd.read_csv(io.StringIO(response.text), na_values=["na"])
+        except Exception as e:
+            last_error = e
+    raise last_error
+
+
+def _process_jkp_data(
+    data: pd.DataFrame,
+    date_col: str,
+    frequency: str,
+    start_date,
+    end_date,
+) -> pd.DataFrame:
+    """
+    Normalize dates and filter a Global Factor Data table.
+
+    Parameters
+    ----------
+    data : pd.DataFrame
+        Raw data with a date-like column named 'date_col'.
+    date_col : str
+        Name of the date column in 'data'. Renamed to 'date' if it
+        differs.
+    frequency : str
+        Either 'monthly' or 'daily'. Monthly dates are aligned to the
+        beginning of the month.
+    start_date, end_date : Timestamp or None
+        Filter bounds. No filtering is applied if either is None.
+
+    Returns
+    -------
+    pd.DataFrame
+        The processed data, filtered by the specified date range if
+        both 'start_date' and 'end_date' are provided.
+    """
+    data = data.copy()
+    if date_col != "date":
+        data = data.rename(columns={date_col: "date"})
+
+    data["date"] = pd.to_datetime(data["date"])
+
+    if frequency == "monthly":
+        data["date"] = data["date"].dt.to_period("M").dt.start_time
+
+    if start_date is not None and end_date is not None:
+        data = data.query("@start_date <= date <= @end_date")
+
+    return data.reset_index(drop=True)
+
+
+def _download_data_jkp(
+    dataset: str = "factors",
+    region: str = "usa",
+    factors: str = "all_factors",
+    classification: str = "gics",
+    frequency: str = "monthly",
+    weighting: str = "vw_cap",
+    start_date: str = None,
+    end_date: str = None,
+) -> pd.DataFrame:
+    """
+    Download and process Global Factor Data.
+
+    Downloads and processes data from
+    `Global Factor Data <https://jkpfactors.com/data>`_, the public data
+    library accompanying Jensen, Kelly, and Pedersen (2023). The data
+    are stored as zipped CSV files (and a few plain CSV reference
+    files) in a public AWS S3 bucket. For the factor, portfolio, and
+    industry products the function validates the requested selection
+    against the library's live availability manifest, then downloads
+    the matching archive, unzips it, aligns monthly dates to the
+    beginning of the month, and optionally filters by a date range.
+
+    Returns are already expressed as plain numeric (decimal) values in
+    the source data, so no rescaling is applied. The data are licensed
+    under CC BY-NC 4.0 (non-commercial use).
+
+    Parameters
+    ----------
+    dataset : str, default 'factors'
+        The Global Factor Data product to download, one of:
+        'factors' (characteristic-managed portfolio returns),
+        'portfolios' (the underlying low/middle/high portfolios that
+        make up each long-short factor), 'industry' (industry
+        returns), 'nyse_cutoffs' (NYSE size breakpoints), or
+        'return_cutoffs' (return winsorization cutoffs).
+    region : str, default 'usa'
+        The region or country to download, using the codes from the
+        availability manifest (e.g., 'usa', 'world', 'developed',
+        'emerging', or an ISO-3 country code such as 'jpn'). Ignored
+        for the reference datasets 'nyse_cutoffs' and
+        'return_cutoffs'. Call 'list_supported_jkp_factors' to see the
+        available regions.
+    factors : str, default 'all_factors'
+        The factor content for the 'factors' and 'portfolios'
+        datasets. For 'factors': 'mkt' (the market factor),
+        'all_factors' (all factors), 'all_themes' (all themes), a
+        single theme (e.g., 'value', 'momentum'), or a single factor
+        code (e.g., 'be_me', 'ret_12_1'). For 'portfolios': a single
+        factor code. Call 'list_supported_jkp_factors(region, dataset)'
+        to see the values available for a region.
+    classification : str, default 'gics'
+        The industry classification for the 'industry' dataset,
+        either 'gics' or 'ff49' (Fama-French 49 industries).
+    frequency : str, default 'monthly'
+        The data frequency, either 'monthly' or 'daily'. The
+        'industry' dataset is only available at monthly frequency.
+        For 'return_cutoffs', the frequency selects the monthly or
+        daily cutoff file.
+    weighting : str, default 'vw_cap'
+        The portfolio weighting scheme: 'vw_cap' (capped
+        value-weighted), 'vw' (value-weighted), or 'ew'
+        (equal-weighted). Ignored for the reference datasets.
+    start_date : str, optional
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the start date for the data. If not provided, the full
+        dataset is returned.
+    end_date : str, optional
+        A character string or date in 'YYYY-MM-DD' format specifying
+        the end date for the data. If not provided, the full dataset
+        is returned.
+
+    Returns
+    -------
+    pd.DataFrame
+        A data frame with the processed data. The 'date' column is
+        aligned to the beginning of the month for monthly data, and
+        all returns are plain numeric (decimal) values. The remaining
+        columns depend on 'dataset': the 'factors' data carry
+        'location', 'name', 'freq', 'weighting', 'direction',
+        'n_stocks', 'n_stocks_min', and 'ret'; the 'portfolios' data
+        add a 'pf' portfolio identifier; the 'industry' data carry the
+        classification code alongside 'ret'; and the reference
+        datasets carry breakpoint or cutoff columns.
+
+    References
+    ----------
+    Jensen, T. I., Kelly, B. T., and Pedersen, L. H. (2023). Is there a
+    replication crisis in finance? Journal of Finance, 78(5),
+    2465-2518. https://doi.org/10.1111/jofi.13249
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import download_data_jkp
+    download_data_jkp(
+        region='usa', factors='mkt',
+        start_date='2000-01-01', end_date='2020-12-31',
+    )
+    download_data_jkp(
+        dataset='portfolios', region='usa', factors='be_me',
+        start_date='2000-01-01', end_date='2020-12-31',
+    )
+    download_data_jkp(dataset='industry', region='usa', classification='gics')
+    download_data_jkp(dataset='nyse_cutoffs')
+    ```
+    """
+    supported_datasets = (
+        "factors",
+        "portfolios",
+        "industry",
+        "nyse_cutoffs",
+        "return_cutoffs",
+    )
+    if dataset not in supported_datasets:
+        raise ValueError(
+            f"Unsupported dataset: {dataset!r}. "
+            f"Supported datasets: {', '.join(supported_datasets)}."
+        )
+
+    if frequency not in ("monthly", "daily"):
+        raise ValueError("'frequency' must be 'monthly' or 'daily'.")
+
+    start_date, end_date = _validate_dates(start_date, end_date)
+
+    # Reference datasets are plain CSV files that need neither manifest
+    # validation, weighting, nor a region selection.
+    if dataset in ("nyse_cutoffs", "return_cutoffs"):
+        url = _build_jkp_reference_url(dataset, frequency)
+        try:
+            raw_data = _download_jkp_csv(url)
+        except Exception:
+            raw_data = pd.DataFrame()
+
+        if raw_data.empty:
+            warnings.warn(
+                "Returning an empty dataset due to a download or "
+                "parsing failure.",
+                UserWarning,
+                stacklevel=2,
+            )
+            return raw_data
+
+        return _process_jkp_data(
+            raw_data,
+            date_col="eom",
+            frequency="monthly",
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+    if weighting not in ("vw_cap", "vw", "ew"):
+        raise ValueError("'weighting' must be one of 'vw_cap', 'vw', 'ew'.")
+
+    if dataset == "industry" and frequency == "daily":
+        raise ValueError(
+            "The 'industry' dataset is only available at monthly "
+            "frequency. Set frequency='monthly'."
+        )
+
+    try:
+        availability = _fetch_jkp_availability()
+    except Exception:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pd.DataFrame()
+
+    selector = classification if dataset == "industry" else factors
+    _validate_jkp_selection(availability, dataset, region, selector, frequency)
+
+    url = _build_jkp_url(dataset, region, selector, frequency, weighting)
+
+    try:
+        raw_data = _download_jkp_file(url)
+    except Exception:
+        raw_data = pd.DataFrame()
+
+    if raw_data.empty:
+        warnings.warn(
+            "Returning an empty dataset due to a download or parsing failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return raw_data
+
+    data_frequency = "monthly" if dataset == "industry" else frequency
+    processed_data = _process_jkp_data(
+        raw_data,
+        date_col="date",
+        frequency=data_frequency,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    if dataset == "portfolios" and "pf" in processed_data.columns:
+        processed_data["pf"] = processed_data["pf"].astype(int)
+
+    return processed_data
