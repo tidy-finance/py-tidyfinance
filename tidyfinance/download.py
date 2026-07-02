@@ -190,13 +190,13 @@ def download_data(
     elif domain == "Index Constituents":
         processed_data = _download_data_constituents(dataset=dataset, **kwargs)
     elif domain == "FRED":
-        processed_data = _download_data_fred(
-            start_date=start_date, end_date=end_date, **kwargs
-        )
-    elif domain in ("FRED-MD", "FRED-QD"):
-        # FRED-MD/QD are single-product databases (frequency implied by the name) selected by
-        # 'vintage', not by a dataset or date slice — the domain alone identifies them.
-        processed_data = _download_data_fred_md(database=domain, **kwargs)
+        if dataset in ("FRED-MD", "FRED-QD"):
+            # Curated McCracken-Ng databases (selected by 'vintage', not date-sliced).
+            processed_data = _download_data_fred_md(database=dataset, **kwargs)
+        else:
+            processed_data = _download_data_fred(
+                start_date=start_date, end_date=end_date, **kwargs
+            )
     elif domain == "Stock Prices":
         processed_data = _download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs

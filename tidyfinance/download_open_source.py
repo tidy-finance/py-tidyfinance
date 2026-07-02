@@ -1157,15 +1157,25 @@ def _download_data_fred_md(
         or ``'all'`` a ``'vintage'`` column (the ``YYYY-MM`` release label) is
         inserted after ``date``.
 
+    References
+    ----------
+    McCracken, M. W., and Ng, S. (2016). FRED-MD: A Monthly Database for
+    Macroeconomic Research. Journal of Business & Economic Statistics, 34(4),
+    574-589. https://doi.org/10.1080/07350015.2015.1086655
+
+    McCracken, M. W., and Ng, S. (2021). FRED-QD: A Quarterly Database for
+    Macroeconomic Research. Federal Reserve Bank of St. Louis Review, 103(1),
+    1-44. https://doi.org/10.20955/r.103.1-44
+
     Examples
     --------
     ```python
     from tidyfinance import download_data
-    download_data("FRED-MD")
-    download_data("FRED-MD", transform=True)
-    download_data("FRED-MD", vintage="2020-03")
-    download_data("FRED-MD", vintage="all")
-    download_data("FRED-QD")
+    download_data("FRED", "FRED-MD")
+    download_data("FRED", "FRED-MD", transform=True)
+    download_data("FRED", "FRED-MD", vintage="2020-03")
+    download_data("FRED", "FRED-MD", vintage="all")
+    download_data("FRED", "FRED-QD")
     ```
     """
     if database not in _FRED_MD_SPEC:

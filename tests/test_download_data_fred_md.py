@@ -138,24 +138,23 @@ def test_invalid_database_raises():
 
 
 def test_supported_datasets_registered():
-    """FRED-MD and FRED-QD are discoverable via list_supported_datasets."""
+    """FRED-MD and FRED-QD are discoverable via list_supported_datasets (under the FRED domain)."""
     datasets = list_supported_datasets()
-    types = set(datasets["type"])
-    assert {"fred_md", "fred_qd"} <= types
-    assert {"FRED-MD", "FRED-QD"} <= set(datasets["domain"])
+    fred = datasets[datasets["domain"] == "FRED"]
+    assert {"FRED-MD", "FRED-QD"} <= set(fred["type"])
 
 
 def test_download_data_dispatch_fred_md():
-    """The public download_data routes the FRED-MD domain to the handler (wide output)."""
+    """download_data("FRED", "FRED-MD") routes to the FRED-MD handler (wide output)."""
     with _patch():
-        result = download_data("FRED-MD")
+        result = download_data("FRED", "FRED-MD")
     assert list(result.columns) == ["date", "LEVELSER", "LOGDIFFSER"]
 
 
 def test_download_data_dispatch_fred_qd():
-    """The public download_data routes the FRED-QD domain to the handler."""
+    """download_data("FRED", "FRED-QD") routes to the FRED-QD handler."""
     with _patch():
-        result = download_data("FRED-QD")
+        result = download_data("FRED", "FRED-QD")
     assert list(result.columns) == ["date", "LEVELSER", "LOGDIFFSER"]
 
 
