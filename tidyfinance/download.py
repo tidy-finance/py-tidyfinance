@@ -9,6 +9,7 @@ from .download_open_source import (
     _download_data_factors_ff,
     _download_data_factors_q,
     _download_data_fred,
+    _download_data_fred_md,
     _download_data_jkp,
     _download_data_macro_predictors,
     _download_data_osap,
@@ -189,9 +190,13 @@ def download_data(
     elif domain == "Index Constituents":
         processed_data = _download_data_constituents(dataset=dataset, **kwargs)
     elif domain == "FRED":
-        processed_data = _download_data_fred(
-            start_date=start_date, end_date=end_date, **kwargs
-        )
+        if dataset in ("FRED-MD", "FRED-QD"):
+            # Curated McCracken-Ng databases (selected by 'vintage', not date-sliced).
+            processed_data = _download_data_fred_md(database=dataset, **kwargs)
+        else:
+            processed_data = _download_data_fred(
+                start_date=start_date, end_date=end_date, **kwargs
+            )
     elif domain == "Stock Prices":
         processed_data = _download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs
