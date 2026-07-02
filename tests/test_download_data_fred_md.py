@@ -81,7 +81,7 @@ def test_apply_tcode_transforms():
 def test_latest_is_wide_raw_levels():
     """vintage='latest' returns a wide [date, <series...>] frame of raw levels."""
     with _patch():
-        result = _download_data_fred_md("fred_md_monthly")
+        result = _download_data_fred_md("FRED-MD")
     assert isinstance(result, pd.DataFrame)
     assert list(result.columns) == ["date", "LEVELSER", "LOGDIFFSER"]
     assert "vintage" not in result.columns
@@ -92,7 +92,7 @@ def test_latest_is_wide_raw_levels():
 def test_transform_applies_per_series_tcode():
     """transform=True applies each series' tcode; a tcode-1 series is unchanged."""
     with _patch():
-        result = _download_data_fred_md("fred_md_monthly", transform=True)
+        result = _download_data_fred_md("FRED-MD", transform=True)
     assert result["LEVELSER"].tolist() == [100, 101, 102]  # tcode 1: unchanged
     logdiff = result["LOGDIFFSER"]  # tcode 5: dlog, leads with NaN
     assert pd.isna(logdiff.iloc[0])
@@ -102,7 +102,7 @@ def test_transform_applies_per_series_tcode():
 def test_specific_vintage_individual_adds_column():
     """A recent vintage (hosted individually) gets a 'vintage' column after 'date'."""
     with _patch():
-        result = _download_data_fred_md("fred_md_monthly", vintage="2026-01")
+        result = _download_data_fred_md("FRED-MD", vintage="2026-01")
     assert list(result.columns[:2]) == ["date", "vintage"]
     assert result["vintage"].unique().tolist() == ["2026-01"]
 
@@ -111,7 +111,7 @@ def test_vintage_extracted_from_archive():
     """An older vintage is extracted from the covering historical archive zip."""
     files = {"2020-03.csv": _CSV}
     with _patch(zip_files=files, fail_csv=True):
-        result = _download_data_fred_md("fred_md_monthly", vintage="2020-03")
+        result = _download_data_fred_md("FRED-MD", vintage="2020-03")
     assert result["vintage"].unique().tolist() == ["2020-03"]
     assert "LEVELSER" in result.columns
 
@@ -122,40 +122,40 @@ def test_all_stacks_vintages_wide():
     with _patch(
         zip_files=files, fail_csv=True
     ):  # recent individual pulls all fail
-        result = _download_data_fred_md("fred_md_monthly", vintage="all")
+        result = _download_data_fred_md("FRED-MD", vintage="all")
     assert list(result.columns[:2]) == ["date", "vintage"]
     assert sorted(result["vintage"].unique()) == ["2020-01", "2020-02"]
 
 
 def test_invalid_vintage_raises():
     with pytest.raises(ValueError, match="vintage must be"):
-        _download_data_fred_md("fred_md_monthly", vintage="banana")
+        _download_data_fred_md("FRED-MD", vintage="banana")
 
 
-def test_invalid_dataset_raises():
-    with pytest.raises(ValueError, match="Unsupported FRED-MD/QD dataset"):
-        _download_data_fred_md("not_a_dataset")
+def test_invalid_database_raises():
+    with pytest.raises(ValueError, match="Unsupported database"):
+        _download_data_fred_md("not_a_database")
 
 
 def test_supported_datasets_registered():
     """FRED-MD and FRED-QD are discoverable via list_supported_datasets."""
     datasets = list_supported_datasets()
     types = set(datasets["type"])
-    assert {"fred_md_monthly", "fred_qd_quarterly"} <= types
+    assert {"fred_md", "fred_qd"} <= types
     assert {"FRED-MD", "FRED-QD"} <= set(datasets["domain"])
 
 
 def test_download_data_dispatch_fred_md():
     """The public download_data routes the FRED-MD domain to the handler (wide output)."""
     with _patch():
-        result = download_data("FRED-MD", "fred_md_monthly")
+        result = download_data("FRED-MD")
     assert list(result.columns) == ["date", "LEVELSER", "LOGDIFFSER"]
 
 
 def test_download_data_dispatch_fred_qd():
     """The public download_data routes the FRED-QD domain to the handler."""
     with _patch():
-        result = download_data("FRED-QD", "fred_qd_quarterly")
+        result = download_data("FRED-QD")
     assert list(result.columns) == ["date", "LEVELSER", "LOGDIFFSER"]
 
 
