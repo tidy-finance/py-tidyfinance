@@ -9,6 +9,7 @@ from .download_open_source import (
     _download_data_factors_ff,
     _download_data_factors_q,
     _download_data_fred,
+    _download_data_fred_md,
     _download_data_jkp,
     _download_data_macro_predictors,
     _download_data_osap,
@@ -192,6 +193,10 @@ def download_data(
         processed_data = _download_data_fred(
             start_date=start_date, end_date=end_date, **kwargs
         )
+    elif domain in ("FRED-MD", "FRED-QD"):
+        # FRED-MD/QD are single-product databases (frequency implied by the name) selected by
+        # 'vintage', not by a dataset or date slice — the domain alone identifies them.
+        processed_data = _download_data_fred_md(database=domain, **kwargs)
     elif domain == "Stock Prices":
         processed_data = _download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs

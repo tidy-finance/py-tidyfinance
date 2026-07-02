@@ -2061,6 +2061,16 @@ _OTHER_DATASETS = [
     },
     {"type": "fred", "dataset_name": "various", "domain": "FRED"},
     {
+        "type": "fred_md",
+        "dataset_name": "FRED-MD (McCracken-Ng, monthly)",
+        "domain": "FRED-MD",
+    },
+    {
+        "type": "fred_qd",
+        "dataset_name": "FRED-QD (McCracken-Ng, quarterly)",
+        "domain": "FRED-QD",
+    },
+    {
         "type": "osap",
         "dataset_name": "Open Source Asset Pricing",
         "domain": "Open Source Asset Pricing",
@@ -2186,6 +2196,8 @@ _SUPPORTED_DOMAINS: tuple[str, ...] = (
     "Pseudo Data",
     "Index Constituents",
     "FRED",
+    "FRED-MD",
+    "FRED-QD",
     "Stock Prices",
     "Open Source Asset Pricing",
     "Global Factor Data",

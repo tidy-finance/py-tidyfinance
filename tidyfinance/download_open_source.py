@@ -968,6 +968,313 @@ def _download_data_fred(
     return fred_data
 
 
+_FRED_MD_BASE = "https://www.stlouisfed.org/-/media/project/frbstl/stlouisfed/research/fred-md"
+
+# Per-dataset spec: subdirectory, individual-vintage filename suffix ('md'/'qd'), and full-history
+# archive routing ranges (first, last, zip url). A specific historical vintage is extracted from
+# whichever archive covers it; more recent vintages are hosted individually. The clean Sitecore media
+# path resolves without the rotating '?sc_lang=&hash=' cache-buster query string.
+_FRED_MD_SPEC = {
+    "FRED-MD": {
+        "sub": "monthly",
+        "suffix": "md",
+        "archives": [
+            ("1999-01", "2014-12", f"{_FRED_MD_BASE}/historical_fred-md.zip"),
+            (
+                "2015-01",
+                "2024-12",
+                f"{_FRED_MD_BASE}/historical-vintages-of-fred-md-2015-01-to-2024-12.zip",
+            ),
+        ],
+    },
+    "FRED-QD": {
+        "sub": "quarterly",
+        "suffix": "qd",
+        "archives": [
+            (
+                "2018-05",
+                "2024-12",
+                f"{_FRED_MD_BASE}/historical-vintages-of-fred-qd-2018-05-to-2024-12.zip",
+            ),
+        ],
+    },
+}
+
+# Vintage labels embedded in archived filenames: 'YYYY-MM' or 'YYYYmMM'.
+_VINTAGE_DASH = re.compile(r"(\d{4})-(\d{2})")
+_VINTAGE_M = re.compile(r"(\d{4})m(\d{1,2})")
+
+
+def _apply_fred_md_tcode(x: np.ndarray, code: int) -> np.ndarray:
+    """Apply a McCracken-Ng stationarity transform (tcode 1-7) to a level series.
+
+    1 level, 2 diff, 3 diff^2, 4 log, 5 dlog, 6 dlog^2, 7 diff(x_t/x_{t-1} - 1).
+    All are causal (use only current and past values).
+    """
+    x = np.asarray(x, dtype=float)
+    if code == 1:
+        return x
+    if code == 2:
+        return np.append(np.nan, np.diff(x))
+    if code == 3:
+        return np.append([np.nan, np.nan], np.diff(x, n=2))
+    if code == 4:
+        return np.log(x)
+    if code == 5:
+        return np.append(np.nan, np.diff(np.log(x)))
+    if code == 6:
+        return np.append([np.nan, np.nan], np.diff(np.log(x), n=2))
+    if code == 7:
+        g = np.append(np.nan, x[1:] / x[:-1] - 1.0)
+        return np.append(np.nan, np.diff(g))
+    raise ValueError(f"Unknown FRED-MD tcode {code!r} (expected 1-7).")
+
+
+def _fetch_fred_md_text(url: str) -> str:
+    """GET a FRED-MD/QD CSV (Akamai-safe via curl_cffi impersonation); raise on failure."""
+    headers = {"User-Agent": _get_random_user_agent()}
+    response = requests.get(
+        url, headers=headers, impersonate="chrome110", timeout=60
+    )
+    response.raise_for_status()
+    return response.text
+
+
+def _fetch_fred_md_bytes(url: str) -> bytes:
+    """GET a FRED-MD vintage archive (zip) as bytes."""
+    headers = {"User-Agent": _get_random_user_agent()}
+    response = requests.get(
+        url, headers=headers, impersonate="chrome110", timeout=180
+    )
+    response.raise_for_status()
+    return response.content
+
+
+def _looks_like_fred_md(text: str) -> bool:
+    """True if ``text`` is a FRED-MD/QD CSV (first cell ``sasdate``) — guards 200-OK HTML pages."""
+    first = text.lstrip("﻿").splitlines()[0] if text.strip() else ""
+    return first.split(",")[0].strip().lower() == "sasdate"
+
+
+def _vintage_label(name: str) -> str | None:
+    """Extract a ``YYYY-MM`` vintage label from an archived filename, or None."""
+    m = _VINTAGE_DASH.search(name) or _VINTAGE_M.search(name)
+    return f"{int(m.group(1)):04d}-{int(m.group(2)):02d}" if m else None
+
+
+def _fred_md_wide(text: str, transform: bool) -> pd.DataFrame:
+    """Parse one FRED-MD/QD vintage CSV into a wide frame ``[date, <series...>]``.
+
+    Row 1 is the header (``sasdate`` + series), row 2 the ``Transform:`` row of tcodes, and the body
+    the levels. With ``transform=True`` each series' McCracken-Ng stationarity transform (tcode) is
+    applied per vintage (causal, so point-in-time safe); ``transform=False`` keeps raw levels.
+    """
+    raw = pd.read_csv(io.StringIO(text))
+    date_col = raw.columns[0]
+    series_cols = list(raw.columns[1:])
+    tcodes = {c: int(float(raw.iloc[0][c])) for c in series_cols}
+
+    body = raw.iloc[1:]
+    ref = pd.to_datetime(body[date_col], format="%m/%d/%Y", errors="coerce")
+    keep = ref.notna()
+    levels = body.loc[keep, series_cols].apply(pd.to_numeric, errors="coerce")
+    levels.index = pd.DatetimeIndex(ref[keep], name="date")
+    if transform:
+        levels = pd.DataFrame(
+            {
+                c: _apply_fred_md_tcode(levels[c].to_numpy(), tcodes[c])
+                for c in series_cols
+            },
+            index=levels.index,
+        )
+    return levels.reset_index()
+
+
+def _read_archive(
+    url: str, transform: bool, want: str | None = None
+) -> dict[str, pd.DataFrame]:
+    """Download a vintage archive (zip) and parse its CSVs → ``{vintage_label: wide_frame}``.
+
+    ``want`` returns just that one vintage (stops early); otherwise every vintage in the zip.
+    """
+    out: dict[str, pd.DataFrame] = {}
+    with zipfile.ZipFile(io.BytesIO(_fetch_fred_md_bytes(url))) as zf:
+        for name in zf.namelist():
+            if not name.lower().endswith(".csv"):
+                continue
+            label = _vintage_label(name.rsplit("/", 1)[-1])
+            if (
+                label is None
+                or label in out
+                or (want is not None and label != want)
+            ):
+                continue
+            text = zf.read(name).decode("latin-1")
+            if _looks_like_fred_md(text):
+                out[label] = _fred_md_wide(text, transform)
+                if want is not None:
+                    break
+    return out
+
+
+def _download_data_fred_md(
+    database: str = "FRED-MD",
+    transform: bool = False,
+    vintage: str = "latest",
+) -> pd.DataFrame:
+    """
+    Download and process a FRED-MD / FRED-QD database (McCracken-Ng).
+
+    Fetches a vintage of the FRED-MD (monthly) or FRED-QD (quarterly)
+    macroeconomic database - a curated, balanced panel of macro series - as a
+    wide table (one column per series, matching the other factor/predictor
+    datasets). Each series has a McCracken-Ng stationarity transform code
+    (tcode); ``transform=True`` applies it per series. FRED-MD/QD publish a new
+    vintage every month, so a specific release can be requested by its
+    ``YYYY-MM`` label - or the entire real-time panel with ``vintage='all'`` -
+    for point-in-time analysis.
+
+    Parameters
+    ----------
+    database : str
+        Which database to download: ``'FRED-MD'`` (monthly) or ``'FRED-QD'``
+        (quarterly). The frequency is implied by the database.
+    transform : bool, default False
+        If ``True``, apply each series' McCracken-Ng stationarity transform
+        (tcode 1-7). If ``False``, return raw levels.
+    vintage : str, default 'latest'
+        Which release(s) to download: ``'latest'`` (the current vintage), a
+        ``'YYYY-MM'`` label for one historical release (e.g. ``'2020-03'``;
+        recent ones are hosted individually, older ones are extracted from the
+        St. Louis Fed vintage archives), or ``'all'`` for every archived
+        vintage stacked (the full real-time panel; FRED-MD reaches back to
+        1999-08, FRED-QD to 2018-05).
+
+    Returns
+    -------
+    pd.DataFrame
+        A wide data frame ``['date', <series...>]``. For a specific ``vintage``
+        or ``'all'`` a ``'vintage'`` column (the ``YYYY-MM`` release label) is
+        inserted after ``date``.
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import download_data
+    download_data("FRED-MD")
+    download_data("FRED-MD", transform=True)
+    download_data("FRED-MD", vintage="2020-03")
+    download_data("FRED-MD", vintage="all")
+    download_data("FRED-QD")
+    ```
+    """
+    if database not in _FRED_MD_SPEC:
+        raise ValueError(
+            f"Unsupported database: {database!r}. Use 'FRED-MD' or 'FRED-QD'."
+        )
+    sub = _FRED_MD_SPEC[database]["sub"]
+
+    if vintage == "latest":
+        text = _fetch_fred_md_text(f"{_FRED_MD_BASE}/{sub}/current.csv")
+        if not _looks_like_fred_md(text):
+            raise ValueError(
+                "The FRED-MD/QD 'current' file was not a valid CSV; try again later."
+            )
+        return _fred_md_wide(text, transform)
+
+    if vintage == "all":
+        return _download_fred_md_all(database, transform)
+
+    if not re.fullmatch(r"\d{4}-\d{2}", vintage):
+        raise ValueError(
+            f"vintage must be 'latest', 'all', or a 'YYYY-MM' label; got {vintage!r}."
+        )
+
+    frame = _download_fred_md_vintage(database, vintage, transform)
+    frame.insert(1, "vintage", vintage)
+    return frame
+
+
+def _fred_md_individual_names(label: str, suffix: str) -> tuple[str, ...]:
+    """Candidate individually-hosted filenames for a vintage: e.g. '2025-04-md.csv',
+    'fred-md_2025m04.csv', '2025-04.csv'."""
+    year, month = label.split("-")
+    return (
+        f"{label}-{suffix}.csv",
+        f"fred-{suffix}_{year}m{month}.csv",
+        f"{label}.csv",
+    )
+
+
+def _download_fred_md_vintage(
+    database: str, vintage: str, transform: bool
+) -> pd.DataFrame:
+    """One historical release: from the covering archive if any, else the individually-hosted file."""
+    spec = _FRED_MD_SPEC[database]
+    for lo, hi, url in spec["archives"]:
+        if lo <= vintage <= hi:
+            found = _read_archive(url, transform, want=vintage)
+            if vintage in found:
+                return found[vintage]
+            raise ValueError(
+                f"vintage {vintage!r} not found in its FRED-MD/QD archive."
+            )
+
+    sub = spec["sub"]
+    for name in _fred_md_individual_names(vintage, spec["suffix"]):
+        try:
+            text = _fetch_fred_md_text(f"{_FRED_MD_BASE}/{sub}/{name}")
+        except Exception:
+            continue
+        if _looks_like_fred_md(
+            text
+        ):  # reject 200-OK HTML placeholders for unpublished months
+            return _fred_md_wide(text, transform)
+    raise ValueError(
+        f"Could not fetch FRED-MD/QD vintage {vintage!r} (not in an archive and not "
+        "individually hosted - it may be unpublished)."
+    )
+
+
+def _download_fred_md_all(database: str, transform: bool) -> pd.DataFrame:
+    """Every archived vintage + the individually-hosted recent ones → wide real-time panel."""
+    spec = _FRED_MD_SPEC[database]
+    frames: dict[str, pd.DataFrame] = {}
+    last_archived = None
+    for _lo, hi, url in spec["archives"]:
+        frames.update(_read_archive(url, transform))
+        last_archived = hi if last_archived is None else max(last_archived, hi)
+
+    sub, suffix = spec["sub"], spec["suffix"]
+    recent = pd.period_range(
+        last_archived or "2015-01",
+        pd.Timestamp.today().to_period("M"),
+        freq="M",
+    )
+    for period in recent:
+        label = f"{period.year:04d}-{period.month:02d}"
+        if label in frames:
+            continue
+        for name in _fred_md_individual_names(label, suffix):
+            try:
+                text = _fetch_fred_md_text(f"{_FRED_MD_BASE}/{sub}/{name}")
+            except Exception:
+                continue
+            if _looks_like_fred_md(text):
+                frames[label] = _fred_md_wide(text, transform)
+                break
+
+    if not frames:
+        raise ValueError("No FRED-MD/QD vintages could be downloaded.")
+    parts = []
+    for label, frame in frames.items():
+        frame = frame.copy()
+        frame.insert(1, "vintage", label)
+        parts.append(frame)
+    out = pd.concat(parts, ignore_index=True)
+    return out.sort_values(["vintage", "date"]).reset_index(drop=True)
+
+
 def _download_data_stock_prices(
     symbols: str | list,
     start_date: str = None,
