@@ -328,6 +328,24 @@ def test_estimate_fama_macbeth_n_equals_number_of_periods() -> None:
     assert (result["n"] == data["date"].nunique()).all()
 
 
+def test_estimate_fama_macbeth_detail() -> None:
+    """detail=True returns coefficients and summary statistics."""
+    data = sample_data_fmb()
+    result = estimate_fama_macbeth(
+        data, "ret_excess ~ beta + bm + log_mktcap", detail=True
+    )
+    assert set(result.keys()) == {"coefficients", "summary_statistics"}
+    assert "risk_premium" in result["coefficients"].columns
+    summary_statistics = result["summary_statistics"]
+    assert list(summary_statistics.columns) == [
+        "r_squared",
+        "adj_r_squared",
+        "n_obs",
+    ]
+    assert len(summary_statistics) == 1
+    assert 0 <= summary_statistics["r_squared"].iloc[0] <= 1
+
+
 # Fixed series with reference values computed in R via
 # sqrt(as.numeric(sandwich::NeweyWest(lm(y ~ 1), ...))). These lock the
 # Python estimator to R's sandwich::NeweyWest (issue #35).
