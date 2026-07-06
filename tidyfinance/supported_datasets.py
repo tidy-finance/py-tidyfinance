@@ -2061,6 +2061,16 @@ _OTHER_DATASETS = [
     },
     {"type": "fred", "dataset_name": "various", "domain": "FRED"},
     {
+        "type": "FRED-MD",
+        "dataset_name": "FRED-MD (McCracken-Ng, monthly)",
+        "domain": "FRED",
+    },
+    {
+        "type": "FRED-QD",
+        "dataset_name": "FRED-QD (McCracken-Ng, quarterly)",
+        "domain": "FRED",
+    },
+    {
         "type": "osap",
         "dataset_name": "Open Source Asset Pricing",
         "domain": "Open Source Asset Pricing",

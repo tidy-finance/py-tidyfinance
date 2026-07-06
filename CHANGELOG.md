@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Added FRED-MD and FRED-QD macroeconomic databases:**
+  `download_data("FRED", "FRED-MD")` and `download_data("FRED", "FRED-QD")`
+  download the McCracken and Ng (2016, 2021) curated monthly / quarterly
+  macro panels as wide tables (one column per series). `transform=True`
+  applies each series' stationarity transform code (tcode). `vintage`
+  selects the current release (default), a specific `"YYYY-MM"` release, or
+  `"all"` — the full real-time panel across every archived vintage (recent
+  vintages are hosted individually; older ones are read from the St. Louis
+  Fed vintage archive zips), enabling leak-free point-in-time analysis.
 - **Added Global Factor Data, Pastor-Stambaugh, and Stambaugh-Yuan
   downloads:** `download_data("Global Factor Data")` downloads
   characteristic-managed portfolio returns, the underlying long-short
