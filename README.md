@@ -167,6 +167,22 @@ tf.download_data(
 )
 ```
 
+To download the FRED-MD / FRED-QD (McCracken-Ng) macroeconomic databases, a curated, balanced panel of monthly or quarterly macro series with McCracken-Ng stationarity transform codes. Set `transform=True` to apply the transforms, and `vintage` to a `"YYYY-MM"` label or `"all"` to access historical (real-time) releases:
+
+```python
+tf.download_data(
+  domain="FRED",
+  dataset="FRED-MD",
+  transform=True
+)
+
+tf.download_data(
+  domain="FRED",
+  dataset="FRED-QD",
+  vintage="2020-03"
+)
+```
+
 To download stock prices from Yahoo Finance:
 
 ```python

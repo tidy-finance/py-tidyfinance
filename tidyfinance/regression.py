@@ -17,11 +17,24 @@ class _OLSFit:
     correction (``sigma^2 * (X'X)^-1`` with ``sigma^2 = RSS / (n - k)``).
     """
 
-    def __init__(self, names, coef, se, tstat, resid):
+    def __init__(
+        self,
+        names,
+        coef,
+        se,
+        tstat,
+        resid,
+        r_squared=None,
+        adj_r_squared=None,
+        n_obs=None,
+    ):
         self._coef = pd.Series(coef, index=names)
         self._se = pd.Series(se, index=names)
         self._tstat = pd.Series(tstat, index=names)
         self._resid = resid
+        self._r_squared = r_squared
+        self._adj_r_squared = adj_r_squared
+        self._n_obs = n_obs
 
     def coef(self):
         return self._coef
@@ -34,6 +47,15 @@ class _OLSFit:
 
     def resid(self):
         return self._resid
+
+    def r_squared(self):
+        return self._r_squared
+
+    def adj_r_squared(self):
+        return self._adj_r_squared
+
+    def n_obs(self):
+        return self._n_obs
 
 
 def _fit_ols(model: str, data: pd.DataFrame) -> _OLSFit:
@@ -79,7 +101,20 @@ def _fit_ols(model: str, data: pd.DataFrame) -> _OLSFit:
     with np.errstate(divide="ignore", invalid="ignore"):
         tstat = np.where(se > 0, beta / se, np.nan)
 
-    return _OLSFit(names, beta, se, tstat, resid)
+    has_intercept = "Intercept" in names
+    rss = float(resid @ resid)
+    if has_intercept:
+        tss = float(np.sum((y_vec - y_vec.mean()) ** 2))
+    else:
+        tss = float(np.sum(y_vec**2))
+    r_squared = 1.0 - rss / tss if tss > 0 else np.nan
+    if dof > 0 and not np.isnan(r_squared):
+        denom = (n - 1) if has_intercept else n
+        adj_r_squared = 1.0 - (1.0 - r_squared) * denom / dof
+    else:
+        adj_r_squared = np.nan
+
+    return _OLSFit(names, beta, se, tstat, resid, r_squared, adj_r_squared, n)
 
 
 def estimate_betas(
@@ -474,7 +509,8 @@ def estimate_fama_macbeth(
     vcov: str = "newey-west",
     vcov_options: dict | None = None,
     date_col: str = "date",
-) -> pd.DataFrame:
+    detail: bool = False,
+) -> pd.DataFrame | dict:
     """Estimate Fama-MacBeth regressions.
 
     Runs one cross-sectional ordinary least squares regression per period
@@ -515,17 +551,32 @@ def estimate_fama_macbeth(
     date_col : str, default 'date'
         Column in 'data' identifying the time index for cross-sectional
         regressions.
+    detail : bool, default False
+        If 'False' (default), return only the coefficient estimates. If
+        'True', return a dict with two keys: 'coefficients' (the usual
+        estimates data frame) and 'summary_statistics' (a one-row data
+        frame with the average cross-sectional R-squared, adjusted
+        R-squared, and number of observations per cross-section).
 
     Returns
     -------
-    pd.DataFrame
-        One row per term in 'model' with columns:
+    pd.DataFrame or dict
+        If 'detail' is 'False' (default), a data frame with one row per
+        term in 'model' with columns:
 
         - 'factor' : term name (Intercept or regressor)
         - 'risk_premium' : time-series mean of cross-sectional coefficients
         - 'standard_error' : SE of the time-series mean under 'vcov'
         - 't_statistic' : risk_premium / standard_error
         - 'n' : number of periods used
+
+        If 'detail' is 'True', a dict with two elements:
+
+        - 'coefficients' : the same data frame described above
+        - 'summary_statistics' : a one-row data frame with 'r_squared'
+          (mean cross-sectional R-squared), 'adj_r_squared' (mean
+          cross-sectional adjusted R-squared), and 'n_obs' (mean
+          cross-sectional observation count)
 
     Raises
     ------
@@ -571,6 +622,12 @@ def estimate_fama_macbeth(
         'ret_excess ~ beta + bm + log_mktcap',
         vcov='iid',
     )
+    # Return detailed output including R-squared and observation counts
+    result_detail = estimate_fama_macbeth(
+        data,
+        'ret_excess ~ beta + bm + log_mktcap',
+        detail=True,
+    )
     ```
     """
     if vcov not in ["iid", "newey-west"]:
@@ -598,6 +655,7 @@ def estimate_fama_macbeth(
 
     # Run cross-sectional regressions
     cross_section_results = []
+    cross_section_stats = []
     for date, group in data.groupby(date_col):
         if len(group) <= len(model.split("~")[1].split("+")):
             continue
@@ -606,12 +664,21 @@ def estimate_fama_macbeth(
         params = model_fit.coef().to_dict()
         params[date_col] = date
         cross_section_results.append(params)
+        cross_section_stats.append(
+            {
+                "r_squared": model_fit.r_squared(),
+                "adj_r_squared": model_fit.adj_r_squared(),
+                "n_obs": model_fit.n_obs(),
+            }
+        )
 
     risk_premiums = pd.DataFrame(cross_section_results)
 
     # Compute time-series averages
     price_of_risk = (
-        risk_premiums.melt(id_vars=date_col, var_name="factor", value_name="estimate")
+        risk_premiums.melt(
+            id_vars=date_col, var_name="factor", value_name="estimate"
+        )
         .groupby("factor")["estimate"]
         .mean()
         .reset_index()
@@ -640,9 +707,9 @@ def estimate_fama_macbeth(
                 adjust=nw_adjust,
             )
         else:
-            se = _fit_ols("estimate ~ 1", data=x.dropna(subset=["estimate"])).se()[
-                "Intercept"
-            ]
+            se = _fit_ols(
+                "estimate ~ 1", data=x.dropna(subset=["estimate"])
+            ).se()["Intercept"]
         if se is None or np.isnan(se) or se == 0:
             t_stat = np.nan
         else:
@@ -656,7 +723,9 @@ def estimate_fama_macbeth(
         )
 
     price_of_risk_se_t_n = (
-        risk_premiums.melt(id_vars=date_col, var_name="factor", value_name="estimate")
+        risk_premiums.melt(
+            id_vars=date_col, var_name="factor", value_name="estimate"
+        )
         .groupby("factor")
         .apply(compute_se_and_t, include_groups=False)
         .reset_index()
@@ -665,6 +734,22 @@ def estimate_fama_macbeth(
     result_df = price_of_risk.merge(price_of_risk_se_t_n, on="factor")[
         ["factor", "risk_premium", "standard_error", "t_statistic", "n"]
     ]
+
+    if detail:
+        stats_df = pd.DataFrame(cross_section_stats)
+        summary_statistics = pd.DataFrame(
+            [
+                {
+                    "r_squared": stats_df["r_squared"].mean(),
+                    "adj_r_squared": stats_df["adj_r_squared"].mean(),
+                    "n_obs": stats_df["n_obs"].mean(),
+                }
+            ]
+        )
+        return {
+            "coefficients": result_df,
+            "summary_statistics": summary_statistics,
+        }
 
     return result_df
 
@@ -789,7 +874,9 @@ def estimate_model(
     complete = data[model_vars].notna().all(axis=1)
     n_complete = int(complete.sum())
 
-    insufficient = (n_complete < min_obs) or (n_complete <= len(independent_vars))
+    insufficient = (n_complete < min_obs) or (
+        n_complete <= len(independent_vars)
+    )
 
     fit = None
     if not insufficient:

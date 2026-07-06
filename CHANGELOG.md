@@ -39,6 +39,12 @@
   any filter column now removes that filter entirely and returns all
   values for that column (e.g. `min_size_quantile=None` includes all
   size groups), matching the R package's `NULL` behavior.
+- **Added `detail` parameter to `estimate_fama_macbeth`:** matching the R
+  package, passing `detail=True` returns a dict with `coefficients` (the
+  usual risk premium estimates) and `summary_statistics` (a one-row data
+  frame with the mean cross-sectional `r_squared`, `adj_r_squared`, and
+  `n_obs` across all per-period regressions). The default (`detail=False`)
+  behavior — returning only the coefficients data frame — is unchanged.
 - **Dependencies (replaced pyfixest with formulaic):** The `pyfixest` dependency was dropped in favor of [`formulaic`](https://github.com/matthewwardrop/formulaic) plus a small internal numpy OLS helper (`_fit_ols`). `pyfixest` was used only for plain OLS with classical (IID) standard errors in `estimate_model` and the cross-sectional / IID-variance steps of `estimate_fama_macbeth`, but it pulled in `great-tables` → `multimark`, a `cffi` C-extension that ships no Python 3.14 wheels and therefore required a C/C++ toolchain (e.g. MSVC Build Tools on Windows) to install on unsupported interpreters. `_fit_ols` builds the design matrix via `formulaic` and reproduces `feols` coefficients, standard errors, t-statistics, and residuals to ~1e-9 for models without fixed effects, so results are unchanged. Note that `estimate_model` and `estimate_fama_macbeth` now perform classical OLS only (the fixed-effects / clustered-SE features of `pyfixest` were never used and are no longer available).
 
 ## v0.1.0
