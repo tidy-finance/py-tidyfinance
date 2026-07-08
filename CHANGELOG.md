@@ -4,14 +4,14 @@
 
 - **Polars backend returns WRDS date columns as `Date` (#66):** With
   `set_backend("polars")`, the calendar-date columns of the WRDS
-  downloads (e.g. `trd_exctn_dt` from `trace_enhanced`, `datadate` and
-  `rdq` from Compustat, `linkdt`/`linkenddt` from CCM links, and the
-  FISD date columns) are now cast to `polars.Date` instead of
-  surfacing as `polars.Datetime`, matching the R package and the
-  existing normalization of the `date` column. This fixes
-  `SchemaError`s when joining or vertically stacking TRACE output
-  against `Date`-typed frames. True time-of-day columns (e.g.
-  `trd_exctn_tm`) are unaffected.
+  downloads (`trd_exctn_dt` from `trace_enhanced`, `datadate` from
+  Compustat, `linkdt`/`linkenddt` from CCM links, `calculation_date`
+  from monthly CRSP, and the FISD date columns) are now cast to
+  `polars.Date` instead of surfacing as `polars.Datetime`, matching
+  the R package and the existing normalization of the `date` column.
+  This fixes `SchemaError`s when joining or vertically stacking TRACE
+  output against `Date`-typed frames. True time-of-day columns (e.g.
+  `trd_exctn_tm`) and timezone-aware datetimes are unaffected.
 - **Added FRED-MD and FRED-QD macroeconomic databases:**
   `download_data("FRED", "FRED-MD")` and `download_data("FRED", "FRED-QD")`
   download the McCracken and Ng (2016, 2021) curated monthly / quarterly

@@ -24,11 +24,14 @@ _VALID_BACKENDS = ("pandas", "polars")
 
 _BACKEND = "pandas"
 
-# Calendar-date columns returned by the download functions. Internally
+# Calendar-date columns handled by the download functions. Internally
 # pandas stores them as datetime64 (there is no plain date dtype), so
 # they would surface as 'polars.Datetime' under the polars backend.
 # '_convert_output' casts them to 'polars.Date' so they match the R
 # package and can be joined or stacked against 'Date'-typed frames.
+# Some names ('rdq', 'trd_rpt_dt', 'stlmnt_dt') are dropped before the
+# downloads return and are listed defensively for raw frames that
+# users pass through the analytics functions.
 _DATE_COLUMNS = frozenset(
     {
         # all download functions
@@ -78,6 +81,13 @@ def set_backend(backend: str) -> None:
     round-trip through pandas on every step, which adds a measurable
     cost on large panels. The pandas backend is a pass-through with
     zero conversion overhead.
+
+    On conversion to polars, known calendar-date columns (e.g. 'date',
+    'datadate', 'trd_exctn_dt') are cast from 'polars.Datetime' to
+    'polars.Date', since pandas has no plain date dtype and would
+    otherwise surface them as datetimes. Any time-of-day component in
+    a column with one of these names is therefore dropped on output.
+    Timezone-aware datetime columns are never cast.
     """
     global _BACKEND
     if backend not in _VALID_BACKENDS:
@@ -154,7 +164,11 @@ def _convert_output(obj):
     date_casts = [
         pl.col(name).cast(pl.Date)
         for name in out.columns
-        if name in _DATE_COLUMNS and out.schema[name] == pl.Datetime
+        if name in _DATE_COLUMNS
+        and out.schema[name] == pl.Datetime
+        # never cast timezone-aware datetimes: casting would take the
+        # UTC calendar date, which can differ from the wall-clock date
+        and out.schema[name].time_zone is None
     ]
     if date_casts:
         out = out.with_columns(date_casts)

@@ -1,5 +1,6 @@
 """Tests for the global data frame backend (pandas/polars)."""
 
+import datetime
 import os
 import sys
 
@@ -127,6 +128,24 @@ def test_convert_output_keeps_unknown_datetime_columns():
     out = _convert_output(df)
     assert out.schema["timestamp"] == pl.Datetime
     assert out.schema["trd_exctn_dt"] == pl.Date
+
+
+def test_convert_output_keeps_timezone_aware_datetime_columns():
+    """Timezone-aware datetimes are never cast: taking the UTC calendar
+    date could differ from the wall-clock date."""
+    tf.set_backend("polars")
+    # fixed-offset timezone so the test needs no zoneinfo database
+    tz = datetime.timezone(datetime.timedelta(hours=-5))
+    df = pd.DataFrame(
+        {
+            "trd_exctn_dt": pd.to_datetime(["2020-01-01 23:30:00"]).tz_localize(
+                tz
+            ),
+        }
+    )
+    out = _convert_output(df)
+    assert out.schema["trd_exctn_dt"] == pl.Datetime
+    assert out.schema["trd_exctn_dt"].time_zone is not None
 
 
 def test_convert_output_keeps_non_datetime_date_named_columns():
