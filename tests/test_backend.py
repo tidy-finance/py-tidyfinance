@@ -88,6 +88,56 @@ def test_convert_output_casts_date_column_to_polars_date():
     ]
 
 
+def test_convert_output_casts_wrds_date_columns_to_polars_date():
+    """Date-typed WRDS columns (TRACE, Compustat, CCM links, FISD) must
+    come out as polars Date, not Datetime (issue #66)."""
+    tf.set_backend("polars")
+    days = pd.to_datetime(["2019-01-02", "2019-01-03"])
+    df = pd.DataFrame(
+        {
+            "trd_exctn_dt": days,
+            "trd_rpt_dt": days,
+            "stlmnt_dt": days,
+            "datadate": days,
+            "rdq": days,
+            "linkdt": days,
+            "linkenddt": days,
+            "maturity": days,
+            "offering_date": days,
+            "dated_date": days,
+            "last_interest_date": days,
+            "calculation_date": days,
+        }
+    )
+    out = _convert_output(df)
+    for column in df.columns:
+        assert out.schema[column] == pl.Date, column
+
+
+def test_convert_output_keeps_unknown_datetime_columns():
+    """Only known calendar-date columns are cast; other datetime
+    columns (e.g. user-supplied timestamps) keep their type."""
+    tf.set_backend("polars")
+    df = pd.DataFrame(
+        {
+            "timestamp": pd.to_datetime(["2020-01-31 09:30:00"]),
+            "trd_exctn_dt": pd.to_datetime(["2020-01-31"]),
+        }
+    )
+    out = _convert_output(df)
+    assert out.schema["timestamp"] == pl.Datetime
+    assert out.schema["trd_exctn_dt"] == pl.Date
+
+
+def test_convert_output_keeps_non_datetime_date_named_columns():
+    """A known date-column name that is not datetime-typed (e.g. a
+    string) passes through unchanged."""
+    tf.set_backend("polars")
+    df = pd.DataFrame({"datadate": ["2020-01-31"], "v": [1.0]})
+    out = _convert_output(df)
+    assert out.schema["datadate"] == pl.String
+
+
 def test_convert_output_drops_default_rangeindex():
     tf.set_backend("polars")
     out = _convert_output(pd.DataFrame({"a": [1, 2]}))
