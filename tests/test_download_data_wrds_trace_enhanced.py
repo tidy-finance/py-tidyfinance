@@ -5,14 +5,24 @@ import sys
 from unittest.mock import patch
 
 import pandas as pd
+import polars as pl
 import pytest
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+import tidyfinance as tf  # noqa: E402
 from tidyfinance.download_wrds import _download_data_wrds_trace_enhanced  # noqa: E402
 from tidyfinance.download_wrds import process_trace_data  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _restore_backend():
+    """Ensure the global backend never leaks between tests."""
+    tf.set_backend("pandas")
+    yield
+    tf.set_backend("pandas")
 
 
 def test_download_data_wrds_trace_enhanced_validates_cusips():
@@ -121,6 +131,62 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
     assert expected_vols.issubset(actual_vols) or actual_vols.issubset(
         expected_vols
     )
+
+
+def test_download_data_trace_enhanced_polars_returns_date_columns():
+    """With the polars backend, 'trd_exctn_dt' (the only date column in
+    the cleaned TRACE output) must come out as polars Date so it
+    joins/stacks against Date-typed frames, while the time column stays
+    untouched (issue #66)."""
+    d = pd.Timestamp("2019-01-02")
+    trace = pd.DataFrame(
+        [
+            {
+                "cusip_id": "00101JAH9",
+                "bond_sym_id": "AA.GH",
+                "msg_seq_nb": 10,
+                "orig_msg_seq_nb": None,
+                "entrd_vol_qt": 100,
+                "rptd_pr": 99,
+                "yld_pt": 4,
+                "rpt_side_cd": "B",
+                "cntra_mp_id": "C",
+                "trd_exctn_dt": d,
+                "trd_exctn_tm": "10:00:00",
+                "trd_rpt_dt": d,
+                "trd_rpt_tm": "10:01:00",
+                "trc_st": "T",
+                "asof_cd": "",
+                "wis_fl": "N",
+                "days_to_sttl_ct": 1,
+                "lckd_in_ind": "",
+                "sale_cndtn_cd": "",
+                "stlmnt_dt": d + pd.Timedelta(days=1),
+                "spcl_trd_fl": "",
+            }
+        ]
+    )
+
+    tf.set_backend("polars")
+    with (
+        patch(
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=trace),
+    ):
+        out = tf.download_data(
+            domain="WRDS",
+            dataset="trace_enhanced",
+            cusips=["00101JAH9"],
+            start_date="2019-01-01",
+            end_date="2021-12-31",
+        )
+
+    assert isinstance(out, pl.DataFrame)
+    assert out.height == 1
+    assert out.schema["trd_exctn_dt"] == pl.Date
+    assert out.schema["trd_exctn_tm"] == pl.String
 
 
 def test_process_trace_data_uses_2012_02_06_regime_cutoff():

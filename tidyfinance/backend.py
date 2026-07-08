@@ -24,6 +24,38 @@ _VALID_BACKENDS = ("pandas", "polars")
 
 _BACKEND = "pandas"
 
+# Calendar-date columns handled by the download functions. Internally
+# pandas stores them as datetime64 (there is no plain date dtype), so
+# they would surface as 'polars.Datetime' under the polars backend.
+# '_convert_output' casts them to 'polars.Date' so they match the R
+# package and can be joined or stacked against 'Date'-typed frames.
+# Some names ('rdq', 'trd_rpt_dt', 'stlmnt_dt') are dropped before the
+# downloads return and are listed defensively for raw frames that
+# users pass through the analytics functions.
+_DATE_COLUMNS = frozenset(
+    {
+        # all download functions
+        "date",
+        # WRDS CRSP
+        "calculation_date",
+        # WRDS Compustat
+        "datadate",
+        "rdq",
+        # WRDS CCM links
+        "linkdt",
+        "linkenddt",
+        # WRDS FISD
+        "maturity",
+        "offering_date",
+        "dated_date",
+        "last_interest_date",
+        # WRDS Enhanced TRACE
+        "trd_exctn_dt",
+        "trd_rpt_dt",
+        "stlmnt_dt",
+    }
+)
+
 
 def set_backend(backend: str) -> None:
     """Set the global data frame backend for the tidyfinance API.
@@ -49,6 +81,13 @@ def set_backend(backend: str) -> None:
     round-trip through pandas on every step, which adds a measurable
     cost on large panels. The pandas backend is a pass-through with
     zero conversion overhead.
+
+    On conversion to polars, known calendar-date columns (e.g. 'date',
+    'datadate', 'trd_exctn_dt') are cast from 'polars.Datetime' to
+    'polars.Date', since pandas has no plain date dtype and would
+    otherwise surface them as datetimes. Any time-of-day component in
+    a column with one of these names is therefore dropped on output.
+    Timezone-aware datetime columns are never cast.
     """
     global _BACKEND
     if backend not in _VALID_BACKENDS:
@@ -101,9 +140,12 @@ def _convert_output(obj):
     unchanged. With the '"polars"' backend, a pandas data frame is
     converted via :func:'polars.from_pandas'. A non-default index (a
     named index or a non-'RangeIndex', such as a date index) is
-    preserved as a column, since polars has no concept of an index. A
-    'date' column is cast to 'polars.Date' so it prints as
-    'YYYY-MM-DD' instead of a datetime with a trailing zero time.
+    preserved as a column, since polars has no concept of an index.
+    Known calendar-date columns ('_DATE_COLUMNS', e.g. 'date',
+    'datadate', 'trd_exctn_dt') are cast from 'polars.Datetime' to
+    'polars.Date' so they print as 'YYYY-MM-DD' and join or stack
+    cleanly against 'Date'-typed frames. Other datetime columns pass
+    through unchanged.
     """
     if get_backend() != "polars":
         return obj
@@ -119,8 +161,17 @@ def _convert_output(obj):
         isinstance(obj.index, pd.RangeIndex) and obj.index.name is None
     )
     out = pl.from_pandas(obj, include_index=include_index)
-    if "date" in out.columns and out.schema["date"] == pl.Datetime:
-        out = out.with_columns(pl.col("date").cast(pl.Date))
+    date_casts = [
+        pl.col(name).cast(pl.Date)
+        for name in out.columns
+        if name in _DATE_COLUMNS
+        and out.schema[name] == pl.Datetime
+        # never cast timezone-aware datetimes: casting would take the
+        # UTC calendar date, which can differ from the wall-clock date
+        and out.schema[name].time_zone is None
+    ]
+    if date_casts:
+        out = out.with_columns(date_casts)
     return out
 
 

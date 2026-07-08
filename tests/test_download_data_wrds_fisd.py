@@ -5,13 +5,23 @@ import sys
 from unittest.mock import patch
 
 import pandas as pd
+import polars as pl
 import pytest
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+import tidyfinance as tf  # noqa: E402
 from tidyfinance.download_wrds import _download_data_wrds_fisd  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _restore_backend():
+    """Ensure the global backend never leaks between tests."""
+    tf.set_backend("pandas")
+    yield
+    tf.set_backend("pandas")
 
 
 def test_downloads_filtered_fisd_data_for_usa_issuers():
@@ -90,6 +100,61 @@ def test_downloads_filtered_fisd_data_for_usa_issuers():
     assert len(result) == 1
     assert result["complete_cusip"].iloc[0] == "111111111"
     assert result["sic_code"].iloc[0] == "1234"
+
+
+def test_download_data_fisd_polars_returns_date_columns():
+    """With the polars backend, the FISD calendar-date columns must
+    come out as polars Date, not Datetime (issue #66). The mocked
+    frames carry datetime64 columns, mirroring what the real path
+    produces via read_sql_query(..., parse_dates=...)."""
+    issue_filtered = pd.DataFrame(
+        {
+            "complete_cusip": ["111111111"],
+            "maturity": pd.to_datetime(["2030-01-01"]),
+            "offering_amt": [100],
+            "offering_date": pd.to_datetime(["2020-01-01"]),
+            "dated_date": pd.to_datetime(["2020-01-02"]),
+            "interest_frequency": ["2"],
+            "coupon": [5],
+            "last_interest_date": pd.to_datetime(["2029-12-31"]),
+            "issue_id": [1],
+            "issuer_id": [1],
+        }
+    )
+    issuer = pd.DataFrame(
+        {
+            "issuer_id": [1],
+            "sic_code": ["1234"],
+            "country_domicile": ["USA"],
+        }
+    )
+
+    def fake_read_sql_query(sql=None, con=None, *a, **kw):
+        if "fisd_mergedissuer" in str(sql):
+            return issuer
+        return issue_filtered
+
+    tf.set_backend("polars")
+    with (
+        patch(
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch(
+            "tidyfinance.download_wrds.pd.read_sql_query",
+            side_effect=fake_read_sql_query,
+        ),
+    ):
+        out = tf.download_data(domain="WRDS", dataset="fisd")
+
+    assert isinstance(out, pl.DataFrame)
+    for column in [
+        "maturity",
+        "offering_date",
+        "dated_date",
+        "last_interest_date",
+    ]:
+        assert out.schema[column] == pl.Date, column
 
 
 def test_returns_requested_additional_columns():
