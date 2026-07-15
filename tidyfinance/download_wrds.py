@@ -1188,11 +1188,7 @@ def _download_data_wrds_compustat(
         if only_usd:
             compustat = compustat[compustat["curcdq"] == "USD"]
 
-        processed_data = compustat.get(
-            ["date"] + _base_quarterly_cols + extra_quarterly
-        )
-
-    return processed_data
+    return compustat
 
 
 def _download_data_wrds_fisd(additional_columns: list = None) -> pd.DataFrame:
