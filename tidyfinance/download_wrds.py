@@ -1188,9 +1188,11 @@ def _download_data_wrds_compustat(
         if only_usd:
             compustat = compustat[compustat["curcdq"] == "USD"]
 
-        processed_data = compustat.get(
-            ["gvkey", "date", "datadate", "atq", "ceqq"] + extra_quarterly
-        )
+        base_output_cols = ["gvkey", "date", "datadate", "atq", "ceqq"]
+        requested_quarterly = [
+            c for c in (additional_columns or []) if c not in base_output_cols
+        ]
+        processed_data = compustat.get(base_output_cols + requested_quarterly)
 
     return processed_data
 
