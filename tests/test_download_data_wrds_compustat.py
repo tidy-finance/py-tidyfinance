@@ -192,6 +192,52 @@ def test_quarterly_data_are_cleaned_and_filtered():
     ]
 
 
+def test_quarterly_base_columns_can_be_requested():
+    """Test base quarterly columns are returned when requested."""
+    fundq = pd.DataFrame(
+        {
+            "gvkey": ["001", "002"],
+            "datadate": pd.to_datetime(["2020-03-31", "2020-03-31"]),
+            "rdq": [pd.Timestamp("2020-04-30"), pd.NaT],
+            "fqtr": [1, 1],
+            "fyearq": [2020, 2020],
+            "atq": [10, 13],
+            "ceqq": [8, 11],
+            "curcdq": ["USD", "CAD"],
+        }
+    )
+
+    with (
+        patch(
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch("tidyfinance.download_wrds.pd.read_sql", return_value=fundq),
+    ):
+        out = _download_data_wrds_compustat(
+            "compustat_quarterly",
+            "2020-01-01",
+            "2020-12-31",
+            additional_columns=["rdq", "fyearq", "fqtr", "curcdq"],
+        )
+
+    assert list(out.columns) == [
+        "gvkey",
+        "date",
+        "datadate",
+        "atq",
+        "ceqq",
+        "rdq",
+        "fyearq",
+        "fqtr",
+        "curcdq",
+    ]
+    assert list(out["fyearq"]) == [2020, 2020]
+    assert list(out["fqtr"]) == [1, 1]
+    assert list(out["curcdq"]) == ["USD", "CAD"]
+    assert out["rdq"].iloc[0] == pd.Timestamp("2020-04-30")
+
+
 def test_quarterly_data_can_return_non_usd_observations():
     """Test quarterly data can return non-USD observations."""
     fundq = pd.DataFrame(
