@@ -3,7 +3,7 @@
 import datetime as dt
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
@@ -154,6 +154,38 @@ def test_empty_download_informs_and_returns_empty_dataframe():
             out = _download_data_macro_predictors("annual")
         assert isinstance(out, pl.DataFrame)
         assert len(out) == 0
+
+
+def test_monthly_index_with_thousands_separators_parses():
+    """Goyal-Welch Index values above 999 are quoted with commas.
+
+    Commas appear only after Polars' default infer_schema_length (100),
+    so Index is inferred as f64 from early rows and parse fails later.
+    """
+    rest = '"2","5","0.01","1","0.4","0.1","0.02","0.05","0.03","0.07","0.04","0.02"'
+    header = (
+        '"yyyymm","Index","D12","E12","Rfree","svar","b/m","ntis",'
+        '"tbl","lty","ltr","BAA","AAA","infl"'
+    )
+    rows = [header]
+    for i in range(101):
+        yyyymm = 187101 + (i // 12) * 100 + (i % 12)
+        rows.append(f'"{yyyymm}","4.44",{rest}')
+    rows.append(f'"199802","1,049.34",{rest}')
+    rows.append(f'"199803","1,050.00",{rest}')
+    csv = "\n".join(rows) + "\n"
+    response = MagicMock()
+    response.content = csv.encode()
+    response.raise_for_status = MagicMock()
+
+    with patch(
+        "tidyfinance.download_open_source.requests.get",
+        return_value=response,
+    ):
+        out = _download_data_macro_predictors("monthly")
+
+    assert len(out) > 0
+    assert dt.date(1998, 2, 1) in out["date"].to_list()
 
 
 if __name__ == "__main__":

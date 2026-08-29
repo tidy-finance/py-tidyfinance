@@ -650,7 +650,7 @@ def _download_data_macro_predictors(
                 f"{sheet_id}/gviz/tq?tqx=out:csv&sheet="
                 f"{dataset.capitalize()}"
             )
-            raw_data = _fetch_csv(macro_sheet_url)
+            raw_data = _fetch_csv(macro_sheet_url, infer_schema_length=0)
         except Exception as e:
             warnings.warn(
                 f"Returning an empty dataset due to download failure: {e}",
