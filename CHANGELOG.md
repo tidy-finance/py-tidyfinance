@@ -1,9 +1,5 @@
 # Changelog
 
-## v0.5.1 (2026-09-01)
-
-- **Fixed:** Goyal-Welch (macro predictor) CSV parse no longer fails when the S&P Index column uses thousands separators (e.g. `"1,049.34"`). Rows after Polars' default schema-inference window were previously dropped as an empty download.
-
 ## v0.1.0
 
 - Development version
@@ -83,3 +79,7 @@
 - **Breaking (TRACE):** pre-2012 messages restricted to `trc_st = 'T'`.
 - **Breaking (FF breakpoints):** column names are strings (`"0-5"`), not tuples.
 - **Fixed:** `pd.DateOffset(n)` day lags; Series index alignment (pandas backend); CRSP v1 ccm-link join; one-sided `risk_free` date ranges; `NaN` as missing in `filter_sorting_data`; WRDS `numeric` columns cast to float.
+
+## v0.5.1 (2026-09-01)
+
+- **Fixed:** Goyal-Welch (macro predictor) CSV parse no longer fails when the S&P Index column uses thousands separators (e.g. `"1,049.34"`). Rows after Polars' default schema-inference window were previously dropped as an empty download.
