@@ -96,7 +96,9 @@ def download_data(
     pl.DataFrame
         A data frame with processed data, including dates and the
         relevant financial metrics, filtered by the specified date
-        range.
+        range. For 'Stock Prices', dates are trading days in the
+        exchange's local time zone (UTC when Yahoo Finance omits it),
+        and both start_date and end_date are inclusive.
 
     Examples
     --------
