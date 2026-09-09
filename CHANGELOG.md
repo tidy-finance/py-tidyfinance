@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Fixed (Yahoo Finance dates):** Stock price downloads now use the exchange's local time zone, falling back to UTC when the metadata is missing or empty. This corrects previous-day dates for markets such as Australia and New Zealand. Requests include a two-day buffer and results are filtered to include both `start_date` and `end_date`, matching [r-tidyfinance #305](https://github.com/tidy-finance/r-tidyfinance/pull/305). An end date of today can include the current, still-forming daily bar.
+
 ## v0.1.0
 
 - Development version

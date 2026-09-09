@@ -1446,7 +1446,9 @@ def _download_data_stock_prices(
     Download stock data from Yahoo Finance.
 
     Downloads historical stock data from Yahoo Finance for the given
-    symbols and date range.
+    symbols and date range. Dates are trading days in the exchange's
+    local time zone reported by Yahoo Finance (UTC when missing). Both
+    start_date and end_date are inclusive.
 
     Parameters
     ----------
@@ -1488,9 +1490,13 @@ def _download_data_stock_prices(
         start_date, end_date, use_default_range=True
     )
 
-    # Treat the calendar dates as UTC midnight for the Yahoo query.
-    start_timestamp = calendar.timegm(start_date.timetuple())
-    end_timestamp = calendar.timegm(end_date.timetuple())
+    # Buffer the UTC request window to include boundary trading days in
+    # every exchange time zone, then filter on local dates below.
+    request_buffer = dt.timedelta(days=2)
+    start_timestamp = calendar.timegm(
+        (start_date - request_buffer).timetuple()
+    )
+    end_timestamp = calendar.timegm((end_date + request_buffer).timetuple())
 
     all_data = []
 
@@ -1526,10 +1532,18 @@ def _download_data_stock_prices(
                 "adjclose"
             ]
 
-            dates = [
-                dt.datetime.fromtimestamp(ts, dt.timezone.utc).date()
-                for ts in timestamps
-            ]
+            # Daily timestamps mark the exchange-local market open,
+            # which can fall on the preceding calendar day in UTC.
+            meta = raw_data[0].get("meta") or {}
+            exchange_timezone = meta.get("exchangeTimezoneName") or "UTC"
+            dates = (
+                pl.from_epoch(
+                    pl.Series(timestamps, dtype=pl.Int64), time_unit="s"
+                )
+                .dt.replace_time_zone("UTC")
+                .dt.convert_time_zone(exchange_timezone)
+                .dt.date()
+            )
             df_symbol = pl.DataFrame(
                 {
                     "symbol": [symbol] * len(dates),
@@ -1543,7 +1557,11 @@ def _download_data_stock_prices(
                 }
             )
 
-            all_data.append(df_symbol)
+            all_data.append(
+                df_symbol.filter(
+                    pl.col("date").is_between(start_date, end_date)
+                )
+            )
 
         else:
             warnings.warn(
