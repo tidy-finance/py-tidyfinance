@@ -39,6 +39,15 @@ _FACTOR_LIBRARY_SUPPORTED_FILTERS = (
     *_FACTOR_LIBRARY_DEFAULTS.keys(),
 )
 
+_FACTOR_LIBRARY_URL = (
+    "https://huggingface.co/datasets/tidy-finance/factor-library/resolve/main"
+)
+
+_FACTOR_LIBRARY_GRID_URL = (
+    "https://huggingface.co/datasets/tidy-finance/factor-library-grid/"
+    "resolve/main/portfolio_sort_grid.parquet"
+)
+
 _hf_session = requests.Session()
 
 
@@ -269,13 +278,15 @@ def _download_factor_library_grid() -> pl.DataFrame:
     """
     Download the factor library grid from Hugging Face.
 
-    Returns the 'tidy-finance/factor-library-grid' dataset, which
-    describes every portfolio construction available in the factor
-    library (one row per construction, identified by 'id'). Use the
-    returned data frame to discover which combinations of
+    Returns the grid of the 'tidy-finance/factor-library-grid' dataset,
+    which describes every portfolio construction available in the
+    factor library (one row per construction, identified by 'id'). Use
+    the returned data frame to discover which combinations of
     'sorting_variable', 'weighting_scheme', 'rebalancing', and other
     columns exist before requesting their returns with
-    '_download_factor_library_ids'.
+    '_download_factor_library_ids'. The grid is read by name from
+    'portfolio_sort_grid.parquet', without listing the files of the
+    dataset.
 
     Returns
     -------
@@ -283,12 +294,6 @@ def _download_factor_library_grid() -> pl.DataFrame:
         A data frame with one row per portfolio construction in the
         factor library, including the integer 'id' column used by
         '_download_factor_library_ids'.
-
-    Raises
-    ------
-    ValueError
-        If no parquet files are found in the
-        'tidy-finance/factor-library-grid' repository.
 
     Examples
     --------
@@ -299,20 +304,7 @@ def _download_factor_library_grid() -> pl.DataFrame:
     _download_factor_library_grid()
     ```
     """
-    available = _get_available_huggingface_files(
-        "tidy-finance", "factor-library-grid"
-    )
-    if available.is_empty() or "path" not in available.columns:
-        raise ValueError(
-            "No parquet files were found in the Hugging Face dataset repo "
-            "'tidy-finance/factor-library-grid'."
-        )
-    grid_path = available["path"][0]
-    grid_url = (
-        "https://huggingface.co/datasets/tidy-finance"
-        f"/factor-library-grid/resolve/main/{grid_path}"
-    )
-    return _read_parquet_url(grid_url)
+    return _read_parquet_url(_FACTOR_LIBRARY_GRID_URL)
 
 
 def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
@@ -335,7 +327,10 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
         grid. Each value may be a scalar or a list/tuple to match multiple
         levels. Passing 'None' for a column removes that filter entirely,
         returning all values for that column (e.g.,
-        'min_size_quantile=None' includes all size groups). Supported
+        'min_size_quantile=None' includes all size groups). Passing
+        '[None]' selects the missing level instead, e.g.
+        'min_size_quantile=[None]' for the portfolios without a size
+        screen, which R spells 'min_size_quantile = NA'. Supported
         columns and their defaults are:
 
         - 'sorting_variable': no default. When omitted, all sorting
@@ -392,9 +387,7 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
             if col not in filters and col not in unrestricted:
                 filters[col] = default
 
-    grid = _download_factor_library_grid().with_columns(
-        pl.col("sorting_variable").str.replace(r"^sv_", "")
-    )
+    grid = _download_factor_library_grid()
 
     for col, value in filters.items():
         values = value if isinstance(value, (list, tuple)) else [value]
@@ -406,7 +399,13 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
 
 
 def _fetch_parquet_url(url, retries=5, backoff=2.0):
-    """Fetch a parquet file via a reused curl_cffi session with retry."""
+    """
+    Fetch a parquet file via a reused curl_cffi session with retry.
+
+    Returns None without retrying when the file does not exist (HTTP
+    404). Other failures are retried with exponential backoff and raise
+    a ConnectionError once all 'retries' attempts have failed.
+    """
     headers = {}
     token = os.getenv("HF_TOKEN")
     if token:
@@ -415,6 +414,8 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
     for attempt in range(retries):
         try:
             r = _hf_session.get(url, headers=headers, timeout=120)
+            if r.status_code == 404:
+                return None
             r.raise_for_status()
             return pl.read_parquet(io.BytesIO(r.content))
         except Exception as e:
@@ -426,6 +427,27 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
     ) from last_err
 
 
+def _factor_library_file(portfolio_id: int) -> str:
+    """
+    Name the factor library file that holds a portfolio ID.
+
+    The returns are cut into files of 1,000 consecutive IDs named after
+    the range they cover, so the file follows from the ID alone.
+
+    Parameters
+    ----------
+    portfolio_id : int
+        Portfolio ID from the factor library grid.
+
+    Returns
+    -------
+    str
+        The file name, e.g. 'id_0001001-0002000.parquet' for ID 1500.
+    """
+    id_first = (portfolio_id - 1) // 1000 * 1000 + 1
+    return f"id_{id_first:07d}-{id_first + 999:07d}.parquet"
+
+
 def _download_factor_library_ids(ids: list) -> pl.DataFrame:
     """
     Download factor library returns for a vector of portfolio IDs.
@@ -433,12 +455,11 @@ def _download_factor_library_ids(ids: list) -> pl.DataFrame:
     Given a vector of portfolio IDs from the
     'tidy-finance/factor-library-grid' Hugging Face dataset, downloads
     the corresponding return data from the
-    'tidy-finance/factor-library' dataset on Hugging Face. The
-    function identifies the unique combinations of 'sorting_variable',
-    'sorting_variable_lag', 'sorting_method', and 'n_portfolios_main'
-    for the requested IDs, downloads one parquet file per combination
-    in full, and then inner-joins to retain only the requested IDs.
-    The grid metadata is joined back onto the result.
+    'tidy-finance/factor-library' dataset on Hugging Face. The returns
+    are stored in files of 1,000 consecutive IDs named after the range
+    they cover (e.g., 'id_0000001-0001000.parquet'), so the function
+    downloads only the files that hold the requested IDs, each once.
+    The grid metadata is joined onto the result.
 
     Use this function when you already know the portfolio IDs you want
     (for example, from a previous call to '_download_data_huggingface'
@@ -447,9 +468,12 @@ def _download_factor_library_ids(ids: list) -> pl.DataFrame:
     etc.) and download in a single call, use
     '_download_data_huggingface' instead.
 
-    Raises an error if 'ids' is empty or contains IDs that cannot be
-    matched to a parquet file, listing the affected IDs and their key
-    columns.
+    Raises an error if 'ids' is empty or if none of the requested IDs
+    exist in the grid. IDs whose portfolio sort produced no portfolios
+    have no returns; they are absent from the result, with a warning.
+    Returns are stored in single precision and returned as 64-bit
+    floats, and months without a valid long-short return are stored
+    as 0.
 
     Parameters
     ----------
@@ -460,14 +484,21 @@ def _download_factor_library_ids(ids: list) -> pl.DataFrame:
     Returns
     -------
     pl.DataFrame
-        A data frame of portfolio returns with the grid metadata
-        columns for the requested IDs appended.
+        A data frame with the columns 'id', 'date', and 'ret' (the
+        monthly long-short excess return) and the grid metadata
+        columns for the requested IDs.
 
     Raises
     ------
     ValueError
-        If 'ids' is empty, or if any ID cannot be matched to a parquet
-        file in the factor library.
+        If 'ids' is empty, or if none of the requested IDs exist in the
+        factor library grid.
+
+    Warns
+    -----
+    UserWarning
+        If some of the requested IDs have no returns in the factor
+        library.
 
     Examples
     --------
@@ -484,73 +515,59 @@ def _download_factor_library_ids(ids: list) -> pl.DataFrame:
             "Check that your filter criteria match at least one portfolio."
         )
 
-    organization = "tidy-finance"
-    dataset_name = "factor-library"
-
-    path_pattern = r"sorting_variable=([^/]+)/sorting_variable_lag=([^/]+)/"
-    available_files = _get_available_huggingface_files(
-        organization, dataset_name
-    )
-    available_files = available_files.with_columns(
-        sorting_variable=pl.col("path").str.extract(path_pattern, 1),
-        sorting_variable_lag=pl.col("path").str.extract(path_pattern, 2),
-    )
-
-    grid = _download_factor_library_grid().with_columns(
-        pl.col("sorting_variable").str.replace(r"^sv_", "")
-    )
-
-    id_grid = grid.filter(pl.col("id").is_in(ids)).join(
-        available_files.select(
-            "sorting_variable", "sorting_variable_lag", "path"
-        ),
-        on=["sorting_variable", "sorting_variable_lag"],
-        how="left",
-        maintain_order="left",
-    )
-
-    missing = id_grid.filter(pl.col("path").is_null())
-    if not missing.is_empty():
-        missing_keys = [
-            f"id={row['id']} "
-            f"({row['sorting_variable']} / {row['sorting_variable_lag']})"
-            for row in missing.iter_rows(named=True)
-        ]
+    id_grid = _download_factor_library_grid().filter(pl.col("id").is_in(ids))
+    if id_grid.is_empty():
         raise ValueError(
-            f"No parquet file found for {len(missing_keys)} portfolio ID(s): "
-            f"{missing_keys}. Check that the sorting_variable and "
-            "sorting_variable_lag values exist in the factor library."
+            "None of the requested portfolio IDs exist in the factor library "
+            "grid. Check that the provided 'ids' are valid and exist in the "
+            "factor library grid."
         )
 
-    unique_paths = (
-        id_grid["path"].drop_nulls().unique(maintain_order=True).to_list()
-    )
+    requested = id_grid["id"].to_list()
+    files = list(dict.fromkeys(map(_factor_library_file, requested)))
 
-    def _make_url(p):
-        return (
-            f"https://huggingface.co/datasets/{organization}"
-            f"/{dataset_name}/resolve/main/{p}"
-        )
+    def _fetch_returns(file):
+        data = _fetch_parquet_url(f"{_FACTOR_LIBRARY_URL}/{file}")
+        # No file exists for a range in which no sort produced portfolios.
+        if data is None:
+            return None
+        # Each file holds 1,000 series; keep only the requested ones.
+        return data.filter(pl.col("id").is_in(requested))
 
     with ThreadPoolExecutor(max_workers=8) as ex:
-        frames = list(
-            ex.map(_fetch_parquet_url, [_make_url(p) for p in unique_paths])
+        frames = [f for f in ex.map(_fetch_returns, files) if f is not None]
+
+    if frames:
+        returns = pl.concat(frames, how="diagonal_relaxed")
+    else:
+        returns = pl.DataFrame(
+            schema={
+                "id": id_grid.schema["id"],
+                "date": pl.Date,
+                "ret": pl.Float32,
+            }
+        )
+    # Returns are stored in single precision; widen them to the double
+    # precision the R package returns.
+    returns = returns.with_columns(pl.col("ret").cast(pl.Float64))
+
+    no_returns = (
+        id_grid.select("id")
+        .join(returns.select("id").unique(), on="id", how="anti")
+        .sort("id")["id"]
+    )
+    if not no_returns.is_empty():
+        shown = ", ".join(map(str, no_returns.head(5).to_list()))
+        if no_returns.len() > 5:
+            shown += f", ... ({no_returns.len():,} IDs)"
+        warnings.warn(
+            "Portfolio IDs without returns in the factor library, because "
+            "their portfolio sort produced no portfolios, are absent from "
+            f"the result: {shown}.",
+            stacklevel=2,
         )
 
-    if not frames:
-        raise ValueError("No objects to concatenate")
-
-    returns = pl.concat(frames, how="diagonal_relaxed")
-
-    meta_cols = [c for c in id_grid.columns if c not in ("path", "size")]
-    return returns.join(
-        id_grid.select(meta_cols).unique(
-            subset="id", keep="first", maintain_order=True
-        ),
-        on="id",
-        how="inner",
-        maintain_order="left",
-    )
+    return returns.join(id_grid, on="id", how="inner", maintain_order="left")
 
 
 def _download_data_huggingface_factor_library(
@@ -644,44 +661,50 @@ def _download_data_huggingface(
     defaults are:
 
     - 'sorting_variable': optional. The firm characteristic used to
-      sort stocks into portfolios (e.g., 'me' for market equity, 'bm'
-      for book-to-market). No default is applied; when omitted, all
-      sorting variables are returned (subject to the remaining
-      defaults).
+      sort stocks into portfolios, named like the Open Source Asset
+      Pricing signals (e.g., 'size' for market equity, 'bm' for
+      book-to-market). See the 'factor_library_grid' dataset for all
+      values. No default is applied; when omitted, all sorting
+      variables are returned (subject to the remaining defaults).
     - 'min_size_quantile' (defaults to 0.2): fraction of the smallest
       stocks (by market cap) excluded from the portfolio universe; 0.2
       drops the bottom 20%.
     - 'exclude_financials' (defaults to False): whether to drop
-      financial-sector stocks (SIC 6000-6999) from the universe.
+      financial-sector stocks (SIC 6000-6799) from the universe.
     - 'exclude_utilities' (defaults to False): whether to drop
       utility-sector stocks (SIC 4900-4999) from the universe.
     - 'exclude_negative_earnings' (defaults to False): whether to drop
       firms with negative earnings before sorting.
     - 'sorting_variable_lag' (defaults to '6m'): lag applied to the
-      sorting variable before portfolio assignment (e.g., '6m' = a
-      six-month lag).
+      sorting variable before portfolio assignment: '1m' (the timing
+      of Open Source Asset Pricing), '3m', '6m', or 'ff'
+      (Fama-French).
     - 'rebalancing' (defaults to 'monthly'): how frequently portfolios
       are reformed; 'monthly' or 'annual'.
     - 'n_portfolios_main' (defaults to 10): number of quantile groups
       (e.g., 10 for decile portfolios).
     - 'sorting_method' (defaults to 'univariate'): whether portfolios
-      are formed on a single sort ('univariate') or a sequential
-      double sort ('sequential').
-    - 'n_portfolios_secondary' (defaults to None): number of groups
-      for the secondary sort variable. Required when 'sorting_method'
+      are formed on a single sort ('univariate') or on a double sort
+      with size as the second variable ('bivariate-dependent' or
+      'bivariate-independent').
+    - 'n_portfolios_secondary' (defaults to None): number of size
+      groups for the secondary sort. Required when 'sorting_method'
       is not 'univariate'.
     - 'breakpoints_exchanges' (defaults to 'NYSE'): exchange(s) used
       to compute breakpoints; 'NYSE' uses only NYSE-listed stocks to
       define quantile cutoffs (the conventional Fama-French approach).
     - 'breakpoints_min_size_threshold' (defaults to None): minimum
-      market-cap threshold (in USD) applied when computing
-      breakpoints. None means no minimum-size screen is applied.
+      size quantile of the stocks that set the main breakpoints (e.g.,
+      0.2). None means no minimum-size screen is applied.
     - 'weighting_scheme' (defaults to 'VW'): return weighting within
-      portfolios; 'VW' for value-weighted or 'EW' for equal-weighted.
+      portfolios; 'VW' for value-weighted, 'EW' for equal-weighted, or
+      'capped VW' for value-weighted with capped weights.
 
     Passing 'None' for any filter column removes that filter entirely,
     returning all values for that column (e.g., 'min_size_quantile=None'
-    includes all size groups).
+    includes all size groups). Passing '[None]' selects the missing
+    level instead, e.g. 'min_size_quantile=[None]' for the portfolios
+    without a size screen, which R spells 'min_size_quantile = NA'.
 
     Parameters
     ----------
@@ -716,7 +739,8 @@ def _download_data_huggingface(
         unspecified columns unrestricted (default False, i.e.,
         unspecified columns are fixed at the defaults listed above).
         Passing None for any parameter removes that filter entirely,
-        returning all values for that column. Passing an unrecognised
+        returning all values for that column, and '[None]' selects its
+        missing level. Passing an unrecognised
         column name raises a 'ValueError'. 'ids' cannot be combined
         with filter arguments. Ignored when 'dataset' is not
         'factor_library'.
@@ -727,8 +751,9 @@ def _download_data_huggingface(
         A data frame with the downloaded data. For
         'high_frequency_sp500', contains 5-second aggregated order-book
         snapshots filtered to the requested date range. For
-        'factor_library', contains portfolio return data joined with
-        the full grid metadata for the matched portfolio IDs.
+        'factor_library', contains the columns 'id', 'date', and 'ret'
+        joined with the full grid metadata for the matched portfolio
+        IDs.
 
     Raises
     ------
@@ -747,15 +772,15 @@ def _download_data_huggingface(
     )
     _download_data_huggingface(
         'factor_library',
-        sorting_variable='52w',
+        sorting_variable='high52',
         rebalancing='annual',
     )
     _download_data_huggingface(
-        'factor_library', sorting_variable='ag', fill_all=True
+        'factor_library', sorting_variable='assetgrowth', fill_all=True
     )
     _download_data_huggingface(
         'factor_library',
-        sorting_variable='me',
+        sorting_variable='size',
         start_date='2000-01-01',
         end_date='2020-12-31',
     )

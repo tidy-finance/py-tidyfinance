@@ -274,7 +274,7 @@ tf.download_data(
 tf.download_data(
   domain="Tidy Finance",
   dataset="factor_library",
-  sorting_variable="me"
+  sorting_variable="assetgrowth"
 )
 ```
 
