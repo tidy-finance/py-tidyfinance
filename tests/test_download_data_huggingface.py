@@ -313,16 +313,9 @@ def test_sorting_variable_optional_returns_all_with_defaults():
         },
         schema_overrides=_GRID_DTYPES,
     )
-    available = _available(["grid.parquet"])
-    with (
-        patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
-            return_value=available,
-        ),
-        patch(
-            "tidyfinance.download_tidy_finance._read_parquet_url",
-            return_value=grid,
-        ),
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url",
+        return_value=grid,
     ):
         ids = _filter_factor_library_grid()
 
@@ -351,16 +344,9 @@ def test_explicit_none_removes_filter_returning_all_values():
         },
         schema_overrides=_GRID_DTYPES,
     )
-    available = _available(["grid.parquet"])
-    with (
-        patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
-            return_value=available,
-        ),
-        patch(
-            "tidyfinance.download_tidy_finance._read_parquet_url",
-            return_value=grid,
-        ),
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url",
+        return_value=grid,
     ):
         ids = _filter_factor_library_grid(
             sorting_variable="size", min_size_quantile=None
@@ -368,6 +354,23 @@ def test_explicit_none_removes_filter_returning_all_values():
 
     # The default 0.2 screen is removed, so all size groups are returned.
     assert ids == [1, 2, 3]
+
+
+def test_list_with_none_selects_the_missing_level():
+    """Test [None] selects the rows where a column is missing (R's NA)."""
+    grid = _make_grid([1, 2]).with_columns(
+        pl.Series("min_size_quantile", [None, 0.2])
+    )
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url",
+        return_value=grid,
+    ):
+        ids = _filter_factor_library_grid(
+            sorting_variable="size", min_size_quantile=[None]
+        )
+
+    # None would drop the filter and return both rows.
+    assert ids == [1]
 
 
 def test_fill_all_false_defaults_applied_row_filtered_out():
@@ -391,16 +394,9 @@ def test_fill_all_false_defaults_applied_row_filtered_out():
         },
         schema_overrides=_GRID_DTYPES,
     )
-    available = _available(["grid.parquet"])
-    with (
-        patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
-            return_value=available,
-        ),
-        patch(
-            "tidyfinance.download_tidy_finance._read_parquet_url",
-            return_value=grid,
-        ),
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url",
+        return_value=grid,
     ):
         ids = _filter_factor_library_grid(sorting_variable="size")
 
@@ -428,16 +424,9 @@ def test_fill_all_true_only_explicit_filters_applied():
         },
         schema_overrides=_GRID_DTYPES,
     )
-    available = _available(["grid.parquet"])
-    with (
-        patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
-            return_value=available,
-        ),
-        patch(
-            "tidyfinance.download_tidy_finance._read_parquet_url",
-            return_value=grid,
-        ),
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url",
+        return_value=grid,
     ):
         ids = _filter_factor_library_grid(
             sorting_variable="size", fill_all=True
@@ -449,22 +438,26 @@ def test_fill_all_true_only_explicit_filters_applied():
 # %% download_factor_library_grid (no direct Python equivalent)
 
 
-def test_pulls_url_from_available_files_and_reads_parquet():
-    """Test pulls url from available files and reads parquet."""
-    available = _available(["grid.parquet"], [500])
+def test_reads_the_grid_file_by_name():
+    """Test the grid is read from portfolio_sort_grid.parquet directly."""
     mock_grid = pl.DataFrame({"id": [1]})
     with (
         patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
-            return_value=available,
-        ),
+            "tidyfinance.download_tidy_finance._get_available_huggingface_files"
+        ) as listing,
         patch(
             "tidyfinance.download_tidy_finance._read_parquet_url",
             return_value=mock_grid,
-        ),
+        ) as read,
     ):
         result = _download_factor_library_grid()
+
     assert_frame_equal(result, mock_grid)
+    read.assert_called_once_with(
+        "https://huggingface.co/datasets/tidy-finance/factor-library-grid/"
+        "resolve/main/portfolio_sort_grid.parquet"
+    )
+    listing.assert_not_called()
 
 
 # %% _factor_library_file

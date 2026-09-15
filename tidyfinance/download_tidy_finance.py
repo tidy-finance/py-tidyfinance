@@ -43,6 +43,11 @@ _FACTOR_LIBRARY_URL = (
     "https://huggingface.co/datasets/tidy-finance/factor-library/resolve/main"
 )
 
+_FACTOR_LIBRARY_GRID_URL = (
+    "https://huggingface.co/datasets/tidy-finance/factor-library-grid/"
+    "resolve/main/portfolio_sort_grid.parquet"
+)
+
 _hf_session = requests.Session()
 
 
@@ -273,13 +278,15 @@ def _download_factor_library_grid() -> pl.DataFrame:
     """
     Download the factor library grid from Hugging Face.
 
-    Returns the 'tidy-finance/factor-library-grid' dataset, which
-    describes every portfolio construction available in the factor
-    library (one row per construction, identified by 'id'). Use the
-    returned data frame to discover which combinations of
+    Returns the grid of the 'tidy-finance/factor-library-grid' dataset,
+    which describes every portfolio construction available in the
+    factor library (one row per construction, identified by 'id'). Use
+    the returned data frame to discover which combinations of
     'sorting_variable', 'weighting_scheme', 'rebalancing', and other
     columns exist before requesting their returns with
-    '_download_factor_library_ids'.
+    '_download_factor_library_ids'. The grid is read by name from
+    'portfolio_sort_grid.parquet', without listing the files of the
+    dataset.
 
     Returns
     -------
@@ -287,12 +294,6 @@ def _download_factor_library_grid() -> pl.DataFrame:
         A data frame with one row per portfolio construction in the
         factor library, including the integer 'id' column used by
         '_download_factor_library_ids'.
-
-    Raises
-    ------
-    ValueError
-        If no parquet files are found in the
-        'tidy-finance/factor-library-grid' repository.
 
     Examples
     --------
@@ -303,20 +304,7 @@ def _download_factor_library_grid() -> pl.DataFrame:
     _download_factor_library_grid()
     ```
     """
-    available = _get_available_huggingface_files(
-        "tidy-finance", "factor-library-grid"
-    )
-    if available.is_empty() or "path" not in available.columns:
-        raise ValueError(
-            "No parquet files were found in the Hugging Face dataset repo "
-            "'tidy-finance/factor-library-grid'."
-        )
-    grid_path = available["path"][0]
-    grid_url = (
-        "https://huggingface.co/datasets/tidy-finance"
-        f"/factor-library-grid/resolve/main/{grid_path}"
-    )
-    return _read_parquet_url(grid_url)
+    return _read_parquet_url(_FACTOR_LIBRARY_GRID_URL)
 
 
 def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
@@ -339,7 +327,10 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
         grid. Each value may be a scalar or a list/tuple to match multiple
         levels. Passing 'None' for a column removes that filter entirely,
         returning all values for that column (e.g.,
-        'min_size_quantile=None' includes all size groups). Supported
+        'min_size_quantile=None' includes all size groups). Passing
+        '[None]' selects the missing level instead, e.g.
+        'min_size_quantile=[None]' for the portfolios without a size
+        screen, which R spells 'min_size_quantile = NA'. Supported
         columns and their defaults are:
 
         - 'sorting_variable': no default. When omitted, all sorting
@@ -711,7 +702,9 @@ def _download_data_huggingface(
 
     Passing 'None' for any filter column removes that filter entirely,
     returning all values for that column (e.g., 'min_size_quantile=None'
-    includes all size groups).
+    includes all size groups). Passing '[None]' selects the missing
+    level instead, e.g. 'min_size_quantile=[None]' for the portfolios
+    without a size screen, which R spells 'min_size_quantile = NA'.
 
     Parameters
     ----------
@@ -746,7 +739,8 @@ def _download_data_huggingface(
         unspecified columns unrestricted (default False, i.e.,
         unspecified columns are fixed at the defaults listed above).
         Passing None for any parameter removes that filter entirely,
-        returning all values for that column. Passing an unrecognised
+        returning all values for that column, and '[None]' selects its
+        missing level. Passing an unrecognised
         column name raises a 'ValueError'. 'ids' cannot be combined
         with filter arguments. Ignored when 'dataset' is not
         'factor_library'.
