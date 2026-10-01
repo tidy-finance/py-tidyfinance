@@ -141,7 +141,7 @@ def download_data(
     download_data(
         'Tidy Finance',
         'factor_library',
-        sorting_variable='52w',
+        sorting_variable='high52',
         rebalancing='annual',
     )
     download_data('Tidy Finance', 'factor_library', ids=[1, 2, 3])
