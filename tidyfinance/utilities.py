@@ -178,7 +178,8 @@ def list_supported_indexes() -> pl.DataFrame:
 
         - 'index': name of the financial index (e.g. 'DAX', 'S&P 500').
         - 'url': URL of the CSV file with constituent holdings.
-        - 'skip': number of leading rows to skip when reading the CSV.
+        - 'skip': number of preamble rows in the provider file. Kept for
+          compatibility; the header row is now detected automatically.
 
     Examples
     --------
@@ -191,17 +192,17 @@ def list_supported_indexes() -> pl.DataFrame:
     data = [
         (
             "DAX",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251464/ishares-dax-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=DAXEX_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251464/ishares-dax-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=DAXEX_holdings&dataType=fund",
             2,
         ),
         (
             "EURO STOXX 50",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251783/ishares-euro-stoxx-50-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXW1_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251783/ishares-euro-stoxx-50-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXW1_holdings&dataType=fund",
             2,
         ),
         (
             "Dow Jones Industrial Average",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251770/ishares-dow-jones-industrial-average-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXI3_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251770/ishares-dow-jones-industrial-average-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXI3_holdings&dataType=fund",
             2,
         ),
         (
@@ -226,22 +227,22 @@ def list_supported_indexes() -> pl.DataFrame:
         ),
         (
             "S&P 500",
-            "https://www.ishares.com/de/privatanleger/de/produkte/253743/ishares-sp-500-b-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=SXR8_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/253743/ishares-sp-500-b-ucits-etf-acc-fund/1495092304805.ajax?fileType=csv&fileName=SXR8_holdings&dataType=fund",
             2,
         ),
         (
             "Nasdaq 100",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1478358465952.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund",
             2,
         ),
         (
             "FTSE 100",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1478358465952.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1495092304805.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund",
             2,
         ),
         (
             "MSCI World",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1478358465952.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund",
+            "https://www.ishares.com/de/privatanleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1495092304805.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund",
             2,
         ),
         (

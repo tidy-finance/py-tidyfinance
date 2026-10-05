@@ -239,6 +239,121 @@ def test_download_request_pipeline_is_executed():
     mock_get.assert_called()
 
 
+def test_header_row_is_detected_after_preamble():
+    """Test the header row is found without a fixed skip count."""
+    csv = "\n".join(
+        [
+            "Fondspositionen per,30.09.2026",
+            "",
+            "Anlageklasse,Emittententicker,Name,Standort,Börse",
+            "Aktien,ABC,Alpha AG,Germany,Xetra",
+        ]
+    )
+    response_mock = MagicMock()
+    response_mock.status_code = 200
+    response_mock.text = csv
+
+    with (
+        patch(
+            "tidyfinance.download_open_source.list_supported_indexes",
+            return_value=_supported_indexes_df("DAX"),
+        ),
+        patch(
+            "tidyfinance.download_open_source._get_random_user_agent",
+            return_value="ua",
+        ),
+        patch(
+            "tidyfinance.download_open_source.requests.get",
+            return_value=response_mock,
+        ),
+    ):
+        out = _download_data_constituents("DAX")
+
+    assert out["symbol"].to_list() == ["ABC.DE"]
+
+
+def test_path_reads_ishares_file_without_network(tmp_path):
+    """Test 'path' reads a local iShares file and makes no request."""
+    file = tmp_path / "holdings.csv"
+    file.write_text(
+        "Preamble\n"
+        "Anlageklasse,Emittententicker,Name,Standort,Börse\n"
+        "Aktien,ABC,Alpha AG,Germany,Xetra\n"
+        "Aktien,DAX,DAX INDEX,Germany,Xetra\n",
+        encoding="utf-8",
+    )
+    with patch("tidyfinance.download_open_source.requests.get") as mock_get:
+        out = _download_data_constituents(index="DAX", path=file)
+
+    mock_get.assert_not_called()
+    assert out["symbol"].to_list() == ["ABC.DE"]
+    assert out.columns == ["symbol", "name", "location", "exchange", "currency"]
+
+
+def test_path_without_index_skips_index_name_filter(tmp_path):
+    """Test 'path' works without 'index' and keeps index-named rows."""
+    file = tmp_path / "holdings.csv"
+    file.write_text(
+        "Anlageklasse,Emittententicker,Name,Standort,Börse\n"
+        "Aktien,ABC,Alpha AG,Germany,Xetra\n"
+        "Aktien,DAX,DAX INDEX,Germany,Xetra\n",
+        encoding="utf-8",
+    )
+    out = _download_data_constituents(path=file)
+
+    assert out["symbol"].to_list() == ["ABC.DE", "DAX.DE"]
+
+
+def test_path_reads_latin1_file(tmp_path):
+    """Test a Latin-1 encoded holdings file is decoded."""
+    file = tmp_path / "holdings.csv"
+    file.write_bytes(
+        (
+            "Anlageklasse,Emittententicker,Name,Standort,Börse\n"
+            "Aktien,ABC,Alpha AG,Germany,Xetra\n"
+        ).encode("latin-1")
+    )
+    out = _download_data_constituents(path=file)
+
+    assert out["symbol"].to_list() == ["ABC.DE"]
+
+
+def test_unknown_file_layout_fails(tmp_path):
+    """Test a file without an iShares header row fails."""
+    file = tmp_path / "other.csv"
+    file.write_text("a,b,c\n1,2,3\n")
+    with pytest.raises(ValueError, match="Unknown column format"):
+        _download_data_constituents(path=file)
+
+
+def test_index_or_path_is_required():
+    """Test calling without 'index' and 'path' fails."""
+    with pytest.raises(ValueError, match="'index'.*'path'"):
+        _download_data_constituents()
+
+
+def test_failed_download_points_to_path_fallback():
+    """Test the download error message mentions the 'path' fallback."""
+    response_mock = MagicMock()
+    response_mock.status_code = 404
+    with (
+        patch(
+            "tidyfinance.download_open_source.list_supported_indexes",
+            return_value=_supported_indexes_df(),
+        ),
+        patch(
+            "tidyfinance.download_open_source._get_random_user_agent",
+            return_value="ua",
+        ),
+        patch(
+            "tidyfinance.download_open_source.requests.get",
+            return_value=response_mock,
+        ),
+    ):
+        with pytest.raises(ValueError, match="path="):
+            _download_data_constituents("DAX")
+
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])
