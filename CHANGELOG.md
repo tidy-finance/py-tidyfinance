@@ -1,7 +1,5 @@
 # Changelog
 
-## Unreleased
-
 ## v0.1.0
 
 - Development version
@@ -91,3 +89,8 @@
 - **Fixed (Yahoo Finance dates):** Stock price downloads now use the exchange's local time zone, falling back to UTC when the metadata is missing or empty. This corrects previous-day dates for markets such as Australia and New Zealand. Requests include a two-day buffer and results are filtered to include both `start_date` and `end_date`, matching [r-tidyfinance #305](https://github.com/tidy-finance/r-tidyfinance/pull/305). An end date of today can include the current, still-forming daily bar.
 - **Fixed (factor library layout):** `download_data("Tidy Finance", "factor_library", ...)` reads the new layout of the factor library on Hugging Face, where the returns hold only `id`, `date`, and `ret` in files of 1,000 consecutive IDs named after their range (e.g., `id_0000001-0001000.parquet`). The file that holds each requested ID is computed from the ID, so only those files are downloaded, each once. Neither dataset is listed any more: the grid is read by name from `portfolio_sort_grid.parquet`, so it keeps working when the grid dataset gains more files. The result has the columns `id`, `date`, and `ret` followed by the grid columns; it no longer has a `ret_type` column, and the weighting scheme is in the `weighting_scheme` column of the grid. Returns are stored in single precision and returned as 64-bit floats. IDs without returns, whose portfolio sort produced no portfolios, are absent from the result with a warning. Version 0.5.1 cannot read the new layout. This follows [r-tidyfinance #306](https://github.com/tidy-finance/r-tidyfinance/pull/306).
 - **Breaking (factor library sorting variables):** The factor library now builds on the signals of Open Source Asset Pricing, so sorting variables carry their names, e.g. `"size"` instead of `"me"`, `"high52"` instead of `"52w"`, and `"assetgrowth"` instead of `"ag"`. The grid covers 179 sorting variables and adds the `"1m"` lag, the `"bivariate-dependent"` and `"bivariate-independent"` sorting methods, and `"capped VW"` weighting. The examples and documented grid values follow the new release.
+
+## v0.5.3 (2026-10-05)
+
+- **Fixed (index constituents):** `download_data("Index Constituents", ...)` works again for DAX, EURO STOXX 50, Dow Jones Industrial Average, S&P 500, Nasdaq 100, FTSE 100, and MSCI World. iShares removed the German retail pages the holdings files were downloaded from; they are now read from the Swiss professional pages. The header row of a holdings file is detected automatically instead of skipping a fixed number of rows (#80).
+- **Added (index constituents fallback):** a new `path` argument reads an iShares or BlackRock holdings CSV saved from the fund's web page instead of downloading it, e.g. `download_data("Index Constituents", path="holdings.csv")`. `index` is optional with `path`. When a download fails, the error message now names the URL and points to `path` (#80).

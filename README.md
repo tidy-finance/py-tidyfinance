@@ -201,6 +201,15 @@ tf.download_data(
 )
 ```
 
+If the download fails, save the holdings CSV from the ETF's web page and read it from disk instead:
+
+```python
+tf.download_data(
+  domain="Index Constituents",
+  path="holdings.csv"
+)
+```
+
 ## Download WRDS Data
 
 To access data from the [Wharton Research Data Services (WRDS)](https://wrds-www.wharton.upenn.edu/), you need to set your credentials first:

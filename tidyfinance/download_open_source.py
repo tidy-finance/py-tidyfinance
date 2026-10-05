@@ -3,6 +3,7 @@
 import calendar
 import datetime as dt
 import io
+import pathlib
 import re
 import time
 import warnings
@@ -753,7 +754,7 @@ def _download_data_macro_predictors(
 
 
 def _download_data_constituents(
-    index: str = None, dataset: str = None, **kwargs
+    index: str = None, dataset: str = None, path=None, **kwargs
 ) -> pl.DataFrame:
     """
     Download constituent data for a given stock index.
@@ -768,14 +769,19 @@ def _download_data_constituents(
 
     Parameters
     ----------
-    index : str
+    index : str, optional
         Name of the financial index for which to download constituent
         data. Must be one of the supported indexes listed by
-        'list_supported_indexes'.
+        'list_supported_indexes'. Optional when 'path' is given.
     dataset : str, optional
         Convenience alias accepted from the unified 'download_data'
         dispatcher. Forwarded to 'index' with a UserWarning when
         'index' is not supplied directly.
+    path : str or os.PathLike, optional
+        Path to a local iShares or BlackRock holdings CSV, as saved from
+        the fund's web page, to read instead of downloading. 'index' is
+        optional in this case; when given, rows whose name contains the
+        index name are dropped.
     **kwargs
         Additional keyword arguments are accepted and silently
         ignored. They exist so that calls routed through
@@ -797,14 +803,15 @@ def _download_data_constituents(
           derived from the exchange.
 
         The data frame is filtered to exclude non-equity entries,
-        blacklisted symbols, empty names, and any entries containing
-        the index name or 'CASH'.
+        blacklisted symbols, empty names, entries containing 'CASH',
+        and, when 'index' is given, entries containing the index name.
 
     Examples
     --------
     ```python
-    from tidyfinance import download_data_constituents
-    download_data_constituents('DAX')
+    from tidyfinance import download_data
+    download_data('Index Constituents', index='DAX')
+    download_data('Index Constituents', path='DAXEX_holdings.csv')
     ```
     """
     if dataset is not None and index is None:
@@ -818,33 +825,63 @@ def _download_data_constituents(
         index = dataset
 
     symbol_blacklist = {"", "-", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
-    supported_indexes = list_supported_indexes()
-
-    if index not in supported_indexes["index"].to_list():
+    if index is None and path is None:
         raise ValueError(
-            "The index '{index}' is not supported. "
-            f"Supported indexes: {', '.join(supported_indexes['index'])}"
+            "Pass 'index' to download constituents or 'path' to read a "
+            "holdings file, e.g. download_data(domain='Index Constituents', "
+            "path='holdings.csv')."
         )
 
-    index_row = supported_indexes.filter(pl.col("index") == index)
-    url = index_row.get_column("url").item()
-    skip_rows = int(index_row.get_column("skip").item())
-    headers = {"User-Agent": _get_random_user_agent()}
+    if path is not None:
+        raw = pathlib.Path(path).read_bytes()
+        try:
+            text = raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+    else:
+        supported_indexes = list_supported_indexes()
+        if index not in supported_indexes["index"].to_list():
+            raise ValueError(
+                f"The index '{index}' is not supported. "
+                f"Supported indexes: {', '.join(supported_indexes['index'])}"
+            )
 
-    try:
-        response = requests.get(url, impersonate="chrome120", headers=headers)
-    except Exception:
-        response = requests.get(url, impersonate="chrome120")
+        index_row = supported_indexes.filter(pl.col("index") == index)
+        url = index_row.get_column("url").item()
+        headers = {"User-Agent": _get_random_user_agent()}
 
-    if response.status_code != 200:
-        raise ValueError(
-            f"Failed to download data for index {index}. "
-            "Please check the index name or try again later."
-        )
+        try:
+            response = requests.get(
+                url, impersonate="chrome120", headers=headers
+            )
+        except Exception:
+            response = requests.get(url, impersonate="chrome120")
+
+        if response.status_code != 200:
+            raise ValueError(
+                f"Failed to download data for index {index} from {url}. "
+                "The provider may have moved the file. As a fallback, "
+                "download the holdings CSV from the fund's web page in your "
+                "browser and pass it via 'path', e.g. download_data("
+                "domain='Index Constituents', path='holdings.csv')."
+            )
+        text = response.text
+
+    # Find the header row instead of skipping a fixed number of rows.
+    lines = text.splitlines()
+    start = next(
+        (
+            i
+            for i, line in enumerate(lines)
+            if "Anlageklasse" in line or "Asset Class" in line
+        ),
+        None,
+    )
+    if start is None:
+        raise ValueError("Unknown column format in downloaded data.")
 
     df = pl.read_csv(
-        response.text.encode("utf-8"),
-        skip_rows=skip_rows,
+        "\n".join(lines[start:]).encode("utf-8"),
         truncate_ragged_lines=True,
         infer_schema_length=None,
     )
@@ -869,17 +906,19 @@ def _download_data_constituents(
     df = df.with_columns(pl.col("symbol").cast(pl.String).str.strip_chars())
     df = df.filter(~pl.col("symbol").is_in(list(symbol_blacklist)))
     df = df.filter(pl.col("name") != "")
-    df = df.filter(
-        ~pl.col("name").str.contains(f"(?i){index}").fill_null(False)
-    )
+    if index:
+        df = df.filter(
+            ~pl.col("name").str.contains(f"(?i){index}").fill_null(False)
+        )
     df = df.filter(~pl.col("name").str.contains("(?i)CASH").fill_null(False))
-    index_no_space = re.sub(r"\s+", "", index).lower()
-    df = df.filter(
-        ~pl.col("name")
-        .str.to_lowercase()
-        .str.contains(index_no_space)
-        .fill_null(False)
-    )
+    if index:
+        index_no_space = re.sub(r"\s+", "", index).lower()
+        df = df.filter(
+            ~pl.col("name")
+            .str.to_lowercase()
+            .str.contains(index_no_space)
+            .fill_null(False)
+        )
 
     df = df.with_columns(
         pl.when(pl.col("name") == "NATIONAL BANK OF CANADA")
