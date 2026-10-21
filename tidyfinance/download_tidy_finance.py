@@ -56,6 +56,29 @@ _FACTOR_LIBRARY_GRID_URL = (
 _hf_session = requests.Session()
 
 
+def _parse_parquet(content: bytes) -> pl.DataFrame:
+    """
+    Parse the bytes of a parquet file into a polars data frame.
+
+    The file is read through pyarrow ('use_pyarrow=True'). Files written
+    with nanoparquet, such as the factor library, store single-precision
+    columns as 'float' but declare them as 'double' in the embedded
+    Arrow schema. The native polars reader takes the type from that
+    schema and fails on the mismatch; pyarrow reads the stored type.
+
+    Parameters
+    ----------
+    content : bytes
+        Content of the parquet file.
+
+    Returns
+    -------
+    pl.DataFrame
+        The parsed parquet content.
+    """
+    return pl.read_parquet(io.BytesIO(content), use_pyarrow=True)
+
+
 def _read_parquet_url(url: str) -> pl.DataFrame:
     """
     Fetch a parquet file over HTTPS and parse it with polars.
@@ -80,7 +103,7 @@ def _read_parquet_url(url: str) -> pl.DataFrame:
         timeout=120,
     )
     response.raise_for_status()
-    return pl.read_parquet(io.BytesIO(response.content))
+    return _parse_parquet(response.content)
 
 
 def _cast_date_column(data: pl.DataFrame, column: str = "date") -> pl.DataFrame:
@@ -442,8 +465,10 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
     Fetch a parquet file via a reused curl_cffi session with retry.
 
     Returns None without retrying when the file does not exist (HTTP
-    404). Other failures are retried with exponential backoff and raise
-    a ConnectionError once all 'retries' attempts have failed.
+    404). Other download failures are retried with exponential backoff
+    and raise a ConnectionError once all 'retries' attempts have failed.
+    The file is parsed once, after the download, so a file that cannot
+    be read raises right away instead of being downloaded again.
     """
     headers = {}
     token = os.getenv("HF_TOKEN")
@@ -456,14 +481,18 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
             if r.status_code == 404:
                 return None
             r.raise_for_status()
-            return pl.read_parquet(io.BytesIO(r.content))
+            content = r.content
+            break
         except Exception as e:
             last_err = e
             if attempt < retries - 1:
                 time.sleep(backoff * (2**attempt))
-    raise ConnectionError(
-        f"Failed to download {url} after {retries} attempts: {last_err}"
-    ) from last_err
+    else:
+        raise ConnectionError(
+            f"Failed to download {url} after {retries} attempts: {last_err}"
+        ) from last_err
+
+    return _parse_parquet(content)
 
 
 def _factor_library_file(portfolio_id: int) -> str:

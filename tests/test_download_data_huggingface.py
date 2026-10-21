@@ -628,6 +628,64 @@ def test_fetch_parquet_url_retries_other_errors_then_raises():
     assert session.get.call_count == 3
 
 
+def _float_declared_as_double():
+    """Build parquet bytes like the factor library files written with
+    nanoparquet: 'ret' is stored as float but declared as double in the
+    embedded Arrow schema."""
+    import base64
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    declared = pa.schema(
+        [("id", pa.int32()), ("date", pa.date32()), ("ret", pa.float64())]
+    )
+    arrow_schema = base64.b64encode(declared.serialize().to_pybytes())
+    table = pa.table(
+        {
+            "id": pa.array([1, 2], pa.int32()),
+            "date": pa.array([dt.date(2020, 1, 1)] * 2, pa.date32()),
+            "ret": pa.array([0.01, -0.02], pa.float32()),
+        }
+    )
+    payload = io.BytesIO()
+    # store_schema=False drops pyarrow's own (correct) Arrow schema; the
+    # mismatched one is then added to the file footer by hand.
+    with pq.ParquetWriter(payload, table.schema, store_schema=False) as writer:
+        writer.write_table(table)
+        writer.add_key_value_metadata({"ARROW:schema": arrow_schema.decode()})
+
+    # The fixture must carry the mismatch it is meant to reproduce.
+    stored = pq.read_metadata(io.BytesIO(payload.getvalue())).metadata
+    assert stored[b"ARROW:schema"] == arrow_schema
+    return payload.getvalue()
+
+
+def test_fetch_parquet_url_reads_float_declared_as_double():
+    """Test files whose Arrow schema declares a float column as double,
+    as written by nanoparquet, are read with the stored type."""
+    with patch("tidyfinance.download_tidy_finance._hf_session") as session:
+        session.get.return_value = _response(200, _float_declared_as_double())
+        result = _fetch_parquet_url("https://example.com/f.parquet")
+
+    assert result["id"].to_list() == [1, 2]
+    assert result["ret"].to_list() == pytest.approx([0.01, -0.02])
+
+
+def test_fetch_parquet_url_does_not_retry_a_file_it_cannot_parse():
+    """Test a downloaded file that cannot be parsed raises right away
+    instead of being downloaded again."""
+    with patch("tidyfinance.download_tidy_finance._hf_session") as session:
+        session.get.return_value = _response(200, b"not a parquet file")
+        with pytest.raises(Exception) as err:
+            _fetch_parquet_url(
+                "https://example.com/f.parquet", retries=3, backoff=0
+            )
+
+    assert session.get.call_count == 1
+    assert not isinstance(err.value, ConnectionError)
+
+
 # %% _download_factor_library_ids
 
 

@@ -62,9 +62,12 @@ def test_returns_empty_dataframe_after_download_failure():
         "tidyfinance.download_open_source._fetch_google_drive_csv",
         side_effect=Exception("download failure"),
     ):
-        with pytest.warns(UserWarning, match="Returning an empty dataset"):
+        with pytest.warns(UserWarning) as record:
             result = _download_data_osap()
 
+    messages = [str(w.message) for w in record]
+    assert any("download failure" in m for m in messages)
+    assert any("Returning an empty dataset" in m for m in messages)
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
 
