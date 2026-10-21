@@ -89,7 +89,10 @@ def download_data(
         an explicit 'ids' vector that bypasses the grid filter and
         downloads the specified portfolios directly via
         '_download_factor_library_ids'; see
-        '_download_data_huggingface' for details.
+        '_download_data_huggingface' for details. If 'domain' is 'WRDS'
+        or 'Pseudo Data', 'quiet=True' suppresses the messages about the
+        WRDS connection and the download progress, or the pseudo-data
+        notice.
 
     Returns
     -------

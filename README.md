@@ -220,6 +220,8 @@ tf.set_wrds_credentials()
 
 A WRDS account alone is not enough to connect: you also need to enroll in two-factor authentication (Duo) and accept the WRDS terms of use on the WRDS website. When you connect, approve the Duo push notification on your device. See `help(tf.get_wrds_connection)` for the full setup checklist.
 
+The WRDS downloads tell you when they connect and how long the download took. Pass `quiet=True` to suppress these messages.
+
 To download monthly CRSP data:
 
 ```python

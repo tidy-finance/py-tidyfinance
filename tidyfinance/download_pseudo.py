@@ -146,6 +146,7 @@ def _simulate_pseudo_data(
     dataset: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    quiet: bool = False,
     **kwargs,
 ) -> pl.DataFrame:
     """
@@ -171,6 +172,10 @@ def _simulate_pseudo_data(
     end_date : str, optional
         Upper date bound forwarded to the per-dataset generator.
         Ignored for 'ccm_links'.
+    quiet : bool, default False
+        If True, the pseudo-data notice is not shown. Accepted so that
+        'quiet' works the same for 'domain="WRDS"' and
+        'domain="Pseudo Data"'.
     **kwargs
         Additional generator-specific arguments (e.g., 'n_assets',
         'seed', 'version', 'additional_columns', 'adjust_volume').
@@ -191,13 +196,14 @@ def _simulate_pseudo_data(
 
     _check_supported_dataset_pseudo(dataset)
 
-    warnings.warn(
-        'Returning pseudo data from domain="Pseudo Data". Schema matches '
-        'domain="WRDS", but values are simulated and not suitable '
-        "for inference.",
-        UserWarning,
-        stacklevel=2,
-    )
+    if not quiet:
+        warnings.warn(
+            'Returning pseudo data from domain="Pseudo Data". Schema matches '
+            'domain="WRDS", but values are simulated and not suitable '
+            "for inference.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     if dataset.startswith("crsp"):
         return _download_data_pseudo_crsp(

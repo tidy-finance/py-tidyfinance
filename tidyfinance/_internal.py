@@ -42,6 +42,23 @@ def _user_stacklevel() -> int:
     return stacklevel
 
 
+def _inform(message: str, end: str = "\n") -> None:
+    """Show an informational message, such as download progress.
+
+    Messages go to standard error, like R's messages, so they appear in
+    consoles and notebooks but do not mix with printed results.
+
+    Parameters
+    ----------
+    message : str
+        The message.
+    end : str, default '\\n'
+        Appended to the message, e.g. '' to update a progress line in
+        place.
+    """
+    print(message, end=end, file=sys.stderr, flush=True)
+
+
 def _deprecate_legacy_dataset(legacy: str, dataset: str) -> None:
     """Warn that a legacy identifier was passed as 'dataset'.
 
