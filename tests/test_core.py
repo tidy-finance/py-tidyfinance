@@ -507,6 +507,28 @@ def test_estimate_fama_macbeth_vcov(sample_data: pl.DataFrame) -> None:
     )
 
 
+def test_estimate_fama_macbeth_iid_t_statistic_is_mean_over_se() -> None:
+    """With vcov='iid', the standard error is sd / sqrt(T) of the
+    cross-sectional estimates and the t-statistic is risk_premium /
+    standard_error, without an extra sqrt(T) factor."""
+    data = sample_data_fmb()
+    result = estimate_fama_macbeth(data, "ret_excess ~ beta", vcov="iid")
+
+    slopes = []
+    for group in data.sort("date").partition_by("date", maintain_order=True):
+        x = np.column_stack([np.ones(group.height), group["beta"].to_numpy()])
+        y = group["ret_excess"].to_numpy()
+        coef, *_ = np.linalg.lstsq(x, y, rcond=None)
+        slopes.append(coef[1])
+    slopes = np.array(slopes)
+    expected_se = slopes.std(ddof=1) / np.sqrt(slopes.size)
+
+    row = result.filter(pl.col("factor") == "beta")
+    assert row["risk_premium"][0] == pytest.approx(slopes.mean())
+    assert row["standard_error"][0] == pytest.approx(expected_se)
+    assert row["t_statistic"][0] == pytest.approx(slopes.mean() / expected_se)
+
+
 def test_estimate_fama_macbeth_invalid_vcov_raises() -> None:
     """An unsupported vcov option raises a ValueError."""
     with pytest.raises(ValueError, match="vcov must be either"):
