@@ -1,5 +1,6 @@
 """Portfolio sorting and return functions for tidyfinance."""
 
+import inspect
 import warnings
 
 import numpy as np
@@ -7,6 +8,7 @@ import polars as pl
 
 from ._internal import (
     _check_new_col,
+    _user_stacklevel,
     _validate_column_name,
     _validate_flag,
     _validate_optional_number,
@@ -519,7 +521,20 @@ def compute_breakpoints(
         )
         sorting_values = sorting_all[keep_mask]
 
-    if breakpoints_min_size_threshold is not None:
+    # An absolute minimum market cap is set internally by dependent
+    # bivariate sorts in compute_portfolio_returns(), which compute it
+    # once per date from the full cross-section instead of within each
+    # secondary portfolio.
+    min_mktcap = breakpoint_options.get("breakpoints_min_mktcap")
+
+    if breakpoints_min_size_threshold is not None or min_mktcap is not None:
+        if min_mktcap is None:
+            min_mktcap = _compute_min_mktcap(
+                data,
+                breakpoints_min_size_threshold,
+                breakpoints_exchanges,
+                data_options,
+            )
         mktcap_col = data_options["mktcap_lag"]
         if mktcap_col not in data.columns:
             raise ValueError(
@@ -529,15 +544,7 @@ def compute_breakpoints(
         all_mktcap = (
             data.get_column(mktcap_col).cast(pl.Float64).to_numpy()
         )
-        if keep_mask is not None:
-            mktcap_ref = all_mktcap[keep_mask]
-        else:
-            mktcap_ref = all_mktcap
-        mktcap_ref_clean = mktcap_ref[~np.isnan(mktcap_ref)]
-        size_cutoff = np.quantile(
-            mktcap_ref_clean, breakpoints_min_size_threshold
-        )
-        above_size = (~np.isnan(all_mktcap)) & (all_mktcap > size_cutoff)
+        above_size = (~np.isnan(all_mktcap)) & (all_mktcap > min_mktcap)
         combined_mask = (
             keep_mask & above_size if keep_mask is not None else above_size
         )
@@ -628,6 +635,94 @@ def compute_breakpoints(
 
     breakpoints[1:] += 1e-20
     return breakpoints
+
+
+def _compute_min_mktcap(
+    data: pl.DataFrame,
+    breakpoints_min_size_threshold: float,
+    breakpoints_exchanges,
+    data_options: dict,
+) -> float:
+    """The minimum market cap of 'breakpoints_min_size_threshold'.
+
+    The 'breakpoints_min_size_threshold' quantile of the market caps in
+    'data', among the 'breakpoints_exchanges' stocks if specified.
+    Returns NaN if no market cap is available, so no stock passes.
+    """
+    mktcap_col = data_options["mktcap_lag"]
+    if mktcap_col not in data.columns:
+        raise ValueError(
+            f"Column '{mktcap_col}' is required when using "
+            "'breakpoints_min_size_threshold'."
+        )
+    mktcap_ref = data.get_column(mktcap_col).cast(pl.Float64).to_numpy()
+    if breakpoints_exchanges is not None:
+        exchange_col = data_options["exchange"]
+        if exchange_col not in data.columns:
+            raise ValueError(
+                f"Please provide the column '{exchange_col}' when "
+                "filtering using 'breakpoints_exchanges'."
+            )
+        exchanges_list = (
+            [breakpoints_exchanges]
+            if isinstance(breakpoints_exchanges, str)
+            else list(breakpoints_exchanges)
+        )
+        keep = (
+            data.get_column(exchange_col)
+            .is_in(exchanges_list)
+            .fill_null(False)
+            .to_numpy()
+        )
+        mktcap_ref = mktcap_ref[keep]
+    mktcap_ref = mktcap_ref[~np.isnan(mktcap_ref)]
+    if mktcap_ref.size == 0:
+        return np.nan
+    return float(np.quantile(mktcap_ref, breakpoints_min_size_threshold))
+
+
+def _main_min_mktcap(
+    data: pl.DataFrame,
+    breakpoint_options: dict,
+    breakpoint_function,
+    data_options: dict,
+) -> float | None:
+    """Minimum market cap of the main breakpoints in dependent sorts.
+
+    In dependent bivariate sorts, the main breakpoints are computed
+    within each secondary portfolio. The minimum market cap of
+    'breakpoints_min_size_threshold' must nevertheless come from the
+    full cross-section of a date, so it is computed here, before
+    grouping by the secondary portfolio. Only the default
+    'compute_breakpoints' uses it; custom breakpoint functions receive
+    their options unchanged.
+
+    Returns None if no minimum applies.
+    """
+    threshold = (breakpoint_options or {}).get(
+        "breakpoints_min_size_threshold"
+    )
+    if (
+        threshold is None
+        or inspect.unwrap(breakpoint_function) is not compute_breakpoints
+    ):
+        return None
+    return _compute_min_mktcap(
+        data,
+        threshold,
+        breakpoint_options.get("breakpoints_exchanges"),
+        data_options,
+    )
+
+
+def _with_min_mktcap(breakpoint_options: dict, min_mktcap) -> dict:
+    """Add an absolute minimum market cap to breakpoint options.
+
+    Returns the options unchanged if 'min_mktcap' is None or NaN.
+    """
+    if min_mktcap is None or np.isnan(min_mktcap):
+        return breakpoint_options
+    return {**breakpoint_options, "breakpoints_min_mktcap": min_mktcap}
 
 
 def filter_options(
@@ -1084,6 +1179,99 @@ def _join_rebalanced_portfolios(
     return merged.drop("_window_year")
 
 
+def _cap_market_cap(
+    data: pl.DataFrame,
+    w_col: str,
+    w_capped_col: str,
+    date_col: str,
+    exchange_col: str,
+    cap_weight: float,
+    cap_weight_exchanges,
+    quiet: bool,
+) -> pl.DataFrame:
+    """Cap market capitalization per date.
+
+    Caps 'w_col' at the 'cap_weight' percentile of the stocks listed on
+    'cap_weight_exchanges' on each date, or of all stocks if
+    'cap_weight_exchanges' is None, the exchange column is missing, or
+    no stock with market capitalization is listed on these exchanges on
+    a date. The result is stored in 'w_capped_col'.
+    """
+    if cap_weight_exchanges is not None and exchange_col not in data.columns:
+        if not quiet:
+            warnings.warn(
+                f"Column '{exchange_col}' not found: capping market "
+                "capitalization at the percentile of all stocks. Add the "
+                "exchange column or set 'cap_weight_exchanges=None' to "
+                "silence this message.",
+                UserWarning,
+                stacklevel=_user_stacklevel(),
+            )
+        cap_weight_exchanges = None
+
+    if cap_weight_exchanges is None:
+        reference = pl.lit(True)
+    else:
+        exchanges = (
+            [cap_weight_exchanges]
+            if isinstance(cap_weight_exchanges, str)
+            else list(cap_weight_exchanges)
+        )
+        reference = pl.col(exchange_col).is_in(exchanges).fill_null(False)
+
+    caps = (
+        data.select(
+            pl.col(date_col),
+            pl.col(w_col),
+            reference.alias("_reference"),
+        )
+        .group_by(date_col)
+        .agg(
+            (pl.col("_reference") & pl.col(w_col).is_not_null())
+            .any()
+            .alias("_has_reference"),
+            pl.col(w_col)
+            .filter(pl.col("_reference"))
+            .quantile(cap_weight, interpolation="linear")
+            .alias("_cap_reference"),
+            pl.col(w_col)
+            .quantile(cap_weight, interpolation="linear")
+            .alias("_cap_all"),
+        )
+    )
+
+    n_fallback = caps.filter(~pl.col("_has_reference")).height
+    if not quiet and cap_weight_exchanges is not None and n_fallback > 0:
+        names = ", ".join(f"'{e}'" for e in exchanges)
+        dates = "that date" if n_fallback == 1 else "these dates"
+        warnings.warn(
+            f"No {names} stocks with market capitalization on "
+            f"{n_fallback} date{'' if n_fallback == 1 else 's'}: capping "
+            f"at the percentile of all stocks on {dates}.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+
+    caps = caps.select(
+        pl.col(date_col),
+        pl.when(pl.col("_has_reference"))
+        .then(pl.col("_cap_reference"))
+        .otherwise(pl.col("_cap_all"))
+        .alias("_cap"),
+    )
+
+    _check_new_col(data, "_cap")
+    return (
+        data.join(caps, on=date_col, how="left", maintain_order="left")
+        .with_columns(
+            pl.min_horizontal(pl.col(w_col), pl.col("_cap")).alias(
+                w_capped_col
+            )
+        )
+        .drop("_cap")
+    )
+
+
 def compute_portfolio_returns(
     data: pl.DataFrame,
     sorting_variables,
@@ -1095,6 +1283,7 @@ def compute_portfolio_returns(
     breakpoint_function_secondary=None,
     min_portfolio_size: int = 1,
     cap_weight: float = 0.8,
+    cap_weight_exchanges="NYSE",
     data_options: dict = None,
     quiet: bool = False,
 ) -> pl.DataFrame:
@@ -1167,13 +1356,24 @@ def compute_portfolio_returns(
         which market capitalizations are capped per date when computing
         the capped value-weighted excess return ('ret_excess_vw_capped').
         Must be in [0, 1].
+    cap_weight_exchanges : str or list of str, optional
+        Exchange(s) whose stocks determine the cap: market
+        capitalization is capped at the 'cap_weight' percentile of the
+        stocks listed on these exchanges on each date. Defaults to
+        'NYSE', following Jensen, Kelly, and Pedersen (2023), who cap
+        at the 80th percentile of NYSE stocks. None uses all stocks.
+        If the exchange column (mapped via 'data_options') is missing,
+        or no stock is listed on these exchanges on a date, the
+        percentile of all stocks is used and a warning says so.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'id', 'date',
-        'ret_excess', and 'mktcap_lag' elements are used. Uses
-        'data_options' defaults when None.
+        'ret_excess', and 'mktcap_lag' elements are used, and
+        'exchange' with 'cap_weight_exchanges'. Uses 'data_options'
+        defaults when None.
     quiet : bool, default False
         If True, suppress informational warnings about missing
-        observations in the output panel.
+        observations in the output panel and about the fallback of
+        'cap_weight_exchanges'.
 
     Returns
     -------
@@ -1192,8 +1392,8 @@ def compute_portfolio_returns(
         - 'ret_excess_vw_capped': Capped value-weighted excess return
           (only if 'data' contains the market-cap lag column). Weights
           are computed using market capitalization capped at the
-          'cap_weight' percentile per date. Null if insufficient
-          observations.
+          'cap_weight' percentile per date (see
+          'cap_weight_exchanges'). Null if insufficient observations.
 
     Notes
     -----
@@ -1201,6 +1401,19 @@ def compute_portfolio_returns(
     sorting variables and excess returns (see options and defaults set
     in 'data_options'). A ValueError is raised if any required column
     is missing.
+
+    In dependent bivariate sorts, the minimum market cap of
+    'breakpoints_min_size_threshold' in 'breakpoint_options_main' is
+    computed once per date from the full cross-section, not within
+    each secondary portfolio. This applies to the default
+    'compute_breakpoints'; custom breakpoint functions receive their
+    options unchanged.
+
+    References
+    ----------
+    Jensen, T. I., Kelly, B., & Pedersen, L. H. (2023). Is there a
+    replication crisis in finance? Journal of Finance, 78(5),
+    2465-2518. https://doi.org/10.1111/jofi.13249
 
     Examples
     --------
@@ -1292,6 +1505,21 @@ def compute_portfolio_returns(
             "'cap_weight' must be a single numeric value in [0, 1]."
         )
 
+    if cap_weight_exchanges is not None and not (
+        (isinstance(cap_weight_exchanges, str) and cap_weight_exchanges)
+        or (
+            isinstance(cap_weight_exchanges, (list, tuple))
+            and len(cap_weight_exchanges) > 0
+            and all(
+                isinstance(e, str) and e for e in cap_weight_exchanges
+            )
+        )
+    ):
+        raise ValueError(
+            "'cap_weight_exchanges' must be None, a string, or a list of "
+            "strings."
+        )
+
     id_col = data_options["id"]
     date_col = data_options["date"]
     ret_col = data_options["ret_excess"]
@@ -1325,14 +1553,18 @@ def compute_portfolio_returns(
         )
     data = data.drop_nulls(subset=list(sorting_variables))
 
+    # Compute capped market capitalization per date before replacing
+    # nulls, so that the quantile is not distorted by zero-filled values.
     _check_new_col(data, w_capped_col)
-    data = data.with_columns(
-        pl.min_horizontal(
-            pl.col(w_col),
-            pl.col(w_col)
-            .quantile(cap_weight, interpolation="linear")
-            .over(date_col),
-        ).alias(w_capped_col)
+    data = _cap_market_cap(
+        data,
+        w_col,
+        w_capped_col,
+        date_col,
+        data_options.get("exchange", "exchange"),
+        cap_weight,
+        None if mktcap_lag_missing else cap_weight_exchanges,
+        quiet,
     )
 
     missing_mcap = pl.col(w_col).is_null()
@@ -1386,6 +1618,25 @@ def compute_portfolio_returns(
                 data_options=data_options,
             )
             parts.append(part.with_columns(assignments.alias(out_col)))
+        return pl.concat(parts)
+
+    def _assign_dependent_main(df, sv, bp_opts, bp_fn):
+        """Assign main portfolios within the secondary portfolios of
+        each date, with the minimum market cap of the main breakpoints
+        computed once per date from the full cross-section."""
+        parts = []
+        for part in df.partition_by(date_col, maintain_order=True):
+            min_mktcap = _main_min_mktcap(part, bp_opts, bp_fn, data_options)
+            parts.append(
+                _assign_grouped(
+                    part,
+                    [date_col, "portfolio_secondary"],
+                    sv,
+                    _with_min_mktcap(bp_opts, min_mktcap),
+                    bp_fn,
+                    "portfolio_main",
+                )
+            )
         return pl.concat(parts)
 
     if sorting_method == "univariate":
@@ -1457,13 +1708,11 @@ def compute_portfolio_returns(
                 breakpoint_function_secondary,
                 "portfolio_secondary",
             )
-            portfolio_returns = _assign_grouped(
+            portfolio_returns = _assign_dependent_main(
                 data,
-                [date_col, "portfolio_secondary"],
                 sv_main,
                 breakpoint_options_main,
                 breakpoint_function_main,
-                "portfolio_main",
             )
         else:
             filtered_data = data.filter(
@@ -1482,13 +1731,11 @@ def compute_portfolio_returns(
                 breakpoint_function_secondary,
                 "portfolio_secondary",
             )
-            portfolio_data = _assign_grouped(
+            portfolio_data = _assign_dependent_main(
                 portfolio_data,
-                [date_col, "portfolio_secondary"],
                 sv_main,
                 breakpoint_options_main,
                 breakpoint_function_main,
-                "portfolio_main",
             ).select(
                 [
                     id_col,
@@ -2051,6 +2298,7 @@ def implement_portfolio_sort(
     breakpoint_function_secondary=None,
     min_portfolio_size: int = 1,
     cap_weight: float = 0.8,
+    cap_weight_exchanges="NYSE",
     data_options: dict = None,
     quiet: bool = False,
 ) -> pl.DataFrame:
@@ -2097,6 +2345,9 @@ def implement_portfolio_sort(
         which market capitalizations are capped per date when computing
         the capped value-weighted excess return ('ret_excess_vw_capped').
         Must be in [0, 1].
+    cap_weight_exchanges : str or list of str, optional
+        Exchange(s) whose stocks determine the cap, or None for all
+        stocks. Defaults to 'NYSE'. See 'compute_portfolio_returns'.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). All elements are
         forwarded to 'filter_sorting_data' and
@@ -2208,6 +2459,7 @@ def implement_portfolio_sort(
         breakpoint_function_secondary=breakpoint_function_secondary,
         min_portfolio_size=min_portfolio_size,
         cap_weight=cap_weight,
+        cap_weight_exchanges=cap_weight_exchanges,
         data_options=data_options,
         quiet=quiet,
     )

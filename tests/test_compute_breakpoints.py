@@ -996,5 +996,26 @@ def test_breakpoints_exchanges_rejects_list_with_non_strings():
         breakpoint_options(n_portfolios=5, breakpoints_exchanges=["NYSE", 1])
 
 
+def test_an_absolute_min_mktcap_matches_filtering_the_data():
+    """Test an absolute min_mktcap matches filtering the data."""
+    data = pl.DataFrame(
+        {
+            "x": np.arange(1, 101, dtype=float),
+            "mktcap_lag": np.arange(100, 0, -1, dtype=float),
+        }
+    )
+    with_min_mktcap = compute_breakpoints(
+        data,
+        "x",
+        breakpoint_options(n_portfolios=4, breakpoints_min_mktcap=40),
+    )
+    filtered = compute_breakpoints(
+        data.filter(pl.col("mktcap_lag") > 40),
+        "x",
+        breakpoint_options(n_portfolios=4),
+    )
+    np.testing.assert_allclose(with_min_mktcap, filtered)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
