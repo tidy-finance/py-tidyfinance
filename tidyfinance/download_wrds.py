@@ -10,7 +10,7 @@ import polars as pl
 from dotenv import dotenv_values, load_dotenv, set_key
 from sqlalchemy import URL, create_engine
 
-from ._internal import _validate_dates
+from ._internal import _deprecate_legacy_dataset, _validate_dates
 from .download_tidy_finance import _download_data_risk_free
 from .supported_datasets import (
     _check_supported_dataset_wrds,
@@ -140,13 +140,9 @@ def _download_data_wrds(
         dataset = re.sub(r"^wrds_", "", type)
 
     if dataset is not None and _is_legacy_type_wrds(dataset):
-        warnings.warn(
-            "Passing 'wrds_'-prefixed dataset names is deprecated. "
-            "Use 'crsp_monthly' instead of 'wrds_crsp_monthly'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^wrds_", "", dataset)
+        replacement = re.sub(r"^wrds_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -389,13 +385,9 @@ def _download_data_wrds_crsp(
         dataset = re.sub(r"^wrds_", "", type)
 
     if dataset is not None and _is_legacy_type_wrds(dataset):
-        warnings.warn(
-            "Passing 'wrds_'-prefixed dataset names is deprecated. "
-            "Use 'crsp_monthly' instead of 'wrds_crsp_monthly'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^wrds_", "", dataset)
+        replacement = re.sub(r"^wrds_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -1165,13 +1157,9 @@ def _download_data_wrds_compustat(
         only_usd = only_us
 
     if dataset is not None and dataset.startswith("wrds_"):
-        warnings.warn(
-            "Passing 'wrds_'-prefixed dataset names is deprecated. "
-            "Use 'compustat_annual' instead of 'wrds_compustat_annual'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^wrds_", "", dataset)
+        replacement = re.sub(r"^wrds_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")

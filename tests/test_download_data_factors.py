@@ -149,6 +149,72 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
             _download_data_factors_ff("factors_ff3_monthly")
 
 
+def test_legacy_dataset_warning_names_the_replacement():
+    """Test the warning names the legacy value and the dataset that
+    replaces it, not the 'type' argument the caller did not use."""
+    fake_raw = pl.DataFrame(
+        {
+            "date": [dt.date(2020, 1, 1)],
+            "Mkt-RF": [1.0],
+            "RF": [0.1],
+        }
+    )
+    with (
+        patch(
+            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            return_value=["Fama/French 3 Factors"],
+        ),
+        patch(
+            "tidyfinance.download_open_source._famafrench_downloader",
+            return_value=fake_raw,
+        ),
+    ):
+        with pytest.warns(DeprecationWarning) as record:
+            _download_data_factors_ff("factors_ff_3_monthly")
+
+    messages = [str(w.message) for w in record]
+    expected = (
+        "dataset='factors_ff_3_monthly' is deprecated. "
+        "Use dataset='Fama/French 3 Factors' instead."
+    )
+    assert expected in messages
+    assert not any("'type'" in m for m in messages)
+
+
+def test_legacy_dataset_warning_is_attributed_to_the_caller():
+    """Test that, through the public download_data, the warning points
+    at the caller and not at package code. Python hides
+    DeprecationWarning by default unless it is attributed to '__main__',
+    so a warning attributed to package code would never be shown."""
+    import tidyfinance as tf
+
+    fake_raw = pl.DataFrame(
+        {
+            "date": [dt.date(2020, 1, 1)],
+            "Mkt-RF": [1.0],
+            "RF": [0.1],
+        }
+    )
+    with (
+        patch(
+            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            return_value=["Fama/French 3 Factors"],
+        ),
+        patch(
+            "tidyfinance.download_open_source._famafrench_downloader",
+            return_value=fake_raw,
+        ),
+    ):
+        with pytest.warns(DeprecationWarning, match="is deprecated") as record:
+            tf.download_data("Fama-French", "factors_ff_3_monthly")
+
+    legacy = [w for w in record if "factors_ff_3_monthly" in str(w.message)]
+    assert legacy
+    assert os.path.normcase(os.path.abspath(legacy[0].filename)) == (
+        os.path.normcase(os.path.abspath(__file__))
+    )
+
+
 def test_download_data_factors_ff_empty_dataframe_on_download_fail():
     """Test download_data_factors_ff: empty dataframe on download fail."""
     with patch(

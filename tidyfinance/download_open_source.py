@@ -14,6 +14,7 @@ import polars as pl
 from curl_cffi import requests
 
 from ._internal import (
+    _deprecate_legacy_dataset,
     _get_random_user_agent,
     _parse_date,
     _transfrom_to_snake_case,
@@ -388,14 +389,9 @@ def _download_data_factors_ff(
         _, dataset = _parse_type_to_domain_dataset(type)
 
     if dataset is not None and _is_legacy_type_ff(dataset):
-        warnings.warn(
-            "Passing a legacy type as 'dataset' is deprecated. "
-            "Use the dataset_name from list_supported_datasets("
-            "domain='Fama-French').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        _, dataset = _parse_type_to_domain_dataset(dataset)
+        _, replacement = _parse_type_to_domain_dataset(dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -519,14 +515,9 @@ def _download_data_factors_q(
         _, dataset = _parse_type_to_domain_dataset(type)
 
     if dataset is not None and _is_legacy_type_q(dataset):
-        warnings.warn(
-            "Passing a legacy type as 'dataset' is deprecated. "
-            "Use the dataset_name from list_supported_datasets("
-            "domain='Global Q').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        _, dataset = _parse_type_to_domain_dataset(dataset)
+        _, replacement = _parse_type_to_domain_dataset(dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -674,14 +665,9 @@ def _download_data_macro_predictors(
         dataset = re.sub(r"^macro_predictors_", "", type)
 
     if dataset is not None and dataset.startswith("macro_predictors_"):
-        warnings.warn(
-            "Passing 'macro_predictors_'-prefixed dataset names is "
-            "deprecated. Use 'monthly' instead of "
-            "'macro_predictors_monthly'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^macro_predictors_", "", dataset)
+        replacement = re.sub(r"^macro_predictors_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")

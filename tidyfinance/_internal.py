@@ -2,10 +2,73 @@
 
 import calendar
 import datetime as dt
+import os
 import re
+import sys
+import warnings
 
 import numpy as np
 import polars as pl
+
+_PACKAGE_DIR = os.path.normcase(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _user_stacklevel() -> int:
+    """Return the 'stacklevel' that attributes a warning to the user.
+
+    Meant to be passed to 'warnings.warn' by the function that calls
+    this helper. The warning is attributed to the first caller outside
+    the tidyfinance package, however deep inside the package it is
+    raised (e.g. through 'download_data' and the backend wrapper).
+    Python shows 'DeprecationWarning' by default only when it is
+    attributed to code in '__main__', so attributing it to a package
+    frame would hide it.
+
+    Returns
+    -------
+    int
+        The 'stacklevel' for 'warnings.warn' in the calling function.
+    """
+    # Frame 0 is this helper, frame 1 the function that calls
+    # warnings.warn (stacklevel 1), frame 2 its caller (stacklevel 2).
+    frame = sys._getframe(2)
+    stacklevel = 2
+    while frame is not None:
+        filename = os.path.normcase(os.path.abspath(frame.f_code.co_filename))
+        if not filename.startswith(_PACKAGE_DIR + os.sep):
+            break
+        frame = frame.f_back
+        stacklevel += 1
+    return stacklevel
+
+
+def _deprecate_legacy_dataset(legacy: str, dataset: str) -> None:
+    """Warn that a legacy identifier was passed as 'dataset'.
+
+    Legacy identifiers such as 'factors_ff_3_monthly' are still accepted
+    as values of 'dataset'. The warning names the value and the dataset
+    that replaces it, rather than the deprecated 'type' argument, which
+    the caller did not use.
+
+    Parameters
+    ----------
+    legacy : str
+        The legacy identifier passed as 'dataset'.
+    dataset : str
+        The dataset name that replaces it.
+
+    Warns
+    -----
+    DeprecationWarning
+        Always.
+    """
+    # Attribute the warning to the user's call, not to package code,
+    # so Python does not hide it.
+    warnings.warn(
+        f"dataset={legacy!r} is deprecated. Use dataset={dataset!r} instead.",
+        DeprecationWarning,
+        stacklevel=_user_stacklevel(),
+    )
 
 
 def _shift_years(d: dt.date, years: int) -> dt.date:

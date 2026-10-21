@@ -11,7 +11,12 @@ from datetime import date
 import polars as pl
 from curl_cffi import requests
 
-from ._internal import _get_random_user_agent, _parse_date, _validate_dates
+from ._internal import (
+    _deprecate_legacy_dataset,
+    _get_random_user_agent,
+    _parse_date,
+    _validate_dates,
+)
 
 _SUPPORTED_DATASETS_HF = (
     "high_frequency_sp500",
@@ -835,14 +840,9 @@ def _download_data_huggingface(
         raise ValueError("Argument 'dataset' is required.")
 
     if dataset.startswith("hf_"):
-        warnings.warn(
-            "Passing a dataset name with the 'hf_' prefix is deprecated. "
-            "Use 'dataset' without the prefix instead "
-            "(e.g. high_frequency_sp500 instead of hf_high_frequency_sp500).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = dataset[len("hf_") :]
+        replacement = dataset[len("hf_") :]
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset not in _SUPPORTED_DATASETS_HF:
         raise ValueError(
