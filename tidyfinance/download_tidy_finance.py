@@ -274,7 +274,13 @@ def _get_available_huggingface_files(
     )
 
 
-def _download_factor_library_grid() -> pl.DataFrame:
+# Session cache for the factor library grid. The grid has more than four
+# million rows, so it is downloaded at most once per session by
+# '_download_factor_library_grid'.
+_factor_library_cache: dict = {}
+
+
+def _download_factor_library_grid(refresh: bool = False) -> pl.DataFrame:
     """
     Download the factor library grid from Hugging Face.
 
@@ -288,12 +294,29 @@ def _download_factor_library_grid() -> pl.DataFrame:
     'portfolio_sort_grid.parquet', without listing the files of the
     dataset.
 
+    The grid is downloaded once per Python session and cached in memory,
+    so repeated calls (including those made by
+    '_download_factor_library_ids' and
+    'download_data("Tidy Finance", "factor_library", ...)') reuse it.
+    Set 'refresh=True' to download it again.
+
+    Parameters
+    ----------
+    refresh : bool, default False
+        If True, the grid is downloaded again and replaces the copy
+        cached in the current session.
+
     Returns
     -------
     pl.DataFrame
         A data frame with one row per portfolio construction in the
         factor library, including the integer 'id' column used by
         '_download_factor_library_ids'.
+
+    Raises
+    ------
+    ValueError
+        If 'refresh' is not True or False.
 
     Examples
     --------
@@ -302,9 +325,20 @@ def _download_factor_library_grid() -> pl.DataFrame:
         _download_factor_library_grid,
     )
     _download_factor_library_grid()
+    _download_factor_library_grid(refresh=True)
     ```
     """
-    return _read_parquet_url(_FACTOR_LIBRARY_GRID_URL)
+    if not isinstance(refresh, bool):
+        raise ValueError("'refresh' must be True or False.")
+
+    if refresh or "grid" not in _factor_library_cache:
+        # Assigned only after a successful download, so a failed
+        # download is not cached.
+        _factor_library_cache["grid"] = _read_parquet_url(
+            _FACTOR_LIBRARY_GRID_URL
+        )
+
+    return _factor_library_cache["grid"]
 
 
 def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
@@ -742,8 +776,10 @@ def _download_data_huggingface(
         returning all values for that column, and '[None]' selects its
         missing level. Passing an unrecognised
         column name raises a 'ValueError'. 'ids' cannot be combined
-        with filter arguments. Ignored when 'dataset' is not
-        'factor_library'.
+        with filter arguments. For 'dataset' set to
+        'factor_library_grid', 'refresh=True' downloads the grid again
+        instead of returning the copy cached in the current session.
+        Ignored for 'high_frequency_sp500'.
 
     Returns
     -------
@@ -861,7 +897,9 @@ def _download_data_huggingface(
         )
 
     if dataset == "factor_library_grid":
-        return _download_factor_library_grid()
+        return _download_factor_library_grid(
+            refresh=kwargs.get("refresh", False)
+        )
 
     if dataset == "factor_library":
         return _download_data_huggingface_factor_library(
