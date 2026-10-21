@@ -201,6 +201,75 @@ def test_monthly_crsp_v2_is_processed():
     assert prc_lag_feb == prc_jan
 
 
+def test_crsp_v2_looks_up_the_delisting_month_and_day_on_the_last_trading_day():
+    """Test the v2 queries evaluate the security history on the last
+    trading day (securityenddt) for observations after it, so the month
+    and the day that carry the delisting return are kept."""
+    queries = []
+
+    def capture(results):
+        def read_sql(query, con):
+            queries.append(query)
+            # Serve the results in order, then repeat the last one.
+            return results.pop(0) if len(results) > 1 else results[0]
+
+        return read_sql
+
+    with (
+        patch(
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch(
+            "tidyfinance.download_wrds._read_sql",
+            side_effect=capture([_mock_monthly_query_result()]),
+        ),
+        patch(
+            "tidyfinance.download_wrds._download_data_risk_free",
+            return_value=_mock_risk_free_monthly(),
+        ),
+    ):
+        _download_data_wrds_crsp(
+            dataset="crsp_monthly",
+            start_date="2020-01-01",
+            end_date="2020-12-31",
+            version="v2",
+        )
+    monthly_query = " ".join(queries[-1].split())
+    assert (
+        "LEAST(msf.mthcaldt, ssih.securityenddt) BETWEEN "
+        "ssih.secinfostartdt AND ssih.secinfoenddt"
+    ) in monthly_query
+
+    with (
+        patch(
+            "tidyfinance.download_wrds.get_wrds_connection", return_value="con"
+        ),
+        patch("tidyfinance.download_wrds.disconnect_connection"),
+        patch(
+            "tidyfinance.download_wrds._read_sql",
+            side_effect=capture(
+                [pl.DataFrame({"permno": [1, 2, 3]}), _mock_daily_query_result()]
+            ),
+        ),
+        patch(
+            "tidyfinance.download_wrds._download_data_risk_free",
+            return_value=_mock_risk_free_daily(),
+        ),
+    ):
+        _download_data_wrds_crsp(
+            dataset="crsp_daily",
+            start_date="2001-01-01",
+            end_date="2020-12-31",
+            version="v2",
+        )
+    daily_query = " ".join(queries[-1].split())
+    assert (
+        "LEAST(dsf.dlycaldt, ssih.securityenddt) BETWEEN "
+        "ssih.secinfostartdt AND ssih.secinfoenddt"
+    ) in daily_query
+
+
 def test_daily_crsp_v2_validates_and_adjusts_volume():
     """Test daily CRSP v2 validates and adjusts volume."""
     permnos = pl.DataFrame({"permno": [1, 2, 3]})
