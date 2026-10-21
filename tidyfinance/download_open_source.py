@@ -57,6 +57,50 @@ def _fetch_csv(url: str, timeout: int = 60, **read_csv_kwargs) -> pl.DataFrame:
     return pl.read_csv(io.BytesIO(response.content), **read_csv_kwargs)
 
 
+def _fetch_google_drive_csv(url: str, timeout: int = 120) -> pl.DataFrame:
+    """Fetch a CSV file shared on Google Drive and parse it with polars.
+
+    Google Drive answers with an HTML page instead of the file, e.g.,
+    when the download quota of the file is exceeded. Such a page is
+    rejected instead of being parsed as CSV.
+
+    Parameters
+    ----------
+    url : str
+        The Google Drive download URL of the CSV file.
+    timeout : int, default 120
+        Request timeout in seconds.
+
+    Returns
+    -------
+    pl.DataFrame
+        The parsed CSV file.
+
+    Raises
+    ------
+    ValueError
+        If Google Drive returns an HTML page instead of the CSV file.
+    """
+    headers = {"User-Agent": _get_random_user_agent()}
+    response = requests.get(
+        url, headers=headers, impersonate="chrome120", timeout=timeout
+    )
+    response.raise_for_status()
+
+    content_type = response.headers.get("content-type") or ""
+    if "text/html" in content_type:
+        if "Quota exceeded" in response.text:
+            raise ValueError(
+                "The Google Drive download quota of the file is exceeded. "
+                "Try again later, usually within 24 hours."
+            )
+        raise ValueError(
+            "Google Drive returned an HTML page instead of a CSV."
+        )
+
+    return pl.read_csv(io.BytesIO(response.content))
+
+
 def _fetch_whitespace_table(
     url: str, names: list, timeout: int = 60
 ) -> pl.DataFrame:
@@ -1619,22 +1663,27 @@ def _download_data_stock_prices(
 def _download_data_osap(
     start_date: str = None,
     end_date: str = None,
-    sheet_id: str = "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY",
+    sheet_id: str = "10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI",
 ) -> pl.DataFrame:
     """
     Download and process Open Source Asset Pricing data.
 
     Downloads the data from the Open Source Asset Pricing project at
-    https://www.openassetpricing.com/data/ from Google Sheets using a
-    specified sheet ID, processes the data by converting column names
+    https://www.openassetpricing.com/data/ from Google Drive using a
+    specified file ID, processes the data by converting column names
     to snake_case, aligning the date to the beginning of the month,
     scaling the percentage long-short returns to numeric values, and
     optionally filters the data based on a provided date range.
 
     The dataset contains monthly long-short returns of the predictor
-    portfolios. Every column other than ``date`` is a return expressed
+    portfolios. Every column other than 'date' is a return expressed
     in percent, so all of them are divided by 100 to convert them into
     plain numeric (decimal) returns.
+
+    Google Drive limits how often a shared file can be downloaded. When
+    the limit is reached, Google Drive returns an error page instead of
+    the data and the function returns an empty data frame with a
+    warning that says why. The limit is usually lifted within 24 hours.
 
     Parameters
     ----------
@@ -1647,15 +1696,16 @@ def _download_data_osap(
         the end date for the data. If not provided, the full dataset
         is returned.
     sheet_id : str, optional
-        A character string representing the Google Sheet ID from which
-        to download the data. Default is
-        '1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY'.
+        The Google Drive file ID of the wide CSV of monthly long-short
+        returns. The default, '10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI', is
+        the October 2025 release (v2.0.0). Pass the ID of another
+        release to download it instead.
 
     Returns
     -------
     pl.DataFrame
         A data frame containing the processed data. The column names
-        are converted to snake_case, the ``date`` column is aligned to
+        are converted to snake_case, the 'date' column is aligned to
         the beginning of the month, all predictor columns (long-short
         returns in percent) are divided by 100 to obtain plain numeric
         (decimal) returns, and the data is filtered by the specified
@@ -1664,9 +1714,11 @@ def _download_data_osap(
     Examples
     --------
     ```python
-    from tidyfinance import download_data_osap
-    osap = download_data_osap(
-        start_date='2020-01-01', end_date='2020-06-30'
+    from tidyfinance import download_data
+    osap = download_data(
+        'Open Source Asset Pricing',
+        start_date='2020-01-01',
+        end_date='2020-06-30',
     )
     ```
     """
@@ -1676,8 +1728,15 @@ def _download_data_osap(
     url = f"https://drive.google.com/uc?export=download&id={sheet_id}"
 
     try:
-        raw_data = _fetch_csv(url)
-    except Exception:
+        raw_data = _fetch_google_drive_csv(url)
+    except Exception as e:
+        warnings.warn(
+            "Failed to download or process the resource. The resource may "
+            "not be available, or the URL may have changed. "
+            f"Error message: {e}",
+            UserWarning,
+            stacklevel=2,
+        )
         warnings.warn(
             "Returning an empty dataset due to download failure.",
             UserWarning,
