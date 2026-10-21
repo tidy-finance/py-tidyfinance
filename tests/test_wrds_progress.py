@@ -198,3 +198,8 @@ def test_pseudo_data_notice_can_be_suppressed():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         _simulate_pseudo_data("ccm_links", n_assets=5, quiet=True)
+
+
+if __name__ == "__main__":
+    # Run all tests
+    pytest.main([__file__])

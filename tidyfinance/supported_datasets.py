@@ -2091,6 +2091,11 @@ _OTHER_DATASETS = [
         "domain": "Stambaugh-Yuan",
     },
     {
+        "type": "wacc",
+        "dataset_name": "Cost of Capital by Industry",
+        "domain": "Damodaran",
+    },
+    {
         "type": "risk_free",
         "dataset_name": "Risk-Free Rate",
         "domain": "Tidy Finance",
@@ -2203,6 +2208,7 @@ _SUPPORTED_DOMAINS: tuple[str, ...] = (
     "Global Factor Data",
     "Pastor-Stambaugh",
     "Stambaugh-Yuan",
+    "Damodaran",
     "Tidy Finance",
 )
 
@@ -2363,9 +2369,9 @@ def _is_legacy_type(x: str) -> bool:
     listed in '_SIMPLE_DOMAINS' (those are already valid domains in
     their own right). 'Tidy Finance' domain 'other' datasets such as
     'risk_free' or 'factor_library' are not treated as legacy either,
-    nor are the 'liquidity' and 'mispricing' 'other' rows (the
-    'Pastor-Stambaugh' and 'Stambaugh-Yuan' domains have no short
-    legacy alias).
+    nor are the 'liquidity', 'mispricing', and 'wacc' 'other' rows
+    (the 'Pastor-Stambaugh', 'Stambaugh-Yuan', and 'Damodaran' domains
+    have no short legacy alias).
 
     Parameters
     ----------
@@ -2388,8 +2394,8 @@ def _is_legacy_type(x: str) -> bool:
     known_types.update(row["type"] for row in _WRDS_DATASETS)
     # "other" rows that are NOT in the tidyfinance domain and are not
     # one of the domains with their own simple-domain alias/"other" row
-    # ("osap", "jkp", "liquidity", "mispricing")
-    excluded_other_types = {"osap", "jkp", "liquidity", "mispricing"}
+    # ("osap", "jkp", "liquidity", "mispricing", "wacc")
+    excluded_other_types = {"osap", "jkp", "liquidity", "mispricing", "wacc"}
     known_types.update(
         row["type"]
         for row in _OTHER_DATASETS
