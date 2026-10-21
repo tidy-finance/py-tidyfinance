@@ -66,17 +66,52 @@ def test_get_wrds_connection_returns_connection_when_set(monkeypatch):
     fake_engine.connect.assert_called_once()
 
 
-def test_get_wrds_connection_propagates_connect_errors(monkeypatch):
-    """Test get_wrds_connection propagates errors from connecting."""
+def test_get_wrds_connection_explains_failed_connections(monkeypatch):
+    """Test a failed connection lists the likely causes and keeps the
+    original error as the cause."""
     monkeypatch.setenv("WRDS_USER", "user")
     monkeypatch.setenv("WRDS_PASSWORD", "pass")
 
     fake_engine = MagicMock(name="engine")
     fake_engine.connect.side_effect = Exception("connection refused")
 
-    with patch("tidyfinance.download_wrds.create_engine", return_value=fake_engine):
-        with pytest.raises(Exception, match="connection refused"):
+    with patch(
+        "tidyfinance.download_wrds.create_engine", return_value=fake_engine
+    ):
+        with pytest.raises(
+            ConnectionError, match="Could not connect to WRDS"
+        ) as err:
             get_wrds_connection()
+
+    message = str(err.value)
+    assert "two-factor authentication" in message
+    assert "terms of use" in message
+    assert "connection refused" in str(err.value.__cause__)
+
+
+def test_get_wrds_connection_removes_credentials_from_the_error(monkeypatch):
+    """Test the username and password do not appear in the error."""
+    monkeypatch.setenv("WRDS_USER", "wrds_jdoe")
+    monkeypatch.setenv("WRDS_PASSWORD", "s3cr3t-pw")
+
+    fake_engine = MagicMock(name="engine")
+    fake_engine.connect.side_effect = Exception(
+        "connection to server failed: FATAL: password authentication "
+        'failed for user "wrds_jdoe" (password "s3cr3t-pw")'
+    )
+
+    with patch(
+        "tidyfinance.download_wrds.create_engine", return_value=fake_engine
+    ):
+        with pytest.raises(ConnectionError) as err:
+            get_wrds_connection()
+
+    cause = str(err.value.__cause__)
+    assert 'for user "<WRDS_USER>"' in cause
+    assert '(password "<WRDS_PASSWORD>")' in cause
+    for text in (str(err.value), cause):
+        assert "wrds_jdoe" not in text
+        assert "s3cr3t-pw" not in text
 
 
 if __name__ == "__main__":

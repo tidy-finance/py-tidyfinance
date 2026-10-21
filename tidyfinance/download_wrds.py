@@ -1591,8 +1591,31 @@ def get_wrds_connection() -> object:
         If 'WRDS_USER' or 'WRDS_PASSWORD' is not set in the environment or
         '.env' file. The 'load_wrds_credentials' helper performs this check
         before the connection is opened.
-    sqlalchemy.exc.OperationalError
-        If the database host is unreachable or the credentials are rejected.
+    ConnectionError
+        If the connection fails, e.g. because the database host is
+        unreachable or the credentials are rejected. The message lists the
+        likely causes. The original error is kept as the cause
+        ('__cause__'), with the username and password replaced by
+        placeholders.
+
+    Notes
+    -----
+    A WRDS username and password alone are not enough to connect. Before
+    the first connection:
+
+    1. Get a WRDS account through an institution that subscribes to the
+       data you need (e.g., CRSP and Compustat).
+    2. Enroll in two-factor authentication (Duo) for your WRDS account.
+       WRDS requires it for all connections, including connections from
+       Python.
+    3. Log in to the WRDS website (https://wrds-www.wharton.upenn.edu)
+       once and accept the terms of use, if WRDS asks you to.
+    4. Store your username and password with 'set_wrds_credentials', or
+       set the 'WRDS_USER' and 'WRDS_PASSWORD' environment variables.
+    5. When you connect, approve the Duo push notification on your
+       registered device. The connection waits until you approve it.
+
+    If the connection fails, the error message lists these steps.
 
     See Also
     --------
@@ -1626,7 +1649,54 @@ def get_wrds_connection() -> object:
         connect_args={"sslmode": "require"},
         pool_pre_ping=True,
     )
-    return engine.connect()
+    try:
+        return engine.connect()
+    except Exception as e:
+        # The driver error can contain the username (e.g. "password
+        # authentication failed for user ..."), and error messages can end
+        # up in public logs, so the credentials are replaced.
+        cause = RuntimeError(
+            _redact_wrds_credentials(
+                f"{type(e).__name__}: {e}", wrds_user, wrds_password
+            )
+        )
+        raise ConnectionError(
+            "Could not connect to WRDS.\n"
+            "- Check that 'WRDS_USER' and 'WRDS_PASSWORD' are correct, "
+            "e.g., with 'set_wrds_credentials()'.\n"
+            "- WRDS requires two-factor authentication (Duo): enroll your "
+            "account and approve the push notification when you connect.\n"
+            "- Log in to https://wrds-www.wharton.upenn.edu once and accept "
+            "the terms of use if WRDS asks you to.\n"
+            "- See help(get_wrds_connection) for details."
+        ) from cause
+
+
+def _redact_wrds_credentials(message: str, user: str, password: str) -> str:
+    """Replace WRDS credentials in an error message by placeholders.
+
+    Parameters
+    ----------
+    message : str
+        Error message, e.g. of a failed connection.
+    user : str
+        WRDS username to replace by '<WRDS_USER>'.
+    password : str
+        WRDS password to replace by '<WRDS_PASSWORD>'.
+
+    Returns
+    -------
+    str
+        The message without the username and password.
+    """
+    # The password is replaced first, in case it contains the username.
+    for placeholder, value in (
+        ("<WRDS_PASSWORD>", password),
+        ("<WRDS_USER>", user),
+    ):
+        if value:
+            message = message.replace(value, placeholder)
+    return message
 
 
 def disconnect_connection(connection: object) -> bool:
@@ -2094,6 +2164,10 @@ def set_wrds_credentials() -> None:
 
     The resulting '.env' file is the credentials source consumed by
     'get_wrds_connection' via 'load_wrds_credentials'.
+
+    Storing credentials is not enough to connect to WRDS: you also need
+    to enroll in two-factor authentication (Duo) and accept the WRDS
+    terms of use. See the Notes section of 'get_wrds_connection'.
 
     Returns
     -------
