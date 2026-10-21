@@ -545,11 +545,18 @@ def _download_data_wrds_crsp(
                     mktcap=(pl.col("shrout") * pl.col("altprc")).abs() / 1e6
                 ).with_columns(_zero_to_null("mktcap"))
 
-                # mktcap_lag via self-join shifted by 1 month
+                # mktcap_lag and prc_lag via self-join shifted by 1 month.
+                # In the legacy SIZ format, a negative price is the
+                # average of bid and ask when there was no closing trade;
+                # the sign is only a flag, so prc_lag is its absolute value.
                 mktcap_lag_df = crsp_monthly.select(
                     "permno",
                     pl.col("date").dt.offset_by("1mo"),
                     pl.col("mktcap").alias("mktcap_lag"),
+                    pl.when(pl.col("altprc") == 0)
+                    .then(None)
+                    .otherwise(pl.col("altprc").abs())
+                    .alias("prc_lag"),
                 )
                 crsp_monthly = crsp_monthly.join(
                     mktcap_lag_df,
@@ -664,10 +671,13 @@ def _download_data_wrds_crsp(
                     .drop("first_crsp_date")
                 )
 
+                # CIZ (v2) prices are always positive, so prc_lag is the
+                # previous month's price as is.
                 mktcap_lag = crsp_monthly.select(
                     "permno",
                     pl.col("date").dt.offset_by("1mo"),
                     pl.col("mktcap").alias("mktcap_lag"),
+                    pl.col("prc").alias("prc_lag"),
                 )
 
                 crsp_monthly = crsp_monthly.join(

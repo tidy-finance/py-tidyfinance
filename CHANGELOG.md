@@ -94,3 +94,7 @@
 
 - **Fixed (index constituents):** `download_data("Index Constituents", ...)` works again for DAX, EURO STOXX 50, Dow Jones Industrial Average, S&P 500, Nasdaq 100, FTSE 100, and MSCI World. iShares removed the German retail pages the holdings files were downloaded from; they are now read from the Swiss professional pages. The header row of a holdings file is detected automatically instead of skipping a fixed number of rows (#80).
 - **Added (index constituents fallback):** a new `path` argument reads an iShares or BlackRock holdings CSV saved from the fund's web page instead of downloading it, e.g. `download_data("Index Constituents", path="holdings.csv")`. `index` is optional with `path`. When a download fails, the error message now names the URL and points to `path` (#80).
+
+## Unreleased
+
+- **Breaking (default price column):** the default price column of `data_options()` is now `prc_lag`, the nominal price at the end of the previous month, instead of `prc_adj`, which the default CRSP v2 download does not return, so the `min_stock_price` screen failed on downloaded data. `download_data("WRDS", "crsp_monthly")` (v1 and v2) and the pseudo CRSP data now return `prc_lag`. In v1, it is the absolute value of `altprc`, with zero prices set to missing; in v2, it is the previous month's `prc`. Pass `data_options(price="prc_adj")` to keep the previous behaviour. This follows [r-tidyfinance #321](https://github.com/tidy-finance/r-tidyfinance/issues/321).

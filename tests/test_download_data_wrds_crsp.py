@@ -185,11 +185,20 @@ def test_monthly_crsp_v2_is_processed():
         "listing_age",
         "mktcap",
         "mktcap_lag",
+        "prc_lag",
         "exchange",
         "industry",
         "ret_excess",
     ]
     assert out.columns.index("listing_age") < out.columns.index("mktcap")
+    # prc_lag is the previous month's price of the same stock
+    prc_jan = out.filter(
+        (pl.col("permno") == 1) & (pl.col("date") == dt.date(2020, 1, 1))
+    )["prc"][0]
+    prc_lag_feb = out.filter(
+        (pl.col("permno") == 1) & (pl.col("date") == dt.date(2020, 2, 1))
+    )["prc_lag"][0]
+    assert prc_lag_feb == prc_jan
 
 
 def test_daily_crsp_v2_validates_and_adjusts_volume():
@@ -390,6 +399,7 @@ def test_monthly_crsp_v1_is_processed():
     assert "industry" in out.columns
     assert "ret_adj" in out.columns
     assert "prc_adj" in out.columns
+    assert "prc_lag" in out.columns
     assert "listing_age" in out.columns
     assert "ret_excess" in out.columns
     # Exchange mapping from exchcd=1 -> NYSE

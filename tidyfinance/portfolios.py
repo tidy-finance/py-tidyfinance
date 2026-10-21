@@ -21,7 +21,7 @@ def data_options(
     ret_excess: str = "ret_excess",
     portfolio: str = "portfolio",
     siccd: str = "siccd",
-    price: str = "prc_adj",
+    price: str = "prc_lag",
     listing_age: str = "listing_age",
     be: str = "be",
     earnings: str = "ib",
@@ -51,8 +51,11 @@ def data_options(
         Portfolio assignment column.
     siccd : str, default "siccd"
         SIC code column.
-    price : str, default "prc_adj"
-        Adjusted price column.
+    price : str, default "prc_lag"
+        Price column used by the 'min_stock_price' screen of
+        'filter_sorting_data'. The default is the nominal price at the
+        end of the previous month, as returned by
+        'download_data("WRDS", "crsp_monthly")'.
     listing_age : str, default "listing_age"
         Listing age column.
     be : str, default "be"
@@ -84,7 +87,7 @@ def data_options(
     _validate_column_name(
         siccd, "siccd", "Standard Industrial Classification code"
     )
-    _validate_column_name(price, "price", "(adjusted) price")
+    _validate_column_name(price, "price", "price")
     _validate_column_name(listing_age, "listing_age", "listing age")
     _validate_column_name(be, "be", "book equity")
     _validate_column_name(earnings, "earnings", "earnings")
@@ -1244,7 +1247,7 @@ def compute_portfolio_returns(
             "ret_excess": "ret_excess",
             "portfolio": "portfolio",
             "siccd": "siccd",
-            "price": "prc_adj",
+            "price": "prc_lag",
             "listing_age": "listing_age",
             "be": "be",
             "earnings": "ib",
@@ -1868,7 +1871,7 @@ def filter_sorting_data(
         'permno': range(1, 6),
         'date': [dt.date(2020, 1, 1)] * 5,
         'siccd': [6100, 2000, 4950, 3000, 6500],
-        'prc_adj': [5.0, 0.5, 15.0, 20.0, 10.0],
+        'prc_lag':[5.0, 0.5, 15.0, 20.0, 10.0],
     })
     filter_sorting_data(
         data,
@@ -1902,7 +1905,7 @@ def filter_sorting_data(
             "ret_excess": "ret_excess",
             "portfolio": "portfolio",
             "siccd": "siccd",
-            "price": "prc_adj",
+            "price": "prc_lag",
             "listing_age": "listing_age",
             "be": "be",
             "earnings": "ib",
@@ -2129,7 +2132,7 @@ def implement_portfolio_sort(
         'date': dates.to_numpy().repeat(5),
         'mktcap_lag': rng.uniform(100, 1000, 500),
         'ret_excess': rng.standard_normal(500),
-        'prc_adj': rng.uniform(0.5, 50, 500),
+        'prc_lag':rng.uniform(0.5, 50, 500),
         'size': rng.uniform(50, 150, 500),
     })
     implement_portfolio_sort(

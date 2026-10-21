@@ -23,7 +23,7 @@ def make_data():
             "date": [dt.date(2020, 1, 1)] * 5 + [dt.date(2020, 2, 1)] * 5,
             "exchange": ["NYSE", "NYSE", "NASDAQ", "NYSE", "NASDAQ"] * 2,
             "siccd": [6500, 2000, 4950, 3000, 6100] * 2,
-            "prc_adj": [10.0, 0.5, 15.0, 20.0, 5.0] * 2,
+            "prc_lag": [10.0, 0.5, 15.0, 20.0, 5.0] * 2,
             "mktcap_lag": [100.0, 200.0, 50.0, 500.0, 300.0] * 2,
             "listing_age": [24, 6, 60, 12, 36] * 2,
             "be": [10.0, -5.0, 50.0, 100.0, 0.0] * 2,
@@ -99,8 +99,8 @@ def test_exclude_utilities_removes_sic_4900_4999_keeps_na_messages():
 
 def test_min_stock_price_aborts_when_price_column_is_absent():
     """Test min_stock_price aborts when price column is absent."""
-    data = make_data().drop("prc_adj")
-    with pytest.raises(ValueError, match="prc_adj"):
+    data = make_data().drop("prc_lag")
+    with pytest.raises(ValueError, match="prc_lag"):
         filter_sorting_data(
             data, filter_options=filter_options(min_stock_price=1)
         )
@@ -108,13 +108,13 @@ def test_min_stock_price_aborts_when_price_column_is_absent():
 
 def test_min_stock_price_removes_below_threshold_and_na_rows():
     """Test min_stock_price removes below-threshold and null rows, warns."""
-    data = set_null(make_data(), "prc_adj", 0)
+    data = set_null(make_data(), "prc_lag", 0)
     with pytest.warns(UserWarning, match="min_stock_price"):
         out = filter_sorting_data(
             data, filter_options=filter_options(min_stock_price=1)
         )
-    assert (out["prc_adj"] >= 1).all()
-    assert out["prc_adj"].is_not_null().all()
+    assert (out["prc_lag"] >= 1).all()
+    assert out["prc_lag"].is_not_null().all()
 
 
 # %% min_size_quantile
