@@ -28,6 +28,17 @@ def test_filter_options_has_correct_defaults():
     assert opts["min_listing_age"] is None
     assert opts["exclude_negative_book_equity"] is False
     assert opts["exclude_negative_earnings"] is False
+    assert opts["timing"] == "formation"
+
+
+def test_filter_options_validates_timing():
+    """Test filter_options validates timing."""
+    assert filter_options()["timing"] == "formation"
+    assert filter_options(timing="every_period")["timing"] == "every_period"
+    with pytest.raises(ValueError, match="timing"):
+        filter_options(timing="monthly")
+    with pytest.raises(ValueError, match="timing"):
+        filter_options(timing=["formation", "every_period"])
 
 
 def test_filter_options_accepts_non_default_logical_flags():

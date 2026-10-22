@@ -313,5 +313,154 @@ def test_quiet_true_suppresses_messages_across_all_filters():
         )
 
 
+# %% screen timing with annual rebalancing
+
+
+def timing_panel():
+    """Stock 1 passes the price screen in July 2020 but falls below it in
+    August. Stock 2 fails in July 2020 but rises above it in August. Both
+    pass in July 2021."""
+    dates = [
+        dt.date(2020, 6, 1),
+        dt.date(2020, 7, 1),
+        dt.date(2020, 8, 1),
+        dt.date(2021, 7, 1),
+    ]
+    return pl.DataFrame(
+        {
+            "permno": [1] * 4 + [2] * 4,
+            "date": dates * 2,
+            "prc_lag": [9.0, 6.0, 2.0, 8.0, 9.0, 2.0, 6.0, 8.0],
+        }
+    )
+
+
+def test_screens_apply_at_formation_only_by_default():
+    """Test screens apply at formation only by default."""
+    out = filter_sorting_data(
+        timing_panel(),
+        filter_options=filter_options(min_stock_price=5),
+        rebalancing_month=7,
+        quiet=True,
+    )
+    assert out["permno"].to_list() == [1, 1, 1, 2]
+    assert out["date"].to_list() == [
+        dt.date(2020, 7, 1),
+        dt.date(2020, 8, 1),
+        dt.date(2021, 7, 1),
+        dt.date(2021, 7, 1),
+    ]
+
+
+def test_filter_options_without_timing_default_to_formation_screens():
+    """Test filter options without timing default to formation screens,
+    e.g., options created with an earlier version of the package."""
+    import warnings as _w
+
+    opts = filter_options(min_stock_price=5)
+    del opts["timing"]
+    with _w.catch_warnings():
+        _w.simplefilter("error", UserWarning)
+        out = filter_sorting_data(
+            timing_panel(),
+            filter_options=opts,
+            rebalancing_month=7,
+            quiet=True,
+        )
+    assert out["permno"].to_list() == [1, 1, 1, 2]
+
+
+def test_formation_screens_report_removed_holding_month_rows():
+    """Test formation screens report removed holding-month rows."""
+    with pytest.warns(UserWarning, match="formation month 7"):
+        filter_sorting_data(
+            timing_panel(),
+            filter_options=filter_options(min_stock_price=5),
+            rebalancing_month=7,
+        )
+
+
+def test_formation_screens_handle_end_of_month_dates_and_cohorts():
+    """Test formation screens handle end-of-month dates and cohorts."""
+    data = pl.DataFrame(
+        {
+            "permno": [1, 1, 1],
+            "date": [
+                dt.date(2020, 7, 31),
+                dt.date(2021, 6, 30),
+                dt.date(2021, 7, 31),
+            ],
+            "prc_lag": [6.0, 1.0, 1.0],
+        }
+    )
+    out = filter_sorting_data(
+        data,
+        filter_options=filter_options(min_stock_price=5),
+        rebalancing_month=7,
+        quiet=True,
+    )
+    # The June 2021 row belongs to the July 2020 cohort, which passed.
+    assert out["date"].to_list() == [
+        dt.date(2020, 7, 31),
+        dt.date(2021, 6, 30),
+    ]
+
+
+def test_every_period_screens_filter_each_month_and_warn():
+    """Test every_period screens filter each month and warn."""
+    with pytest.warns(UserWarning, match="look-ahead"):
+        out = filter_sorting_data(
+            timing_panel(),
+            filter_options=filter_options(
+                min_stock_price=5,
+                timing="every_period",
+            ),
+            rebalancing_month=7,
+            quiet=True,
+        )
+    assert (out["prc_lag"] >= 5).all()
+    assert out.height == 6
+
+
+def test_monthly_rebalancing_screens_every_row_without_a_warning():
+    """Test monthly rebalancing screens every row without a warning."""
+    import warnings as _w
+
+    with _w.catch_warnings():
+        _w.simplefilter("error", UserWarning)
+        out = filter_sorting_data(
+            timing_panel(),
+            filter_options=filter_options(
+                min_stock_price=5,
+                timing="every_period",
+            ),
+            quiet=True,
+        )
+    assert (out["prc_lag"] >= 5).all()
+
+
+def test_rebalancing_month_without_active_screens_returns_data_unchanged():
+    """Test rebalancing_month without active screens returns data
+    unchanged."""
+    data = timing_panel()
+    assert_frame_equal(filter_sorting_data(data, rebalancing_month=7), data)
+
+
+def test_rebalancing_month_is_validated():
+    """Test rebalancing_month is validated."""
+    with pytest.raises(ValueError, match="rebalancing_month"):
+        filter_sorting_data(timing_panel(), rebalancing_month=13)
+
+
+def test_formation_screens_require_the_id_column():
+    """Test formation screens require the id column."""
+    with pytest.raises(ValueError, match="permno"):
+        filter_sorting_data(
+            timing_panel().drop("permno"),
+            filter_options=filter_options(min_stock_price=5),
+            rebalancing_month=7,
+        )
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

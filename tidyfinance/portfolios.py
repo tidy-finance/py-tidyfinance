@@ -1,6 +1,7 @@
 """Portfolio sorting and return functions for tidyfinance."""
 
 import inspect
+import numbers
 import warnings
 
 import numpy as np
@@ -733,6 +734,7 @@ def filter_options(
     min_listing_age: float = None,
     exclude_negative_book_equity: bool = False,
     exclude_negative_earnings: bool = False,
+    timing: str = "formation",
     **kwargs,
 ) -> dict:
     """Create filter options for sample construction.
@@ -766,6 +768,19 @@ def filter_options(
         Whether to exclude observations with non-positive book equity.
     exclude_negative_earnings : bool, default False
         Whether to exclude observations with non-positive earnings.
+    timing : {'formation', 'every_period'}, default 'formation'
+        When the screens apply if portfolios are rebalanced once a year
+        ('rebalancing_month' in 'filter_sorting_data' or
+        'implement_portfolio_sort'). 'formation' evaluates the screens
+        in the formation month only and keeps every stock that passes
+        them for the whole holding period (ex-ante screens).
+        'every_period' evaluates them in every month, so a stock that
+        fails a screen in a holding month loses that month's return
+        (ex-post screens). Ex-post screens use information that is not
+        available when the portfolios are formed, so the resulting
+        factor returns can contain look-ahead bias; a warning is issued
+        when they are used. With monthly rebalancing, every month is a
+        formation month and both options are identical.
     **kwargs
         Additional optional arguments, stored verbatim in the dict.
 
@@ -784,12 +799,22 @@ def filter_options(
         min_stock_price=1,
         min_listing_age=12,
     )
+    # Apply the screens in every month (ex-post), not only at formation
+    filter_options(min_stock_price=5, timing='every_period')
     ```
     """
     _validate_flag(exclude_financials, "exclude_financials")
     _validate_flag(exclude_utilities, "exclude_utilities")
     _validate_flag(exclude_negative_book_equity, "exclude_negative_book_equity")
     _validate_flag(exclude_negative_earnings, "exclude_negative_earnings")
+
+    if not isinstance(timing, str) or timing not in (
+        "formation",
+        "every_period",
+    ):
+        raise ValueError(
+            "timing must be either 'formation' or 'every_period'."
+        )
 
     _validate_optional_number(
         min_stock_price,
@@ -819,6 +844,7 @@ def filter_options(
         "min_listing_age": min_listing_age,
         "exclude_negative_book_equity": exclude_negative_book_equity,
         "exclude_negative_earnings": exclude_negative_earnings,
+        "timing": timing,
         **kwargs,
     }
 
@@ -878,6 +904,10 @@ def portfolio_sort_options(
           observations with non-positive book equity. Defaults to False.
         - 'exclude_negative_earnings' (bool): Whether to exclude
           observations with non-positive earnings. Defaults to False.
+        - 'timing' (str): Either 'formation' (the default) to apply the
+          screens only in the formation month when portfolios are
+          rebalanced once a year, or 'every_period' to apply them in
+          every month, which can introduce look-ahead bias.
 
     breakpoint_options_main : dict, optional
         Dict produced by 'breakpoint_options', specifying breakpoints
@@ -2049,6 +2079,7 @@ def filter_sorting_data(
     data: pl.DataFrame,
     filter_options: dict = None,
     data_options: dict = None,
+    rebalancing_month: int = None,
     quiet: bool = False,
 ) -> pl.DataFrame:
     """Filter sorting data.
@@ -2059,6 +2090,26 @@ def filter_sorting_data(
     minimum size quantile, minimum listing age, positive book equity,
     and positive earnings. An informational warning is emitted for
     each filter that actually removes at least one observation.
+
+    Without 'rebalancing_month', every month is a formation month and
+    each row is screened on its own values. The screens are then free
+    of look-ahead bias only if the screened columns are known at the
+    start of the month: the default price column 'prc_lag' and
+    'mktcap_lag' are lagged by one month, and accounting variables
+    such as book equity and earnings should be lagged as well (e.g.,
+    with 'join_lagged_values').
+
+    With 'rebalancing_month', portfolios are formed once a year and
+    held for twelve months. By default
+    ('filter_options(timing="formation")'), each screen is evaluated in
+    the formation month only, and a stock that passes all screens keeps
+    all its rows until the next formation month, even if it fails a
+    screen in a holding month. Rows of stocks that fail a screen at
+    formation, and rows before the first formation month, are removed.
+    With 'timing="every_period"', the screens are evaluated in every
+    month (ex-post) and a warning is issued, because dropping
+    holding-month returns based on information from those months can
+    bias factor returns.
 
     Parameters
     ----------
@@ -2090,15 +2141,27 @@ def filter_sorting_data(
           observations with non-positive book equity. Defaults to False.
         - 'exclude_negative_earnings' (bool): Whether to exclude
           observations with non-positive earnings. Defaults to False.
+        - 'timing' (str): Either 'formation' (the default) to apply the
+          screens only in the formation month when portfolios are
+          rebalanced once a year, or 'every_period' to apply them in
+          every month, which can introduce look-ahead bias.
 
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'siccd' element
-        specifies the SIC code column, 'price' specifies the (adjusted)
-        price column, 'mktcap_lag' specifies the market capitalization
-        column, 'date' specifies the date column, 'listing_age'
-        specifies the listing age column, 'be' specifies the book
-        equity column, and 'earnings' specifies the earnings column.
-        Uses the 'data_options' defaults when None.
+        specifies the SIC code column, 'price' specifies the price
+        column of the 'min_stock_price' screen, 'mktcap_lag' specifies
+        the market capitalization column, 'date' specifies the date
+        column, 'listing_age' specifies the listing age column, 'be'
+        specifies the book equity column, and 'earnings' specifies the
+        earnings column. With 'rebalancing_month', the 'id' element
+        (default 'permno') is used to keep a stock across its holding
+        period. Uses the 'data_options' defaults when None.
+    rebalancing_month : int, optional
+        Month (1 to 12) in which portfolios are formed when they are
+        rebalanced once a year (see 'compute_portfolio_returns'). None
+        (the default) means monthly rebalancing. Together with the
+        'timing' element of 'filter_options', it determines when the
+        screens apply.
     quiet : bool, default False
         Whether informational messages should be suppressed.
 
@@ -2126,6 +2189,18 @@ def filter_sorting_data(
             exclude_financials=True,
             min_stock_price=1,
         ),
+    )
+    # Annual rebalancing in July: the price screen is evaluated in July
+    # only, so stock 1 is kept in August although its price falls below 1
+    data_annual = pl.DataFrame({
+        'permno': [1, 1, 2, 2],
+        'date': [dt.date(2020, 7, 1), dt.date(2020, 8, 1)] * 2,
+        'prc_lag': [2.0, 0.5, 0.5, 2.0],
+    })
+    filter_sorting_data(
+        data_annual,
+        filter_options=filter_options(min_stock_price=1),
+        rebalancing_month=7,
     )
     ```
     """
@@ -2158,6 +2233,125 @@ def filter_sorting_data(
             "earnings": "ib",
         }
 
+    if rebalancing_month is not None and (
+        isinstance(rebalancing_month, bool)
+        or not isinstance(rebalancing_month, numbers.Real)
+        or rebalancing_month not in range(1, 13)
+    ):
+        raise ValueError(
+            "'rebalancing_month' must be a single integer between 1 and 12."
+        )
+
+    if rebalancing_month is None or not _has_active_screens(filter_options):
+        return _apply_screens(data, filter_options, data_options, quiet)
+
+    if filter_options.get("timing", "formation") == "every_period":
+        _warn_every_period_screens()
+        return _apply_screens(data, filter_options, data_options, quiet)
+
+    return _screen_at_formation(
+        data, filter_options, data_options, int(rebalancing_month), quiet
+    )
+
+
+def _has_active_screens(filter_options: dict) -> bool:
+    """Whether any screen in 'filter_options' is active."""
+    return (
+        bool(filter_options.get("exclude_financials"))
+        or bool(filter_options.get("exclude_utilities"))
+        or filter_options.get("min_stock_price") is not None
+        or filter_options.get("min_size_quantile") is not None
+        or filter_options.get("min_listing_age") is not None
+        or bool(filter_options.get("exclude_negative_book_equity"))
+        or bool(filter_options.get("exclude_negative_earnings"))
+    )
+
+
+def _warn_every_period_screens() -> None:
+    """Warn that screens applied in every period can bias factor
+    returns."""
+    warnings.warn(
+        "Screens are applied in every month, including holding months. "
+        "A stock that fails a screen after portfolio formation loses "
+        "those months' returns, so factor returns can contain "
+        "look-ahead bias. Use filter_options(timing='formation') to "
+        "apply the screens only when portfolios are formed.",
+        UserWarning,
+        stacklevel=_user_stacklevel(),
+    )
+
+
+def _screen_at_formation(
+    data: pl.DataFrame,
+    filter_options: dict,
+    data_options: dict,
+    rebalancing_month: int,
+    quiet: bool,
+) -> pl.DataFrame:
+    """Apply the screens in the formation month and keep the stocks
+    that pass for the holding period.
+
+    Portfolios formed in 'rebalancing_month' of year y are held until
+    the month before 'rebalancing_month' of year y + 1.
+    """
+    col_id = data_options["id"]
+    col_date = data_options["date"]
+    _require_column(data, col_id, "data_options['id']")
+    _require_column(data, col_date, "data_options['date']")
+    _check_new_col(data, ["_cohort", "_keep"])
+
+    year = pl.col(col_date).dt.year()
+    month = pl.col(col_date).dt.month()
+    is_formation = month == rebalancing_month
+
+    passed = _apply_screens(
+        data.filter(is_formation), filter_options, data_options, quiet
+    )
+    passed_keys = (
+        passed.select(pl.col(col_id), year.alias("_cohort"))
+        .unique()
+        .with_columns(pl.lit(True).alias("_keep"))
+    )
+
+    data = (
+        data.with_columns(
+            (
+                year
+                - pl.when(month < rebalancing_month).then(1).otherwise(0)
+            ).alias("_cohort")
+        )
+        .join(
+            passed_keys,
+            on=[col_id, "_cohort"],
+            how="left",
+            maintain_order="left",
+        )
+        .with_columns(pl.col("_keep").fill_null(False))
+    )
+
+    n_holding_dropped = data.filter(
+        ~pl.col("_keep") & ~is_formation
+    ).height
+    if not quiet and n_holding_dropped > 0:
+        warnings.warn(
+            f"Screens applied in formation month {rebalancing_month}: "
+            f"removed {n_holding_dropped} holding-month observation(s) "
+            "of stocks that failed a screen at formation or precede the "
+            "first formation month.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+
+    return data.filter(pl.col("_keep")).drop(["_cohort", "_keep"])
+
+
+def _apply_screens(
+    data: pl.DataFrame,
+    filter_options: dict,
+    data_options: dict,
+    quiet: bool,
+) -> pl.DataFrame:
+    """Apply the screens of 'filter_options' to every row of 'data'."""
     # Treat float NaN as missing in the filter columns (polars-native
     # inputs can carry NaN, which would otherwise pass the filters and
     # shift quantile cutoffs).
@@ -2326,7 +2520,9 @@ def implement_portfolio_sort(
         'breakpoint_options_secondary'.
     rebalancing_month : int, optional
         Month in which portfolios are rebalanced annually. None (the
-        default) means monthly rebalancing.
+        default) means monthly rebalancing. Also determines the
+        formation month in which the screens of 'filter_options' are
+        applied (see 'filter_sorting_data').
     breakpoint_function_main : callable, optional
         Function used to compute breakpoints for the main sorting
         variable. Defaults to 'compute_breakpoints'.
@@ -2445,6 +2641,7 @@ def implement_portfolio_sort(
         data,
         filter_options=filter_opts,
         data_options=data_options,
+        rebalancing_month=rebalancing_month,
         quiet=quiet,
     )
 
