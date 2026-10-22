@@ -6,6 +6,8 @@ import webbrowser
 import numpy as np
 import polars as pl
 
+from ._internal import _quantile
+
 _SUMMARY_QUANTILES_BASIC = (0.50,)
 _SUMMARY_QUANTILES_DETAIL = (
     0.01,
@@ -21,7 +23,7 @@ _SUMMARY_QUANTILES_DETAIL = (
 
 
 def _quantile_label(p: float) -> str:
-    """Return the R-style quantile column label, e.g. 0.05 -> 'q05'."""
+    """Return the quantile column label, e.g. 0.05 -> 'q05'."""
     return f"q{round(p * 100):02d}"
 
 
@@ -133,8 +135,8 @@ def create_summary_statistics(
         index=id_cols, variable_name="variable", value_name="_value"
     )
     if long.schema["_value"].is_float():
-        # Treat float NaN like missing so statistics ignore it, matching
-        # the pandas/R behavior for NA values.
+        # Treat float NaN like missing so statistics ignore it, as
+        # pandas does.
         long = long.with_columns(pl.col("_value").fill_nan(None))
 
     aggs = [
@@ -478,7 +480,7 @@ def winsorize(x, cut: float) -> np.ndarray:
         return x
 
     x = np.asarray(x, dtype=float)
-    lb, ub = np.nanquantile(x, [cut, 1 - cut])
+    lb, ub = _quantile(x, [cut, 1 - cut])
     return np.clip(x, lb, ub)
 
 
@@ -521,7 +523,7 @@ def trim(x, cut: float) -> np.ndarray:
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")
 
-    lb = np.nanquantile(x, cut)
-    ub = np.nanquantile(x, 1 - cut)
+    lb = _quantile(x, cut)
+    ub = _quantile(x, 1 - cut)
 
     return x[(x >= lb) & (x <= ub)]

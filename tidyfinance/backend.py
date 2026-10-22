@@ -32,7 +32,7 @@ _BACKEND = "pandas"
 # polars stores them as 'polars.Date'. Pandas inputs carry them as
 # datetime64 (pandas has no plain date dtype), so '_to_polars_input'
 # casts tz-naive datetime columns with these names to 'polars.Date' on
-# entry so they match the internal representation and the R package.
+# entry so they match the internal representation.
 _DATE_COLUMNS = frozenset(
     {
         # all download functions

@@ -9,6 +9,7 @@ import polars as pl
 
 from ._internal import (
     _check_new_col,
+    _quantile,
     _user_stacklevel,
     _validate_column_name,
     _validate_flag,
@@ -570,7 +571,7 @@ def compute_breakpoints(
         n_portfolios = len(probs) - 1
 
     sorting_values_clean = sorting_values[~np.isnan(sorting_values)]
-    breakpoints = np.quantile(sorting_values_clean, probs)
+    breakpoints = _quantile(sorting_values_clean, probs)
 
     if smooth_bunching:
         both_edges = (
@@ -593,7 +594,7 @@ def compute_breakpoints(
             )
             sorting_values_new = sorting_values_clean[mask]
             probs_new = np.linspace(0, 1, n_portfolios - 1)
-            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new = _quantile(sorting_values_new, probs_new)
             breakpoints_new[-1] += 1e-15
             breakpoints = np.concatenate(
                 [
@@ -614,7 +615,7 @@ def compute_breakpoints(
                 sorting_values_clean > breakpoints[0]
             ]
             probs_new = np.linspace(0, 1, n_portfolios)
-            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new = _quantile(sorting_values_new, probs_new)
             breakpoints = np.concatenate([[breakpoints[0]], breakpoints_new])
         elif upper_edge:
             if percentiles is not None:
@@ -628,7 +629,7 @@ def compute_breakpoints(
                 sorting_values_clean < breakpoints[n_portfolios - 1]
             ]
             probs_new = np.linspace(0, 1, n_portfolios)
-            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new = _quantile(sorting_values_new, probs_new)
             breakpoints_new[-1] += 1e-15
             breakpoints = np.concatenate(
                 [breakpoints_new, [breakpoints[n_portfolios]]]
@@ -676,10 +677,7 @@ def _compute_min_mktcap(
             .to_numpy()
         )
         mktcap_ref = mktcap_ref[keep]
-    mktcap_ref = mktcap_ref[~np.isnan(mktcap_ref)]
-    if mktcap_ref.size == 0:
-        return np.nan
-    return float(np.quantile(mktcap_ref, breakpoints_min_size_threshold))
+    return _quantile(mktcap_ref, breakpoints_min_size_threshold)
 
 
 def _main_min_mktcap(
@@ -1376,25 +1374,28 @@ def _cap_market_cap(
             reference = pl.lit(True)
         else:
             reference = pl.col(exchange_col).is_in(exchanges).fill_null(False)
-        return (
-            frame.select(
-                pl.col(date_col),
-                pl.col(w_col),
-                reference.alias("_reference"),
+        frame = frame.select(
+            pl.col(date_col),
+            pl.col(w_col).cast(pl.Float64),
+            reference.alias("_reference"),
+        )
+        rows = []
+        for (date,), part in frame.group_by(date_col, maintain_order=True):
+            w = part.get_column(w_col).to_numpy()
+            is_reference = part.get_column("_reference").to_numpy()
+            has_reference = bool((is_reference & ~np.isnan(w)).any())
+            cap = _quantile(
+                w[is_reference] if has_reference else w, cap_weight
             )
-            .group_by(date_col)
-            .agg(
-                (pl.col("_reference") & pl.col(w_col).is_not_null())
-                .any()
-                .alias("_has_reference"),
-                pl.col(w_col)
-                .filter(pl.col("_reference"))
-                .quantile(cap_weight, interpolation="linear")
-                .alias("_cap_reference"),
-                pl.col(w_col)
-                .quantile(cap_weight, interpolation="linear")
-                .alias("_cap_all"),
-            )
+            rows.append((date, has_reference, None if np.isnan(cap) else cap))
+        return pl.DataFrame(
+            rows,
+            schema={
+                date_col: frame.schema[date_col],
+                "_has_reference": pl.Boolean,
+                "_cap": pl.Float64,
+            },
+            orient="row",
         )
 
     caps = compute_caps(cap_data)
@@ -1416,13 +1417,7 @@ def _cap_market_cap(
     if missing_dates.height > 0:
         caps = pl.concat([caps, compute_caps(missing_dates)])
 
-    caps = caps.select(
-        pl.col(date_col),
-        pl.when(pl.col("_has_reference"))
-        .then(pl.col("_cap_reference"))
-        .otherwise(pl.col("_cap_all"))
-        .alias("_cap"),
-    )
+    caps = caps.select([date_col, "_cap"])
 
     _check_new_col(data, "_cap")
     return (
@@ -2713,10 +2708,20 @@ def _apply_screens(
         n_before = data.height
         size_threshold = filter_options["min_size_quantile"]
         nyse_data = data.filter(pl.col(col_exchange) == "NYSE")
-        size_cutoffs = nyse_data.group_by(col_date, maintain_order=True).agg(
-            _size_cutoff=pl.col(col_mktcap_lag).quantile(
-                size_threshold, interpolation="linear"
+        cutoff_dates, cutoff_values = [], []
+        for (date,), part in nyse_data.group_by(col_date, maintain_order=True):
+            cutoff = _quantile(
+                part.get_column(col_mktcap_lag).cast(pl.Float64).to_numpy(),
+                size_threshold,
             )
+            cutoff_dates.append(date)
+            cutoff_values.append(None if np.isnan(cutoff) else cutoff)
+        size_cutoffs = pl.DataFrame(
+            {col_date: cutoff_dates, "_size_cutoff": cutoff_values},
+            schema={
+                col_date: data.schema[col_date],
+                "_size_cutoff": pl.Float64,
+            },
         )
 
         dates_in_data = set(data.get_column(col_date).unique().to_list())

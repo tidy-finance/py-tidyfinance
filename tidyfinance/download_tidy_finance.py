@@ -392,8 +392,7 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
         'min_size_quantile=None' includes all size groups). Passing
         '[None]' selects the missing level instead, e.g.
         'min_size_quantile=[None]' for the portfolios without a size
-        screen, which R spells 'min_size_quantile = NA'. Supported
-        columns and their defaults are:
+        screen. Supported columns and their defaults are:
 
         - 'sorting_variable': no default. When omitted, all sorting
           variables are returned (subject to the remaining defaults).
@@ -436,9 +435,8 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
             )
 
     # A filter the caller explicitly sets to None is removed entirely so
-    # all values for that column are returned, mirroring purrr::compact()
-    # on NULL in the R implementation. These columns are recorded so the
-    # defaults below do not reintroduce a filter for them. Default None
+    # all values for that column are returned. These columns are recorded
+    # so the defaults below do not reintroduce a filter for them. Default None
     # values (e.g. n_portfolios_secondary) are applied afterwards and
     # instead match rows where the column is null.
     unrestricted = {col for col, value in filters.items() if value is None}
@@ -615,8 +613,8 @@ def _download_factor_library_ids(ids: list) -> pl.DataFrame:
                 "ret": pl.Float32,
             }
         )
-    # Returns are stored in single precision; widen them to the double
-    # precision the R package returns.
+    # Returns are stored in single precision; return them in double
+    # precision.
     returns = returns.with_columns(pl.col("ret").cast(pl.Float64))
 
     no_returns = (
@@ -772,7 +770,7 @@ def _download_data_huggingface(
     returning all values for that column (e.g., 'min_size_quantile=None'
     includes all size groups). Passing '[None]' selects the missing
     level instead, e.g. 'min_size_quantile=[None]' for the portfolios
-    without a size screen, which R spells 'min_size_quantile = NA'.
+    without a size screen.
 
     Parameters
     ----------

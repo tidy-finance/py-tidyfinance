@@ -2786,7 +2786,7 @@ def _download_damodaran_file(file_path: str) -> pl.DataFrame | None:
             error = e
             response = None
         else:
-            # Retry transient errors, as R's httr2::req_retry() does.
+            # Retry transient errors (too many requests, unavailable).
             if response.status_code not in (429, 503):
                 break
         if attempt < 2:

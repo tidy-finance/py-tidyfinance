@@ -13,6 +13,54 @@ import polars as pl
 _PACKAGE_DIR = os.path.normcase(os.path.dirname(os.path.abspath(__file__)))
 
 
+def _quantile(x, probs):
+    """Sample quantiles with linear interpolation between order statistics.
+
+    The quantile at probability p is interpolated at position
+    1 + (n - 1) * p of the sorted values as '(1 - h) * a + h * b'. This
+    is the definition of numpy's and polars' linear quantiles, but
+    their arithmetic, 'a + (b - a) * h', can differ in the last bit
+    when a quantile falls on an observation, which moves a stock across
+    a breakpoint or screen cutoff. All quantiles of the package are
+    computed here, so they are reproducible bit for bit. Missing values
+    (NaN) are ignored.
+
+    Parameters
+    ----------
+    x : array-like
+        Numeric values.
+    probs : float or array-like of float
+        Probabilities in [0, 1].
+
+    Returns
+    -------
+    float or numpy.ndarray
+        The quantiles, NaN if 'x' has no non-missing values. A float if
+        'probs' is a scalar.
+    """
+    values = np.asarray(x, dtype=float)
+    values = np.sort(values[~np.isnan(values)])
+    scalar = np.ndim(probs) == 0
+    p = np.atleast_1d(np.asarray(probs, dtype=float))
+    n = values.size
+
+    if n == 0:
+        quantiles = np.full(p.shape, np.nan)
+    else:
+        index = 1 + (n - 1) * p
+        lo = np.floor(index)
+        hi = np.ceil(index)
+        quantiles = values[lo.astype(int) - 1]
+        upper = values[hi.astype(int) - 1]
+        interpolate = (index > lo) & (upper != quantiles)
+        h = (index - lo)[interpolate]
+        quantiles[interpolate] = (1 - h) * quantiles[interpolate] + h * upper[
+            interpolate
+        ]
+
+    return float(quantiles[0]) if scalar else quantiles
+
+
 def _user_stacklevel() -> int:
     """Return the 'stacklevel' that attributes a warning to the user.
 
@@ -45,8 +93,8 @@ def _user_stacklevel() -> int:
 def _inform(message: str, end: str = "\n") -> None:
     """Show an informational message, such as download progress.
 
-    Messages go to standard error, like R's messages, so they appear in
-    consoles and notebooks but do not mix with printed results.
+    Messages go to standard error, so they appear in consoles and
+    notebooks but do not mix with printed results.
 
     Parameters
     ----------

@@ -34,8 +34,8 @@ def _ff_windows(
     """Fama-French timing: the value of each id and fiscal year.
 
     Keeps the last observation per id and calendar year of the fiscal
-    year-end. Ties on the date keep the first row, as R's
-    'slice_max(with_ties = FALSE)'. The result holds 'id_keys', '_year'
+    year-end. Ties on the date keep the first row. The result holds
+    'id_keys', '_year'
     (the calendar year t of the fiscal year-end) and 'col'; the value is
     used from July of t + 1 through June of t + 2 (see '_ff_year').
     """
