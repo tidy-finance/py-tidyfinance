@@ -1,22 +1,141 @@
 """WRDS connection and downloads for tidyfinance."""
 
+import contextvars
 import datetime as dt
+import functools
+import inspect
 import math
 import os
 import re
+import time
 import warnings
 
 import polars as pl
 from dotenv import dotenv_values, load_dotenv, set_key
 from sqlalchemy import URL, create_engine
 
-from ._internal import _validate_dates
+from ._internal import (
+    _deprecate_legacy_dataset,
+    _inform,
+    _validate_dates,
+    _validate_flag,
+)
 from .download_tidy_finance import _download_data_risk_free
 from .supported_datasets import (
     _check_supported_dataset_wrds,
     _check_supported_dataset_wrds_crsp,
     _is_legacy_type_wrds,
 )
+
+
+# %% Download progress
+
+
+class _WrdsDownloadStep:
+    """Progress of one WRDS download, announced once connected."""
+
+    def __init__(self, what: str):
+        self.what = what
+        self.start = None
+
+    def announce(self) -> None:
+        """Say that the download starts; called by 'get_wrds_connection'
+        after the connection succeeded."""
+        if self.start is None:
+            _inform(
+                f"Downloading {self.what} from WRDS. This can take a few "
+                "minutes."
+            )
+            self.start = time.perf_counter()
+
+
+# The download step of the WRDS download function that is running, so
+# that 'get_wrds_connection' can announce it right after connecting.
+_WRDS_DOWNLOAD_STEP = contextvars.ContextVar(
+    "tidyfinance_wrds_download_step", default=None
+)
+
+
+def _wrds_download_step(label):
+    """Report the progress of a WRDS download.
+
+    Decorator for the WRDS download functions. Unless the call passes
+    'quiet=True', the download is announced once the WRDS connection
+    succeeds ('get_wrds_connection' says when it connects), and when the
+    function returns, a message reports the elapsed time, or that the
+    download failed.
+
+    Parameters
+    ----------
+    label : str or callable
+        Name of the data, e.g. 'CRSP monthly data'. A callable receives
+        the arguments of the call as a dict and returns the name, or
+        None to report nothing (daily CRSP shows a batch progress line
+        instead).
+
+    Returns
+    -------
+    callable
+        The decorator.
+    """
+
+    def decorator(func):
+        signature = inspect.signature(func)
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                arguments = signature.bind_partial(*args, **kwargs).arguments
+            except TypeError:
+                # Invalid arguments: let the function raise its own error.
+                return func(*args, **kwargs)
+            what = label(arguments) if callable(label) else label
+            if arguments.get("quiet", False) is not False:
+                what = None
+
+            step = _WrdsDownloadStep(what) if what is not None else None
+            token = _WRDS_DOWNLOAD_STEP.set(step)
+            try:
+                result = func(*args, **kwargs)
+            except BaseException:
+                if step is not None and step.start is not None:
+                    _inform(f"Downloading {step.what} from WRDS failed.")
+                raise
+            finally:
+                _WRDS_DOWNLOAD_STEP.reset(token)
+            if step is not None and step.start is not None:
+                elapsed = time.perf_counter() - step.start
+                _inform(f"Downloaded {step.what} from WRDS. [{elapsed:.1f}s]")
+            return result
+
+        return wrapper
+
+    return decorator
+
+
+def _report_batch_progress(j: int, batches: int, quiet: bool) -> None:
+    """Show the progress of the daily CRSP download in one line.
+
+    The line is updated in place and cleared after the last batch.
+
+    Parameters
+    ----------
+    j : int
+        Number of the batch that has just been downloaded (1-based).
+    batches : int
+        Total number of batches.
+    quiet : bool
+        If True, nothing is shown.
+    """
+    if quiet:
+        return
+    line = (
+        f"Downloading CRSP daily data from WRDS in batches: {j}/{batches} "
+        f"({j / batches:.0%})"
+    )
+    _inform(f"\r{line}", end="")
+    if j == batches:
+        _inform("\r" + " " * len(line) + "\r", end="")
 
 
 def _read_sql(query, con) -> pl.DataFrame:
@@ -106,7 +225,9 @@ def _download_data_wrds(
         'wrds_' prefix is stripped and a DeprecationWarning is emitted.
     **kwargs
         Additional arguments passed to specific download functions
-        depending on the 'dataset'.
+        depending on the 'dataset'. For instance, 'quiet=True'
+        suppresses the messages about the WRDS connection and the
+        download progress.
 
     Returns
     -------
@@ -140,13 +261,9 @@ def _download_data_wrds(
         dataset = re.sub(r"^wrds_", "", type)
 
     if dataset is not None and _is_legacy_type_wrds(dataset):
-        warnings.warn(
-            "Passing 'wrds_'-prefixed dataset names is deprecated. "
-            "Use 'crsp_monthly' instead of 'wrds_crsp_monthly'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^wrds_", "", dataset)
+        replacement = re.sub(r"^wrds_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -281,6 +398,13 @@ def _gao_ritter_vol_adj(nasdaq_cond: pl.Expr) -> pl.Expr:
     )
 
 
+def _crsp_step_label(arguments: dict):
+    """Name of the CRSP download step; daily CRSP shows batches instead."""
+    requested = arguments.get("dataset") or arguments.get("type") or ""
+    return "CRSP monthly data" if "crsp_monthly" in requested else None
+
+
+@_wrds_download_step(_crsp_step_label)
 def _download_data_wrds_crsp(
     dataset: str = None,
     start_date: str = None,
@@ -291,14 +415,15 @@ def _download_data_wrds_crsp(
     additional_columns: list = None,
     add_ccm_links: bool = False,
     adjust_volume: bool = False,
+    quiet: bool = False,
 ) -> pl.DataFrame:
     """
     Download data from WRDS CRSP.
 
     Downloads and processes stock return data from the CRSP database
     for a specified period. Users can choose between monthly and daily
-    datasets. The function also adjusts returns for delisting and
-    calculates market capitalization and excess returns over the
+    datasets. The function also includes delisting returns (see Notes)
+    and calculates market capitalization and excess returns over the
     risk-free rate.
 
     Parameters
@@ -347,17 +472,47 @@ def _download_data_wrds_crsp(
         factors are computed from the data in memory; results may be
         incorrect if 'start_date' excludes early observations for some
         permnos.
+    quiet : bool, optional
+        If True, the messages about the WRDS connection and the download
+        progress are suppressed. Defaults to False.
 
     Returns
     -------
     pl.DataFrame
-        A data frame containing CRSP stock returns, adjusted for
-        delistings, along with calculated market capitalization and
+        A data frame containing CRSP stock returns, including delisting
+        returns, along with calculated market capitalization and
         excess returns over the risk-free rate. The structure of the
         returned data frame depends on the selected dataset.
 
+    Notes
+    -----
+    How delisting returns enter the data depends on 'version':
+
+    - 'v2' (CIZ): CRSP already includes the delisting return in the
+      monthly ('mthret') and daily ('dlyret') returns of the month and
+      the day in which a stock delists, so 'ret' and 'ret_excess'
+      include it without further adjustment. The common-stock screens
+      of the security history ('crsp.stksecurityinfohist') are
+      evaluated on the stock's last trading day for these observations,
+      because the history holds no active record after it. Without
+      this, the month or day that carries the delisting return would be
+      dropped.
+    - 'v1' (legacy SIZ), monthly: the delisting return 'dlret' from
+      'crsp.msedelist' replaces the return of the delisting month in
+      'ret_adj', which 'ret_excess' is based on. If 'dlret' is missing,
+      the return is set to -30% for performance-related delistings
+      (codes 500, 520, 551-574, 580, and 584; Shumway, 1997), kept for
+      code 100, and set to -100% otherwise. 'ret' is the unadjusted
+      return.
+    - 'v1' (legacy SIZ), daily: the delisting return replaces the
+      return on the delisting date, and later observations are dropped.
+
     References
     ----------
+    Shumway, T. (1997). The delisting bias in CRSP data. Journal of
+    Finance, 52(1), 327-340.
+    https://doi.org/10.1111/j.1540-6261.1997.tb03818.x
+
     Gao, X., and Ritter, J. R. (2010). The marketing of seasoned
     equity offerings. Journal of Financial Economics, 97(1), 33-52.
     https://doi.org/10.1016/j.jfineco.2010.03.007
@@ -389,13 +544,9 @@ def _download_data_wrds_crsp(
         dataset = re.sub(r"^wrds_", "", type)
 
     if dataset is not None and _is_legacy_type_wrds(dataset):
-        warnings.warn(
-            "Passing 'wrds_'-prefixed dataset names is deprecated. "
-            "Use 'crsp_monthly' instead of 'wrds_crsp_monthly'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^wrds_", "", dataset)
+        replacement = re.sub(r"^wrds_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -440,7 +591,7 @@ def _download_data_wrds_crsp(
                 "for adjust_volume=True."
             )
 
-    wrds_connection = get_wrds_connection()
+    wrds_connection = get_wrds_connection(quiet=quiet)
     additional_columns_sql = (
         ", ".join(additional_columns_list) if additional_columns_list else ""
     )
@@ -545,11 +696,18 @@ def _download_data_wrds_crsp(
                     mktcap=(pl.col("shrout") * pl.col("altprc")).abs() / 1e6
                 ).with_columns(_zero_to_null("mktcap"))
 
-                # mktcap_lag via self-join shifted by 1 month
+                # mktcap_lag and prc_lag via self-join shifted by 1 month.
+                # In the legacy SIZ format, a negative price is the
+                # average of bid and ask when there was no closing trade;
+                # the sign is only a flag, so prc_lag is its absolute value.
                 mktcap_lag_df = crsp_monthly.select(
                     "permno",
                     pl.col("date").dt.offset_by("1mo"),
                     pl.col("mktcap").alias("mktcap_lag"),
+                    pl.when(pl.col("altprc") == 0)
+                    .then(None)
+                    .otherwise(pl.col("altprc").abs())
+                    .alias("prc_lag"),
                 )
                 crsp_monthly = crsp_monthly.join(
                     mktcap_lag_df,
@@ -625,8 +783,14 @@ def _download_data_wrds_crsp(
                     FROM crsp.msf_v2 AS msf
                     INNER JOIN crsp.stksecurityinfohist AS ssih
                     ON msf.permno = ssih.permno AND
-                        ssih.secinfostartdt <= msf.mthcaldt AND
-                        msf.mthcaldt <= ssih.secinfoenddt
+                        -- Look up the security information of the
+                        -- delisting month on the last trading day
+                        -- (securityenddt). After that day, the history
+                        -- holds no active record, so a month-end lookup
+                        -- would drop the month whose return includes the
+                        -- delisting return. LEAST ignores NULLs.
+                        LEAST(msf.mthcaldt, ssih.securityenddt)
+                            BETWEEN ssih.secinfostartdt AND ssih.secinfoenddt
                     LEFT JOIN (
                         SELECT permno,
                             MIN(secinfostartdt) AS first_crsp_date
@@ -664,10 +828,13 @@ def _download_data_wrds_crsp(
                     .drop("first_crsp_date")
                 )
 
+                # CIZ (v2) prices are always positive, so prc_lag is the
+                # previous month's price as is.
                 mktcap_lag = crsp_monthly.select(
                     "permno",
                     pl.col("date").dt.offset_by("1mo"),
                     pl.col("mktcap").alias("mktcap_lag"),
+                    pl.col("prc").alias("prc_lag"),
                 )
 
                 crsp_monthly = crsp_monthly.join(
@@ -847,6 +1014,7 @@ def _download_data_wrds_crsp(
                         )
 
                         crsp_data_parts.append(crsp_daily_sub)
+                        _report_batch_progress(j, batches, quiet)
 
                 crsp_data = (
                     pl.concat(crsp_data_parts, how="diagonal_relaxed")
@@ -910,8 +1078,14 @@ def _download_data_wrds_crsp(
                         FROM crsp.dsf_v2 AS dsf
                         INNER JOIN crsp.stksecurityinfohist AS ssih
                         ON dsf.permno = ssih.permno AND
-                            ssih.secinfostartdt <= dsf.dlycaldt AND
-                            dsf.dlycaldt <= ssih.secinfoenddt
+                            -- The delisting return is on the day after
+                            -- the last trading day (securityenddt), when
+                            -- the history holds no active record anymore.
+                            -- Look that day up on the last trading day.
+                            -- LEAST ignores NULLs.
+                            LEAST(dsf.dlycaldt, ssih.securityenddt)
+                                BETWEEN ssih.secinfostartdt
+                                AND ssih.secinfoenddt
                         WHERE dsf.permno IN {permno_string}
                         AND dlycaldt BETWEEN '{start_date}' AND '{end_date}'
                         AND ssih.sharetype = 'NS'
@@ -946,12 +1120,8 @@ def _download_data_wrds_crsp(
                             .drop("risk_free")
                         )
 
-                    print(
-                        f"Batch {j} out of {batches} done "
-                        f"({(j / batches) * 100:.2f}%)\n"
-                    )
-
                     crsp_data_parts.append(crsp_daily_sub)
+                    _report_batch_progress(j, batches, quiet)
 
                 crsp_data = (
                     pl.concat(crsp_data_parts, how="diagonal_relaxed")
@@ -993,7 +1163,7 @@ def _download_data_wrds_crsp(
         disconnect_connection(wrds_connection)
 
     if add_ccm_links:
-        ccm_links = _download_data_wrds_ccm_links()
+        ccm_links = _download_data_wrds_ccm_links(quiet=quiet)
         merged = processed_data.select("permno", "date").join(
             ccm_links, on="permno", how="inner", maintain_order="left"
         )
@@ -1012,8 +1182,11 @@ def _download_data_wrds_crsp(
     return processed_data
 
 
+@_wrds_download_step("CRSP-Compustat links")
 def _download_data_wrds_ccm_links(
-    linktype: list[str] = ["LU", "LC"], linkprim: list[str] = ["P", "C"]
+    linktype: list[str] = ["LU", "LC"],
+    linkprim: list[str] = ["P", "C"],
+    quiet: bool = False,
 ) -> pl.DataFrame:
     """
     Download data from the WRDS CRSP/Compustat Merged (CCM) links database.
@@ -1026,6 +1199,9 @@ def _download_data_wrds_ccm_links(
     linkprim : list of str, optional
         A list of strings indicating the primacy of the links.
         Defaults to ["P", "C"].
+    quiet : bool, optional
+        If True, the messages about the WRDS connection and the download
+        progress are suppressed. Defaults to False.
 
     Returns
     -------
@@ -1033,7 +1209,7 @@ def _download_data_wrds_ccm_links(
         A data frame containing columns permno, gvkey, linkdt, and
         linkenddt (missing end dates replaced with today's date).
     """
-    conn = get_wrds_connection()
+    conn = get_wrds_connection(quiet=quiet)
 
     query = f"""
         SELECT lpermno AS permno, gvkey, linkdt, linkenddt
@@ -1056,6 +1232,16 @@ def _download_data_wrds_ccm_links(
     return ccm_links
 
 
+def _compustat_step_label(arguments: dict):
+    """Name of the Compustat download step, e.g. 'Compustat annual data'."""
+    requested = arguments.get("dataset") or arguments.get("type")
+    if not requested:
+        return None
+    name = re.sub(r"^wrds_", "", requested).replace("compustat_", "Compustat ")
+    return f"{name} data"
+
+
+@_wrds_download_step(_compustat_step_label)
 def _download_data_wrds_compustat(
     dataset: str = None,
     start_date: str = None,
@@ -1064,6 +1250,7 @@ def _download_data_wrds_compustat(
     additional_columns: list = None,
     only_usd: bool = False,
     only_us: bool = None,
+    quiet: bool = False,
 ) -> pl.DataFrame:
     """
     Download data from WRDS Compustat.
@@ -1105,6 +1292,9 @@ def _download_data_wrds_compustat(
     only_us : bool, optional
         Deprecated. Use 'only_usd' instead. If supplied, the value is
         forwarded to 'only_usd' and a DeprecationWarning is emitted.
+    quiet : bool, optional
+        If True, the messages about the WRDS connection and the download
+        progress are suppressed. Defaults to False.
 
     Returns
     -------
@@ -1155,13 +1345,9 @@ def _download_data_wrds_compustat(
         only_usd = only_us
 
     if dataset is not None and dataset.startswith("wrds_"):
-        warnings.warn(
-            "Passing 'wrds_'-prefixed dataset names is deprecated. "
-            "Use 'compustat_annual' instead of 'wrds_compustat_annual'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^wrds_", "", dataset)
+        replacement = re.sub(r"^wrds_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -1176,7 +1362,7 @@ def _download_data_wrds_compustat(
             )
         )
 
-    wrds_connection = get_wrds_connection()
+    wrds_connection = get_wrds_connection(quiet=quiet)
     _base_annual_cols = {
         "gvkey",
         "datadate",
@@ -1350,7 +1536,10 @@ def _download_data_wrds_compustat(
     return processed_data
 
 
-def _download_data_wrds_fisd(additional_columns: list = None) -> pl.DataFrame:
+@_wrds_download_step("FISD bond characteristics")
+def _download_data_wrds_fisd(
+    additional_columns: list = None, quiet: bool = False
+) -> pl.DataFrame:
     """
     Download filtered FISD data from WRDS.
 
@@ -1369,6 +1558,9 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pl.DataFrame:
     ----------
     additional_columns : list of str, optional
         Additional columns from the FISD table as a list of strings.
+    quiet : bool, optional
+        If True, the messages about the WRDS connection and the download
+        progress are suppressed. Defaults to False.
 
     Returns
     -------
@@ -1390,7 +1582,7 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pl.DataFrame:
     )
     ```
     """
-    wrds_connection = get_wrds_connection()
+    wrds_connection = get_wrds_connection(quiet=quiet)
 
     if additional_columns:
         if not all(
@@ -1475,8 +1667,12 @@ def _download_data_wrds_fisd(additional_columns: list = None) -> pl.DataFrame:
     return fisd
 
 
+@_wrds_download_step("enhanced TRACE data")
 def _download_data_wrds_trace_enhanced(
-    cusips: list, start_date: str = None, end_date: str = None
+    cusips: list,
+    start_date: str = None,
+    end_date: str = None,
+    quiet: bool = False,
 ) -> pl.DataFrame:
     """
     Download Enhanced TRACE data from WRDS.
@@ -1498,6 +1694,9 @@ def _download_data_wrds_trace_enhanced(
         A character string or date in 'YYYY-MM-DD' format specifying
         the end date for the data. If not provided, a subset of the
         dataset is returned.
+    quiet : bool, optional
+        If True, the messages about the WRDS connection and the download
+        progress are suppressed. Defaults to False.
 
     Returns
     -------
@@ -1529,7 +1728,7 @@ def _download_data_wrds_trace_enhanced(
     if not all(isinstance(cusip, str) and len(cusip) == 9 for cusip in cusips):
         raise ValueError("All CUSIPs must be 9-character strings.")
 
-    wrds_connection = get_wrds_connection()
+    wrds_connection = get_wrds_connection(quiet=quiet)
 
     cusip_string = _format_cusips(cusips)
 
@@ -1556,7 +1755,7 @@ def _download_data_wrds_trace_enhanced(
     return trace_enhanced
 
 
-def get_wrds_connection() -> object:
+def get_wrds_connection(quiet: bool = False) -> object:
     """Establish a connection to Wharton Research Data Services (WRDS).
 
     Opens a SQLAlchemy connection to the WRDS PostgreSQL database. Credentials
@@ -1566,6 +1765,12 @@ def get_wrds_connection() -> object:
     'postgresql+psycopg2' driver, requires SSL, and targets
     'wrds-pgdata.wharton.upenn.edu' on port 9737. Pool pre-ping is enabled so
     stale connections are detected and recycled automatically.
+
+    Parameters
+    ----------
+    quiet : bool, default False
+        If True, the messages about the WRDS connection and the download
+        progress are suppressed.
 
     Returns
     -------
@@ -1581,8 +1786,34 @@ def get_wrds_connection() -> object:
         If 'WRDS_USER' or 'WRDS_PASSWORD' is not set in the environment or
         '.env' file. The 'load_wrds_credentials' helper performs this check
         before the connection is opened.
-    sqlalchemy.exc.OperationalError
-        If the database host is unreachable or the credentials are rejected.
+    ConnectionError
+        If the connection fails, e.g. because the database host is
+        unreachable or the credentials are rejected. The message lists the
+        likely causes. The original error is kept as the cause
+        ('__cause__'), with the username and password replaced by
+        placeholders.
+
+    Notes
+    -----
+    A WRDS username and password alone are not enough to connect. Before
+    the first connection:
+
+    1. Get a WRDS account through an institution that subscribes to the
+       data you need (e.g., CRSP and Compustat).
+    2. Enroll in two-factor authentication (Duo) for your WRDS account.
+       WRDS requires it for all connections, including connections from
+       Python.
+    3. Log in to the WRDS website (https://wrds-www.wharton.upenn.edu)
+       once and accept the terms of use, if WRDS asks you to.
+    4. Store your username and password with 'set_wrds_credentials', or
+       set the 'WRDS_USER' and 'WRDS_PASSWORD' environment variables.
+    5. When you connect, approve the Duo push notification on your
+       registered device. The connection waits until you approve it.
+
+    If the connection fails, the error message lists these steps. Unless
+    'quiet=True', the function says when it starts connecting and when
+    the connection succeeds, so you know when to approve the Duo request
+    and when the download starts.
 
     See Also
     --------
@@ -1602,6 +1833,8 @@ def get_wrds_connection() -> object:
     disconnect_connection(con)
     ```
     """
+    _validate_flag(quiet, "quiet")
+
     wrds_user, wrds_password = load_wrds_credentials()
     url = URL.create(
         drivername="postgresql+psycopg2",
@@ -1616,7 +1849,69 @@ def get_wrds_connection() -> object:
         connect_args={"sslmode": "require"},
         pool_pre_ping=True,
     )
-    return engine.connect()
+
+    if not quiet:
+        # The username is deliberately not shown, as messages can end up
+        # in public logs (e.g., CI or rendered documents).
+        _inform("Connecting to WRDS. Approve the Duo request if prompted.")
+    try:
+        connection = engine.connect()
+    except Exception as e:
+        if not quiet:
+            _inform("Connection to WRDS failed.")
+        # The driver error can contain the username (e.g. "password
+        # authentication failed for user ..."), and error messages can end
+        # up in public logs, so the credentials are replaced.
+        cause = RuntimeError(
+            _redact_wrds_credentials(
+                f"{type(e).__name__}: {e}", wrds_user, wrds_password
+            )
+        )
+        raise ConnectionError(
+            "Could not connect to WRDS.\n"
+            "- Check that 'WRDS_USER' and 'WRDS_PASSWORD' are correct, "
+            "e.g., with 'set_wrds_credentials()'.\n"
+            "- WRDS requires two-factor authentication (Duo): enroll your "
+            "account and approve the push notification when you connect.\n"
+            "- Log in to https://wrds-www.wharton.upenn.edu once and accept "
+            "the terms of use if WRDS asks you to.\n"
+            "- See help(get_wrds_connection) for details."
+        ) from cause
+
+    if not quiet:
+        _inform("Connected to WRDS.")
+        # Announce the download of the calling WRDS download function.
+        step = _WRDS_DOWNLOAD_STEP.get()
+        if step is not None:
+            step.announce()
+    return connection
+
+
+def _redact_wrds_credentials(message: str, user: str, password: str) -> str:
+    """Replace WRDS credentials in an error message by placeholders.
+
+    Parameters
+    ----------
+    message : str
+        Error message, e.g. of a failed connection.
+    user : str
+        WRDS username to replace by '<WRDS_USER>'.
+    password : str
+        WRDS password to replace by '<WRDS_PASSWORD>'.
+
+    Returns
+    -------
+    str
+        The message without the username and password.
+    """
+    # The password is replaced first, in case it contains the username.
+    for placeholder, value in (
+        ("<WRDS_PASSWORD>", password),
+        ("<WRDS_USER>", user),
+    ):
+        if value:
+            message = message.replace(value, placeholder)
+    return message
 
 
 def disconnect_connection(connection: object) -> bool:
@@ -2084,6 +2379,10 @@ def set_wrds_credentials() -> None:
 
     The resulting '.env' file is the credentials source consumed by
     'get_wrds_connection' via 'load_wrds_credentials'.
+
+    Storing credentials is not enough to connect to WRDS: you also need
+    to enroll in two-factor authentication (Duo) and accept the WRDS
+    terms of use. See the Notes section of 'get_wrds_connection'.
 
     Returns
     -------

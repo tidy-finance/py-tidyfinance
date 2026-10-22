@@ -132,7 +132,13 @@ def test_download_data_wrds_handles_legacy_dataset_values():
         "tidyfinance.download_wrds._download_data_wrds_crsp",
         side_effect=lambda ds, s, e, **kw: ds,
     ):
-        with pytest.warns(DeprecationWarning, match="deprecated"):
+        with pytest.warns(
+            DeprecationWarning,
+            match=(
+                r"dataset='wrds_crsp_daily' is deprecated\. "
+                r"Use dataset='crsp_daily' instead\."
+            ),
+        ):
             out = _download_data_wrds("wrds_crsp_daily")
         assert out == "crsp_daily"
 

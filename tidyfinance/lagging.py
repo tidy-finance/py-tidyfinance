@@ -5,14 +5,94 @@ import datetime as dt
 import numpy as np
 import polars as pl
 
-from ._internal import _check_new_col, _negate_offset, _offset_end, _to_offset
+from ._internal import (
+    _check_new_col,
+    _inform,
+    _negate_offset,
+    _offset_end,
+    _to_offset,
+)
 from .backend import get_backend
+
+
+def _inform_ff_lags_ignored(args: list[str]) -> None:
+    """Say that lag arguments are ignored with 'ff_adjustment=True'."""
+    if not args:
+        return
+    names = " and ".join(f"'{a}'" for a in args)
+    verb = "is" if len(args) == 1 else "are"
+    _inform(
+        f"{names} {verb} ignored with 'ff_adjustment=True'. A value for a "
+        "fiscal year ending in calendar year t is used from July of t + 1 "
+        "through June of t + 2."
+    )
+
+
+def _ff_windows(
+    data: pl.DataFrame, id_keys: list[str], date_col: str, col: str
+) -> pl.DataFrame:
+    """Fama-French timing: the value of each id and fiscal year.
+
+    Keeps the last observation per id and calendar year of the fiscal
+    year-end. Ties on the date keep the first row. The result holds
+    'id_keys', '_year'
+    (the calendar year t of the fiscal year-end) and 'col'; the value is
+    used from July of t + 1 through June of t + 2 (see '_ff_year').
+    """
+    keys = id_keys + ["_year"]
+    return (
+        data.select(id_keys + [date_col, col])
+        .with_columns(pl.col(date_col).dt.year().alias("_year"))
+        .filter(pl.col(date_col) == pl.col(date_col).max().over(keys))
+        .unique(subset=keys, keep="first", maintain_order=True)
+        .drop(date_col)
+    )
+
+
+def _ff_year(date_col: str) -> pl.Expr:
+    """The fiscal year whose value applies at each date under Fama-French
+    timing: t - 1 from July of t, t - 2 before July."""
+    year = pl.col(date_col).dt.year()
+    return (
+        pl.when(pl.col(date_col).dt.month() >= 7)
+        .then(year - 1)
+        .otherwise(year - 2)
+        .alias("_year")
+    )
+
+
+def _ff_join(
+    data: pl.DataFrame,
+    windows: pl.DataFrame,
+    id_keys: list[str],
+    date_col: str,
+) -> pl.DataFrame:
+    """Left-join Fama-French windows onto 'data', keeping its row order."""
+    return (
+        data.with_columns(_ff_year(date_col))
+        .join(
+            windows,
+            on=id_keys + ["_year"],
+            how="left",
+            maintain_order="left",
+            coalesce=True,
+        )
+        .drop("_year")
+    )
+
+
+def _is_present(data: pl.DataFrame, col: str) -> pl.Expr:
+    """Rows of 'col' that are neither null nor NaN."""
+    keep = pl.col(col).is_not_null()
+    if data.schema[col].is_float():
+        keep = keep & pl.col(col).is_not_nan()
+    return keep
 
 
 def add_lagged_columns(
     data: pl.DataFrame,
     cols: list[str] | str,
-    lag,
+    lag=None,
     max_lag=None,
     by: list[str] | str | None = None,
     drop_na: bool = False,
@@ -39,9 +119,10 @@ def add_lagged_columns(
     cols : list of str or str
         Names of the columns to lag. Each column produces a new column
         suffixed with '_lag'.
-    lag : int, str, datetime.timedelta, or pd.DateOffset
+    lag : int, str, datetime.timedelta, or pd.DateOffset, optional
         Minimum lag (inclusive) to apply, e.g. '"1mo"'. An int is
         interpreted as days; strings are polars offset strings.
+        Required unless 'ff_adjustment=True'.
     max_lag : int, str, datetime.timedelta, or pd.DateOffset, optional
         Maximum lag (inclusive) to apply. Defaults to 'lag' (exact lag).
     by : list of str or str, optional
@@ -52,10 +133,14 @@ def add_lagged_columns(
         before matching, so the lookup skips over missing observations.
         Applied independently per column. Defaults to False.
     ff_adjustment : bool, optional
-        If True, only the last observation per year (within each group
-        defined by 'by') is retained as a source for lagged values,
-        following Fama-French conventions for annual accounting data.
-        Defaults to False.
+        If True, applies the Fama and French (1993) timing convention
+        for annual accounting data: the last observation per calendar
+        year (within each group defined by 'by') is used from July of
+        the following year through June of the year after that,
+        whatever the month of the fiscal year-end. 'lag' and 'max_lag'
+        are ignored. Combine with 'drop_na=True' when 'data' is a
+        monthly panel in which the accounting columns are only filled
+        at fiscal year-ends. Defaults to False.
     date_col : str, optional
         Name of the date column. Defaults to 'date'.
     data_options : dict, optional
@@ -104,20 +189,30 @@ def add_lagged_columns(
         by = [by]
     by_list = by or []
 
-    lag_offset = _to_offset(lag)
-    max_lag_offset = _to_offset(max_lag if max_lag is not None else lag)
-
     if date_col not in data.columns:
         raise ValueError(f"'data' must contain the date column '{date_col}'.")
 
-    ref = dt.date(2020, 1, 1)
-    lag_end = _offset_end(ref, lag_offset)
-    max_lag_end = _offset_end(ref, max_lag_offset)
-    if lag_end < ref or max_lag_end < lag_end:
-        raise ValueError(
-            "'lag' and 'max_lag' must be non-negative and 'max_lag' "
-            "must be >= 'lag'."
-        )
+    if ff_adjustment:
+        ignored = []
+        if lag is not None:
+            ignored.append("lag")
+        if max_lag is not None and max_lag != lag:
+            ignored.append("max_lag")
+        _inform_ff_lags_ignored(ignored)
+    elif lag is None:
+        raise ValueError("'lag' is required unless 'ff_adjustment=True'.")
+    else:
+        lag_offset = _to_offset(lag)
+        max_lag_offset = _to_offset(max_lag if max_lag is not None else lag)
+
+        ref = dt.date(2020, 1, 1)
+        lag_end = _offset_end(ref, lag_offset)
+        max_lag_end = _offset_end(ref, max_lag_offset)
+        if lag_end < ref or max_lag_end < lag_end:
+            raise ValueError(
+                "'lag' and 'max_lag' must be non-negative and 'max_lag' "
+                "must be >= 'lag'."
+            )
 
     missing_cols = [c for c in cols if c not in data.columns]
     if missing_cols:
@@ -135,6 +230,26 @@ def add_lagged_columns(
         raise ValueError(
             "The combination of 'by' and date columns must be unique in 'data'."
         )
+
+    if ff_adjustment:
+        _check_new_col(data, "_year")
+        result = data
+        for col in cols:
+            lag_col_name = f"{col}_lag"
+            if lag_col_name in result.columns:
+                raise ValueError(
+                    f"Column '{lag_col_name}' already exists in 'data'."
+                )
+
+            lagged = data.select(join_cols + [col])
+            if drop_na:
+                lagged = lagged.filter(_is_present(lagged, col))
+
+            windows = _ff_windows(lagged, by_list, date_col, col).rename(
+                {col: lag_col_name}
+            )
+            result = _ff_join(result, windows, by_list, date_col)
+        return result
 
     exact_lag = lag_end == max_lag_end
     result = data
@@ -160,16 +275,7 @@ def add_lagged_columns(
         lagged = data.select(join_cols + [col])
 
         if drop_na:
-            keep = pl.col(col).is_not_null()
-            if lagged.schema[col].is_float():
-                keep = keep & pl.col(col).is_not_nan()
-            lagged = lagged.filter(keep)
-
-        if ff_adjustment:
-            grp = by_list + [pl.col(date_col).dt.year()]
-            lagged = lagged.filter(
-                pl.col(date_col) == pl.col(date_col).max().over(grp)
-            )
+            lagged = lagged.filter(_is_present(lagged, col))
 
         if exact_lag:
             lagged = lagged.with_columns(
@@ -278,8 +384,8 @@ def join_lagged_values(
     original_data: pl.DataFrame,
     new_data: pl.DataFrame,
     id_keys: list[str] | str,
-    min_lag,
-    max_lag,
+    min_lag=None,
+    max_lag=None,
     ff_adjustment: bool = False,
     date_col: str = "date",
     data_options: dict | None = None,
@@ -304,14 +410,20 @@ def join_lagged_values(
         'id_keys' and the date column will be lagged and joined.
     id_keys : list of str or str
         Identifier column(s) shared by both frames.
-    min_lag : int, str, datetime.timedelta, or pd.DateOffset
-        Lower lag bound (inclusive).
-    max_lag : int, str, datetime.timedelta, or pd.DateOffset
-        Upper lag bound (inclusive).
+    min_lag : int, str, datetime.timedelta, or pd.DateOffset, optional
+        Lower lag bound (inclusive). Required unless
+        'ff_adjustment=True'.
+    max_lag : int, str, datetime.timedelta, or pd.DateOffset, optional
+        Upper lag bound (inclusive). Required unless
+        'ff_adjustment=True'.
     ff_adjustment : bool, optional
-        If True, keeps only the last observation per identifier and
-        year in 'new_data' before lagging (Fama-French convention).
-        Defaults to False.
+        If True, applies the Fama and French (1993) timing convention:
+        the last observation per identifier and calendar year (the
+        fiscal year-end) is used from July of the following year
+        through June of the year after that, whatever the month of the
+        fiscal year-end. A value for a fiscal year ending in December
+        2020 or in June 2020 is thus used from July 2021 to June 2022.
+        'min_lag' and 'max_lag' are ignored. Defaults to False.
     date_col : str, optional
         Name of the date column. Defaults to 'date'.
     data_options : dict, optional
@@ -350,10 +462,37 @@ def join_lagged_values(
         min_lag='1mo',
         max_lag='3mo',
     )
+    # Fama-French timing: annual values are used from July to June
+    annual = pl.DataFrame({
+        'id': [1, 2],
+        'date': [dt.date(2019, 12, 1), dt.date(2019, 6, 1)],
+        'x': [10.0, 20.0],
+    })
+    monthly = pl.DataFrame({
+        'id': [1] * 3 + [2] * 3,
+        'date': [
+            dt.date(2020, 6, 1), dt.date(2020, 7, 1), dt.date(2021, 6, 1)
+        ] * 2,
+    })
+    join_lagged_values(monthly, annual, id_keys='id', ff_adjustment=True)
     ```
     """
     if data_options is not None:
         date_col = data_options.get("date", date_col)
+
+    if ff_adjustment:
+        _inform_ff_lags_ignored(
+            [
+                name
+                for name, value in (("min_lag", min_lag), ("max_lag", max_lag))
+                if value is not None
+            ]
+        )
+    elif min_lag is None or max_lag is None:
+        raise ValueError(
+            "'min_lag' and 'max_lag' are required unless "
+            "'ff_adjustment=True'."
+        )
 
     if isinstance(id_keys, str):
         id_keys = [id_keys]
@@ -361,9 +500,6 @@ def join_lagged_values(
         isinstance(k, str) for k in id_keys
     ):
         raise ValueError("'id_keys' must be a string or list of strings.")
-
-    min_lag_offset = _to_offset(min_lag)
-    max_lag_offset = _to_offset(max_lag)
 
     if date_col not in original_data.columns:
         raise ValueError(
@@ -408,10 +544,19 @@ def join_lagged_values(
     if new_data.schema[date_col] != orig_dtype:
         new_data = new_data.with_columns(pl.col(date_col).cast(orig_dtype))
 
-    helper_cols = ["_lower", "_upper"]
     if ff_adjustment:
-        helper_cols.append("_year")
-    _check_new_col(new_data, helper_cols)
+        _check_new_col(new_data, "_year")
+        _check_new_col(original_data, "_year")
+        result = original_data
+        for col in new_column_names:
+            windows = _ff_windows(new_data, id_keys, date_col, col)
+            result = _ff_join(result, windows, id_keys, date_col)
+        return result
+
+    min_lag_offset = _to_offset(min_lag)
+    max_lag_offset = _to_offset(max_lag)
+
+    _check_new_col(new_data, ["_lower", "_upper"])
     new_data = new_data.with_columns(
         pl.col(date_col).dt.offset_by(min_lag_offset).alias("_lower"),
         pl.col(date_col).dt.offset_by(max_lag_offset).alias("_upper"),
@@ -420,15 +565,8 @@ def join_lagged_values(
     result = original_data
 
     for col in new_column_names:
-        select_cols = id_keys + [date_col, col, "_lower", "_upper"]
+        select_cols = id_keys + [col, "_lower", "_upper"]
         tmp = new_data.select(select_cols)
-
-        if ff_adjustment:
-            grp = id_keys + [pl.col(date_col).dt.year()]
-            tmp = tmp.filter(
-                pl.col(date_col) == pl.col(date_col).max().over(grp)
-            )
-        tmp = tmp.drop(date_col)
 
         _check_new_col(result, "_orig_idx")
         result = result.with_row_index("_orig_idx")

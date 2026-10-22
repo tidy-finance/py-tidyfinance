@@ -19,11 +19,24 @@ from tidyfinance.download_tidy_finance import (
     _download_data_huggingface_factor_library,
     _download_factor_library_grid,
     _download_factor_library_ids,
+    _factor_library_cache,
     _factor_library_file,
     _fetch_parquet_url,
     _filter_factor_library_grid,
     _get_available_huggingface_files,
 )  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _empty_factor_library_cache():
+    """Empty the session cache of the factor library grid for each test,
+    so a grid mocked in one test does not leak into the next, and
+    restore its previous content afterwards."""
+    old = dict(_factor_library_cache)
+    _factor_library_cache.clear()
+    yield
+    _factor_library_cache.clear()
+    _factor_library_cache.update(old)
 
 # Grid columns pinned to their dtypes on Hugging Face: polars would infer
 # Int64 from the integer literals below, and no dtype at all for the
@@ -460,6 +473,106 @@ def test_reads_the_grid_file_by_name():
     listing.assert_not_called()
 
 
+def _counting_grid_reader():
+    """Return a fake '_read_parquet_url' that serves a new grid on each
+    call (id 1, then id 2, ...) and counts the calls."""
+    calls = {"n": 0}
+
+    def read(url):
+        calls["n"] += 1
+        return _make_grid([calls["n"]])
+
+    return read, calls
+
+
+def test_caches_the_grid_within_the_session():
+    """Test the grid is downloaded once and then reused."""
+    read, calls = _counting_grid_reader()
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url", side_effect=read
+    ):
+        first = _download_factor_library_grid()
+        second = _download_factor_library_grid()
+
+    assert calls["n"] == 1
+    assert second is first
+
+
+def test_refresh_downloads_the_grid_again():
+    """Test refresh=True downloads the grid again and caches the new
+    copy."""
+    read, calls = _counting_grid_reader()
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url", side_effect=read
+    ):
+        _download_factor_library_grid()
+        refreshed = _download_factor_library_grid(refresh=True)
+        cached = _download_factor_library_grid()
+
+    assert calls["n"] == 2
+    assert refreshed["id"].to_list() == [2]
+    assert cached is refreshed
+
+
+def test_does_not_cache_a_failed_download():
+    """Test a failed download leaves the cache empty."""
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url",
+        side_effect=ConnectionError("network down"),
+    ):
+        with pytest.raises(ConnectionError, match="network down"):
+            _download_factor_library_grid()
+
+    assert "grid" not in _factor_library_cache
+
+
+def test_aborts_on_an_invalid_refresh_argument():
+    """Test refresh must be True or False."""
+    for value in (None, "yes", 1):
+        with pytest.raises(ValueError, match="refresh"):
+            _download_factor_library_grid(refresh=value)
+
+
+def test_download_factor_library_ids_reuses_the_cached_grid():
+    """Test repeated ID downloads download the grid only once."""
+    n_grid_downloads = {"n": 0}
+
+    def read_grid(url):
+        n_grid_downloads["n"] += 1
+        return _make_grid([1, 2])
+
+    with (
+        patch(
+            "tidyfinance.download_tidy_finance._read_parquet_url",
+            side_effect=read_grid,
+        ),
+        patch(
+            "tidyfinance.download_tidy_finance._fetch_parquet_url",
+            return_value=_make_returns([1, 2], [0.0, 0.0]),
+        ),
+    ):
+        _download_factor_library_ids([1])
+        _download_factor_library_ids([2])
+
+    assert n_grid_downloads["n"] == 1
+
+
+def test_factor_library_grid_dataset_passes_refresh():
+    """Test download_data('Tidy Finance', 'factor_library_grid',
+    refresh=True) downloads the grid again."""
+    read, calls = _counting_grid_reader()
+    with patch(
+        "tidyfinance.download_tidy_finance._read_parquet_url", side_effect=read
+    ):
+        _download_data_huggingface("factor_library_grid")
+        refreshed = _download_data_huggingface(
+            "factor_library_grid", refresh=True
+        )
+
+    assert calls["n"] == 2
+    assert refreshed["id"].to_list() == [2]
+
+
 # %% _factor_library_file
 
 
@@ -513,6 +626,64 @@ def test_fetch_parquet_url_retries_other_errors_then_raises():
                 "https://example.com/f.parquet", retries=3, backoff=0
             )
     assert session.get.call_count == 3
+
+
+def _float_declared_as_double():
+    """Build parquet bytes like the factor library files written with
+    nanoparquet: 'ret' is stored as float but declared as double in the
+    embedded Arrow schema."""
+    import base64
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    declared = pa.schema(
+        [("id", pa.int32()), ("date", pa.date32()), ("ret", pa.float64())]
+    )
+    arrow_schema = base64.b64encode(declared.serialize().to_pybytes())
+    table = pa.table(
+        {
+            "id": pa.array([1, 2], pa.int32()),
+            "date": pa.array([dt.date(2020, 1, 1)] * 2, pa.date32()),
+            "ret": pa.array([0.01, -0.02], pa.float32()),
+        }
+    )
+    payload = io.BytesIO()
+    # store_schema=False drops pyarrow's own (correct) Arrow schema; the
+    # mismatched one is then added to the file footer by hand.
+    with pq.ParquetWriter(payload, table.schema, store_schema=False) as writer:
+        writer.write_table(table)
+        writer.add_key_value_metadata({"ARROW:schema": arrow_schema.decode()})
+
+    # The fixture must carry the mismatch it is meant to reproduce.
+    stored = pq.read_metadata(io.BytesIO(payload.getvalue())).metadata
+    assert stored[b"ARROW:schema"] == arrow_schema
+    return payload.getvalue()
+
+
+def test_fetch_parquet_url_reads_float_declared_as_double():
+    """Test files whose Arrow schema declares a float column as double,
+    as written by nanoparquet, are read with the stored type."""
+    with patch("tidyfinance.download_tidy_finance._hf_session") as session:
+        session.get.return_value = _response(200, _float_declared_as_double())
+        result = _fetch_parquet_url("https://example.com/f.parquet")
+
+    assert result["id"].to_list() == [1, 2]
+    assert result["ret"].to_list() == pytest.approx([0.01, -0.02])
+
+
+def test_fetch_parquet_url_does_not_retry_a_file_it_cannot_parse():
+    """Test a downloaded file that cannot be parsed raises right away
+    instead of being downloaded again."""
+    with patch("tidyfinance.download_tidy_finance._hf_session") as session:
+        session.get.return_value = _response(200, b"not a parquet file")
+        with pytest.raises(Exception) as err:
+            _fetch_parquet_url(
+                "https://example.com/f.parquet", retries=3, backoff=0
+            )
+
+    assert session.get.call_count == 1
+    assert not isinstance(err.value, ConnectionError)
 
 
 # %% _download_factor_library_ids

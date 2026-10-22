@@ -126,6 +126,7 @@ def test_pseudo_crsp_monthly_schema():
         "listing_age",
         "mktcap",
         "mktcap_lag",
+        "prc_lag",
         "exchange",
         "industry",
         "ret_excess",
@@ -133,6 +134,9 @@ def test_pseudo_crsp_monthly_schema():
     assert expected.issubset(set(crsp.columns))
     assert "gvkey" not in crsp.columns
     assert crsp.height == 5 * 6
+    # prc_lag is the previous month's prc of the same permno
+    expected_lag = crsp.select(pl.col("prc").shift(1).over("permno"))
+    assert crsp["prc_lag"].equals(expected_lag["prc"])
 
 
 def test_pseudo_crsp_add_ccm_links_appends_gvkey():

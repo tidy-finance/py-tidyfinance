@@ -146,6 +146,7 @@ def _simulate_pseudo_data(
     dataset: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    quiet: bool = False,
     **kwargs,
 ) -> pl.DataFrame:
     """
@@ -171,6 +172,10 @@ def _simulate_pseudo_data(
     end_date : str, optional
         Upper date bound forwarded to the per-dataset generator.
         Ignored for 'ccm_links'.
+    quiet : bool, default False
+        If True, the pseudo-data notice is not shown. Accepted so that
+        'quiet' works the same for 'domain="WRDS"' and
+        'domain="Pseudo Data"'.
     **kwargs
         Additional generator-specific arguments (e.g., 'n_assets',
         'seed', 'version', 'additional_columns', 'adjust_volume').
@@ -191,13 +196,14 @@ def _simulate_pseudo_data(
 
     _check_supported_dataset_pseudo(dataset)
 
-    warnings.warn(
-        'Returning pseudo data from domain="Pseudo Data". Schema matches '
-        'domain="WRDS", but values are simulated and not suitable '
-        "for inference.",
-        UserWarning,
-        stacklevel=2,
-    )
+    if not quiet:
+        warnings.warn(
+            'Returning pseudo data from domain="Pseudo Data". Schema matches '
+            'domain="WRDS", but values are simulated and not suitable '
+            "for inference.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     if dataset.startswith("crsp"):
         return _download_data_pseudo_crsp(
@@ -282,8 +288,8 @@ def _download_data_pseudo_crsp(
     pl.DataFrame
         For 'crsp_monthly', a DataFrame with columns 'permno', 'date',
         'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
-        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
-        'industry', and 'ret_excess'. For 'crsp_daily', a DataFrame
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'prc_lag',
+        'exchange', 'industry', and 'ret_excess'. For 'crsp_daily', a DataFrame
         with columns 'permno', 'date', 'ret', and 'ret_excess'. When
         'add_ccm_links=True', a 'gvkey' column is appended.
 
@@ -353,8 +359,9 @@ def _simulate_pseudo_crsp_monthly(
     and 'end_date', then draws share counts, prices, and returns
     from i.i.d. distributions (shrout uniform in [1, 50]k;
     prc uniform in [1, 1000]; ret Normal(0.008, 0.10)). Derived
-    columns ('mktcap', 'mktcap_lag', 'listing_age', 'primaryexch',
-    'ret_excess') are computed deterministically from the draws.
+    columns ('mktcap', 'mktcap_lag', 'prc_lag', 'listing_age',
+    'primaryexch', 'ret_excess') are computed deterministically from
+    the draws.
 
     Parameters
     ----------
@@ -377,8 +384,8 @@ def _simulate_pseudo_crsp_monthly(
     pl.DataFrame
         Monthly panel with columns 'permno', 'date',
         'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
-        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
-        'industry', 'ret_excess', followed by any requested
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'prc_lag',
+        'exchange', 'industry', 'ret_excess', followed by any requested
         'additional_columns'.
     """
     months = pl.date_range(
@@ -413,6 +420,7 @@ def _simulate_pseudo_crsp_monthly(
     panel = panel.with_columns(
         listing_age=pl.int_range(pl.len()).over("permno"),
         mktcap_lag=pl.col("mktcap").shift(1).over("permno"),
+        prc_lag=pl.col("prc").shift(1).over("permno"),
     )
     ret_excess = np.maximum(ret - rng.uniform(0, 0.004, size=n), -1)
     panel = panel.with_columns(ret_excess=pl.Series(ret_excess))
@@ -434,6 +442,7 @@ def _simulate_pseudo_crsp_monthly(
         "listing_age",
         "mktcap",
         "mktcap_lag",
+        "prc_lag",
         "exchange",
         "industry",
         "ret_excess",

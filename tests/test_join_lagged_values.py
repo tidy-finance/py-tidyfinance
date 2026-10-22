@@ -45,12 +45,17 @@ def test_normal_join_adds_lagged_columns_for_matching_date_windows():
     assert result["y"][0] == 20
 
 
-def test_ff_adjustment_removes_non_last_observations_per_id_year():
-    """Test ff_adjustment removes non-last observations per id-year."""
+def test_ff_adjustment_uses_the_last_observation_per_id_year():
+    """Test ff_adjustment uses the last observation per id-year."""
     orig = pl.DataFrame(
         {
-            "id": [1, 1],
-            "date": [dt.date(2022, 8, 1), dt.date(2023, 3, 1)],
+            "id": [1, 1, 1, 1],
+            "date": [
+                dt.date(2023, 6, 1),
+                dt.date(2023, 7, 1),
+                dt.date(2024, 6, 1),
+                dt.date(2024, 7, 1),
+            ],
         }
     )
     new = pl.DataFrame(
@@ -60,20 +65,102 @@ def test_ff_adjustment_removes_non_last_observations_per_id_year():
             "x": [5.0, 10.0],
         }
     )
+    # Jun-2022 is dropped, Dec-2022 (last in 2022) is used Jul-2023 to
+    # Jun-2024.
+    result = join_lagged_values(orig, new, id_keys="id", ff_adjustment=True)
+    assert result["x"].to_list() == [None, 10, 10, None]
+
+
+def test_ff_adjustment_updates_in_july_for_every_fiscal_year_end():
+    """Test ff_adjustment updates in July for every fiscal year-end."""
+    dates = pl.date_range(
+        dt.date(2021, 1, 1), dt.date(2022, 12, 1), "1mo", eager=True
+    )
+    orig = pl.DataFrame(
+        {
+            "id": ["dec"] * len(dates) + ["jun"] * len(dates),
+            "date": dates.to_list() * 2,
+        }
+    )
+    new = pl.DataFrame(
+        {
+            "id": ["dec", "jun"],
+            "date": [dt.date(2020, 12, 1), dt.date(2020, 6, 1)],
+            "x": [1.0, 2.0],
+        }
+    )
+    result = join_lagged_values(orig, new, id_keys="id", ff_adjustment=True)
+
+    in_window = pl.col("date").is_between(
+        dt.date(2021, 7, 1), dt.date(2022, 6, 1)
+    )
+    assert result.filter(in_window & (pl.col("id") == "dec"))[
+        "x"
+    ].to_list() == [1] * 12
+    assert result.filter(in_window & (pl.col("id") == "jun"))[
+        "x"
+    ].to_list() == [2] * 12
+    assert result.filter(~in_window)["x"].is_null().all()
+
+
+def test_ff_adjustment_works_with_end_of_month_dates():
+    """Test ff_adjustment works with end-of-month dates."""
+    orig = pl.DataFrame(
+        {
+            "id": [1, 1, 1, 1],
+            "date": [
+                dt.date(2021, 6, 30),
+                dt.date(2021, 7, 31),
+                dt.date(2022, 6, 30),
+                dt.date(2022, 7, 31),
+            ],
+        }
+    )
+    new = pl.DataFrame(
+        {
+            "id": [1],
+            "date": [dt.date(2020, 9, 30)],
+            "x": [3.0],
+        }
+    )
+    result = join_lagged_values(orig, new, id_keys="id", ff_adjustment=True)
+    assert result["x"].to_list() == [None, 3, 3, None]
+
+
+def test_ff_adjustment_ignores_lags_with_a_message(capsys):
+    """Test ff_adjustment ignores lags with a message."""
+    orig = pl.DataFrame({"id": [1], "date": [dt.date(2021, 7, 1)]})
+    new = pl.DataFrame(
+        {
+            "id": [1],
+            "date": [dt.date(2020, 12, 1)],
+            "x": [1.0],
+        }
+    )
     result = join_lagged_values(
         orig,
         new,
         id_keys="id",
         min_lag="1mo",
-        max_lag="3mo",
+        max_lag="2mo",
         ff_adjustment=True,
     )
-    # ff: Jun-2022 dropped, Dec-2022 kept (last in 2022).
-    # Dec window: [Jan-2023, Mar-2023]
-    #   Aug-2022: no match -> null
-    #   Mar-2023: match    -> 10
-    assert result["x"][0] is None
-    assert result["x"][1] == 10
+    assert "'min_lag' and 'max_lag' are ignored" in capsys.readouterr().err
+    assert result["x"].to_list() == [1]
+
+
+def test_min_lag_and_max_lag_are_required_without_ff_adjustment():
+    """Test min_lag and max_lag are required without ff_adjustment."""
+    orig = pl.DataFrame({"id": [1], "date": [dt.date(2021, 7, 1)]})
+    new = pl.DataFrame(
+        {
+            "id": [1],
+            "date": [dt.date(2020, 12, 1)],
+            "x": [1.0],
+        }
+    )
+    with pytest.raises(ValueError, match="required"):
+        join_lagged_values(orig, new, id_keys="id", min_lag="1mo")
 
 
 def test_non_default_date_col_uses_specified_column():

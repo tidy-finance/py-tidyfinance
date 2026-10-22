@@ -181,7 +181,7 @@ def _parse_lookback(lookback) -> tuple[int, str | None]:
             "Passing 'lookback' as an integer counts consecutive "
             "observations, which differs from the calendar window used "
             "with duration strings and is deprecated. Pass a duration string such as "
-            "'60mo' to roll over calendar periods as R does.",
+            "'60mo' to roll over calendar periods.",
             DeprecationWarning,
             stacklevel=3,
         )
@@ -861,7 +861,7 @@ def estimate_fama_macbeth(
     if date_col not in data.columns:
         raise ValueError(f"The data must contain a {date_col} column.")
 
-    # Parse Newey-West options (mirroring R's sandwich::NeweyWest interface).
+    # Parse the Newey-West options.
     options = dict(vcov_options or {})
     if "maxlags" in options:
         warnings.warn(

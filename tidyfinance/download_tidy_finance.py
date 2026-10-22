@@ -11,7 +11,12 @@ from datetime import date
 import polars as pl
 from curl_cffi import requests
 
-from ._internal import _get_random_user_agent, _parse_date, _validate_dates
+from ._internal import (
+    _deprecate_legacy_dataset,
+    _get_random_user_agent,
+    _parse_date,
+    _validate_dates,
+)
 
 _SUPPORTED_DATASETS_HF = (
     "high_frequency_sp500",
@@ -51,6 +56,29 @@ _FACTOR_LIBRARY_GRID_URL = (
 _hf_session = requests.Session()
 
 
+def _parse_parquet(content: bytes) -> pl.DataFrame:
+    """
+    Parse the bytes of a parquet file into a polars data frame.
+
+    The file is read through pyarrow ('use_pyarrow=True'). Files written
+    with nanoparquet, such as the factor library, store single-precision
+    columns as 'float' but declare them as 'double' in the embedded
+    Arrow schema. The native polars reader takes the type from that
+    schema and fails on the mismatch; pyarrow reads the stored type.
+
+    Parameters
+    ----------
+    content : bytes
+        Content of the parquet file.
+
+    Returns
+    -------
+    pl.DataFrame
+        The parsed parquet content.
+    """
+    return pl.read_parquet(io.BytesIO(content), use_pyarrow=True)
+
+
 def _read_parquet_url(url: str) -> pl.DataFrame:
     """
     Fetch a parquet file over HTTPS and parse it with polars.
@@ -75,7 +103,7 @@ def _read_parquet_url(url: str) -> pl.DataFrame:
         timeout=120,
     )
     response.raise_for_status()
-    return pl.read_parquet(io.BytesIO(response.content))
+    return _parse_parquet(response.content)
 
 
 def _cast_date_column(data: pl.DataFrame, column: str = "date") -> pl.DataFrame:
@@ -274,7 +302,13 @@ def _get_available_huggingface_files(
     )
 
 
-def _download_factor_library_grid() -> pl.DataFrame:
+# Session cache for the factor library grid. The grid has more than four
+# million rows, so it is downloaded at most once per session by
+# '_download_factor_library_grid'.
+_factor_library_cache: dict = {}
+
+
+def _download_factor_library_grid(refresh: bool = False) -> pl.DataFrame:
     """
     Download the factor library grid from Hugging Face.
 
@@ -288,12 +322,29 @@ def _download_factor_library_grid() -> pl.DataFrame:
     'portfolio_sort_grid.parquet', without listing the files of the
     dataset.
 
+    The grid is downloaded once per Python session and cached in memory,
+    so repeated calls (including those made by
+    '_download_factor_library_ids' and
+    'download_data("Tidy Finance", "factor_library", ...)') reuse it.
+    Set 'refresh=True' to download it again.
+
+    Parameters
+    ----------
+    refresh : bool, default False
+        If True, the grid is downloaded again and replaces the copy
+        cached in the current session.
+
     Returns
     -------
     pl.DataFrame
         A data frame with one row per portfolio construction in the
         factor library, including the integer 'id' column used by
         '_download_factor_library_ids'.
+
+    Raises
+    ------
+    ValueError
+        If 'refresh' is not True or False.
 
     Examples
     --------
@@ -302,9 +353,20 @@ def _download_factor_library_grid() -> pl.DataFrame:
         _download_factor_library_grid,
     )
     _download_factor_library_grid()
+    _download_factor_library_grid(refresh=True)
     ```
     """
-    return _read_parquet_url(_FACTOR_LIBRARY_GRID_URL)
+    if not isinstance(refresh, bool):
+        raise ValueError("'refresh' must be True or False.")
+
+    if refresh or "grid" not in _factor_library_cache:
+        # Assigned only after a successful download, so a failed
+        # download is not cached.
+        _factor_library_cache["grid"] = _read_parquet_url(
+            _FACTOR_LIBRARY_GRID_URL
+        )
+
+    return _factor_library_cache["grid"]
 
 
 def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
@@ -330,8 +392,7 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
         'min_size_quantile=None' includes all size groups). Passing
         '[None]' selects the missing level instead, e.g.
         'min_size_quantile=[None]' for the portfolios without a size
-        screen, which R spells 'min_size_quantile = NA'. Supported
-        columns and their defaults are:
+        screen. Supported columns and their defaults are:
 
         - 'sorting_variable': no default. When omitted, all sorting
           variables are returned (subject to the remaining defaults).
@@ -374,9 +435,8 @@ def _filter_factor_library_grid(fill_all: bool = False, **filters) -> list:
             )
 
     # A filter the caller explicitly sets to None is removed entirely so
-    # all values for that column are returned, mirroring purrr::compact()
-    # on NULL in the R implementation. These columns are recorded so the
-    # defaults below do not reintroduce a filter for them. Default None
+    # all values for that column are returned. These columns are recorded
+    # so the defaults below do not reintroduce a filter for them. Default None
     # values (e.g. n_portfolios_secondary) are applied afterwards and
     # instead match rows where the column is null.
     unrestricted = {col for col, value in filters.items() if value is None}
@@ -403,8 +463,10 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
     Fetch a parquet file via a reused curl_cffi session with retry.
 
     Returns None without retrying when the file does not exist (HTTP
-    404). Other failures are retried with exponential backoff and raise
-    a ConnectionError once all 'retries' attempts have failed.
+    404). Other download failures are retried with exponential backoff
+    and raise a ConnectionError once all 'retries' attempts have failed.
+    The file is parsed once, after the download, so a file that cannot
+    be read raises right away instead of being downloaded again.
     """
     headers = {}
     token = os.getenv("HF_TOKEN")
@@ -417,14 +479,18 @@ def _fetch_parquet_url(url, retries=5, backoff=2.0):
             if r.status_code == 404:
                 return None
             r.raise_for_status()
-            return pl.read_parquet(io.BytesIO(r.content))
+            content = r.content
+            break
         except Exception as e:
             last_err = e
             if attempt < retries - 1:
                 time.sleep(backoff * (2**attempt))
-    raise ConnectionError(
-        f"Failed to download {url} after {retries} attempts: {last_err}"
-    ) from last_err
+    else:
+        raise ConnectionError(
+            f"Failed to download {url} after {retries} attempts: {last_err}"
+        ) from last_err
+
+    return _parse_parquet(content)
 
 
 def _factor_library_file(portfolio_id: int) -> str:
@@ -547,8 +613,8 @@ def _download_factor_library_ids(ids: list) -> pl.DataFrame:
                 "ret": pl.Float32,
             }
         )
-    # Returns are stored in single precision; widen them to the double
-    # precision the R package returns.
+    # Returns are stored in single precision; return them in double
+    # precision.
     returns = returns.with_columns(pl.col("ret").cast(pl.Float64))
 
     no_returns = (
@@ -704,7 +770,7 @@ def _download_data_huggingface(
     returning all values for that column (e.g., 'min_size_quantile=None'
     includes all size groups). Passing '[None]' selects the missing
     level instead, e.g. 'min_size_quantile=[None]' for the portfolios
-    without a size screen, which R spells 'min_size_quantile = NA'.
+    without a size screen.
 
     Parameters
     ----------
@@ -742,8 +808,10 @@ def _download_data_huggingface(
         returning all values for that column, and '[None]' selects its
         missing level. Passing an unrecognised
         column name raises a 'ValueError'. 'ids' cannot be combined
-        with filter arguments. Ignored when 'dataset' is not
-        'factor_library'.
+        with filter arguments. For 'dataset' set to
+        'factor_library_grid', 'refresh=True' downloads the grid again
+        instead of returning the copy cached in the current session.
+        Ignored for 'high_frequency_sp500'.
 
     Returns
     -------
@@ -799,14 +867,9 @@ def _download_data_huggingface(
         raise ValueError("Argument 'dataset' is required.")
 
     if dataset.startswith("hf_"):
-        warnings.warn(
-            "Passing a dataset name with the 'hf_' prefix is deprecated. "
-            "Use 'dataset' without the prefix instead "
-            "(e.g. high_frequency_sp500 instead of hf_high_frequency_sp500).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = dataset[len("hf_") :]
+        replacement = dataset[len("hf_") :]
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset not in _SUPPORTED_DATASETS_HF:
         raise ValueError(
@@ -861,7 +924,9 @@ def _download_data_huggingface(
         )
 
     if dataset == "factor_library_grid":
-        return _download_factor_library_grid()
+        return _download_factor_library_grid(
+            refresh=kwargs.get("refresh", False)
+        )
 
     if dataset == "factor_library":
         return _download_data_huggingface_factor_library(

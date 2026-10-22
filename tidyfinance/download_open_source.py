@@ -3,6 +3,7 @@
 import calendar
 import datetime as dt
 import io
+import numbers
 import pathlib
 import re
 import time
@@ -14,6 +15,7 @@ import polars as pl
 from curl_cffi import requests
 
 from ._internal import (
+    _deprecate_legacy_dataset,
     _get_random_user_agent,
     _parse_date,
     _transfrom_to_snake_case,
@@ -55,6 +57,50 @@ def _fetch_csv(url: str, timeout: int = 60, **read_csv_kwargs) -> pl.DataFrame:
     )
     response.raise_for_status()
     return pl.read_csv(io.BytesIO(response.content), **read_csv_kwargs)
+
+
+def _fetch_google_drive_csv(url: str, timeout: int = 120) -> pl.DataFrame:
+    """Fetch a CSV file shared on Google Drive and parse it with polars.
+
+    Google Drive answers with an HTML page instead of the file, e.g.,
+    when the download quota of the file is exceeded. Such a page is
+    rejected instead of being parsed as CSV.
+
+    Parameters
+    ----------
+    url : str
+        The Google Drive download URL of the CSV file.
+    timeout : int, default 120
+        Request timeout in seconds.
+
+    Returns
+    -------
+    pl.DataFrame
+        The parsed CSV file.
+
+    Raises
+    ------
+    ValueError
+        If Google Drive returns an HTML page instead of the CSV file.
+    """
+    headers = {"User-Agent": _get_random_user_agent()}
+    response = requests.get(
+        url, headers=headers, impersonate="chrome120", timeout=timeout
+    )
+    response.raise_for_status()
+
+    content_type = response.headers.get("content-type") or ""
+    if "text/html" in content_type:
+        if "Quota exceeded" in response.text:
+            raise ValueError(
+                "The Google Drive download quota of the file is exceeded. "
+                "Try again later, usually within 24 hours."
+            )
+        raise ValueError(
+            "Google Drive returned an HTML page instead of a CSV."
+        )
+
+    return pl.read_csv(io.BytesIO(response.content))
 
 
 def _fetch_whitespace_table(
@@ -344,14 +390,9 @@ def _download_data_factors_ff(
         _, dataset = _parse_type_to_domain_dataset(type)
 
     if dataset is not None and _is_legacy_type_ff(dataset):
-        warnings.warn(
-            "Passing a legacy type as 'dataset' is deprecated. "
-            "Use the dataset_name from list_supported_datasets("
-            "domain='Fama-French').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        _, dataset = _parse_type_to_domain_dataset(dataset)
+        _, replacement = _parse_type_to_domain_dataset(dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -475,14 +516,9 @@ def _download_data_factors_q(
         _, dataset = _parse_type_to_domain_dataset(type)
 
     if dataset is not None and _is_legacy_type_q(dataset):
-        warnings.warn(
-            "Passing a legacy type as 'dataset' is deprecated. "
-            "Use the dataset_name from list_supported_datasets("
-            "domain='Global Q').",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        _, dataset = _parse_type_to_domain_dataset(dataset)
+        _, replacement = _parse_type_to_domain_dataset(dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -630,14 +666,9 @@ def _download_data_macro_predictors(
         dataset = re.sub(r"^macro_predictors_", "", type)
 
     if dataset is not None and dataset.startswith("macro_predictors_"):
-        warnings.warn(
-            "Passing 'macro_predictors_'-prefixed dataset names is "
-            "deprecated. Use 'monthly' instead of "
-            "'macro_predictors_monthly'.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        dataset = re.sub(r"^macro_predictors_", "", dataset)
+        replacement = re.sub(r"^macro_predictors_", "", dataset)
+        _deprecate_legacy_dataset(dataset, replacement)
+        dataset = replacement
 
     if dataset is None:
         raise ValueError("Argument 'dataset' is required.")
@@ -1619,22 +1650,27 @@ def _download_data_stock_prices(
 def _download_data_osap(
     start_date: str = None,
     end_date: str = None,
-    sheet_id: str = "1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY",
+    sheet_id: str = "10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI",
 ) -> pl.DataFrame:
     """
     Download and process Open Source Asset Pricing data.
 
     Downloads the data from the Open Source Asset Pricing project at
-    https://www.openassetpricing.com/data/ from Google Sheets using a
-    specified sheet ID, processes the data by converting column names
+    https://www.openassetpricing.com/data/ from Google Drive using a
+    specified file ID, processes the data by converting column names
     to snake_case, aligning the date to the beginning of the month,
     scaling the percentage long-short returns to numeric values, and
     optionally filters the data based on a provided date range.
 
     The dataset contains monthly long-short returns of the predictor
-    portfolios. Every column other than ``date`` is a return expressed
+    portfolios. Every column other than 'date' is a return expressed
     in percent, so all of them are divided by 100 to convert them into
     plain numeric (decimal) returns.
+
+    Google Drive limits how often a shared file can be downloaded. When
+    the limit is reached, Google Drive returns an error page instead of
+    the data and the function returns an empty data frame with a
+    warning that says why. The limit is usually lifted within 24 hours.
 
     Parameters
     ----------
@@ -1647,15 +1683,16 @@ def _download_data_osap(
         the end date for the data. If not provided, the full dataset
         is returned.
     sheet_id : str, optional
-        A character string representing the Google Sheet ID from which
-        to download the data. Default is
-        '1JyhcF5PRKHcputlioxlu5j5GyLo4JYyY'.
+        The Google Drive file ID of the wide CSV of monthly long-short
+        returns. The default, '10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI', is
+        the October 2025 release (v2.0.0). Pass the ID of another
+        release to download it instead.
 
     Returns
     -------
     pl.DataFrame
         A data frame containing the processed data. The column names
-        are converted to snake_case, the ``date`` column is aligned to
+        are converted to snake_case, the 'date' column is aligned to
         the beginning of the month, all predictor columns (long-short
         returns in percent) are divided by 100 to obtain plain numeric
         (decimal) returns, and the data is filtered by the specified
@@ -1664,9 +1701,11 @@ def _download_data_osap(
     Examples
     --------
     ```python
-    from tidyfinance import download_data_osap
-    osap = download_data_osap(
-        start_date='2020-01-01', end_date='2020-06-30'
+    from tidyfinance import download_data
+    osap = download_data(
+        'Open Source Asset Pricing',
+        start_date='2020-01-01',
+        end_date='2020-06-30',
     )
     ```
     """
@@ -1676,8 +1715,15 @@ def _download_data_osap(
     url = f"https://drive.google.com/uc?export=download&id={sheet_id}"
 
     try:
-        raw_data = _fetch_csv(url)
-    except Exception:
+        raw_data = _fetch_google_drive_csv(url)
+    except Exception as e:
+        warnings.warn(
+            "Failed to download or process the resource. The resource may "
+            "not be available, or the URL may have changed. "
+            f"Error message: {e}",
+            UserWarning,
+            stacklevel=2,
+        )
         warnings.warn(
             "Returning an empty dataset due to download failure.",
             UserWarning,
@@ -2491,3 +2537,454 @@ def _download_data_jkp(
         )
 
     return processed_data
+
+
+# %% Damodaran
+
+_DAMODARAN_URL = "https://pages.stern.nyu.edu/~adamodar/pc/"
+
+# Regions of Damodaran's data library and the stems of their file names.
+_DAMODARAN_REGIONS = {
+    "us": "wacc",
+    "europe": "waccEurope",
+    "japan": "waccJapan",
+    "emerging": "waccemerg",
+    "global": "waccGlobal",
+    "china": "waccChina",
+    "india": "waccIndia",
+    "rest": "waccRest",
+}
+
+# Column headers of the industry table and their output names.
+_DAMODARAN_WACC_COLUMNS = {
+    "Industry Name": "industry",
+    "Number of Firms": "number_of_firms",
+    "Beta": "beta",
+    "Cost of Equity": "cost_of_equity",
+    "E/(D+E)": "equity_to_capital",
+    "Std Dev in Stock": "sd_stock",
+    "Cost of Debt": "cost_of_debt",
+    "Tax Rate": "tax_rate",
+    "After-tax Cost of Debt": "after_tax_cost_of_debt",
+    "D/(D+E)": "debt_to_capital",
+    "Cost of Capital": "wacc",
+}
+
+_DAMODARAN_WACC_OUTPUT = [
+    "region",
+    "year",
+    "industry",
+    "number_of_firms",
+    "beta",
+    "cost_of_equity",
+    "equity_to_capital",
+    "sd_stock",
+    "cost_of_debt",
+    "tax_rate",
+    "after_tax_cost_of_debt",
+    "debt_to_capital",
+    "wacc",
+    "wacc_local",
+]
+
+
+def _check_excel_reader() -> None:
+    """Raise an ImportError if the optional Excel reader is missing.
+
+    Raises
+    ------
+    ImportError
+        If 'fastexcel', the engine of 'polars.read_excel', is not
+        installed.
+    """
+    try:
+        import fastexcel  # noqa: F401
+    except ImportError as e:
+        raise ImportError(
+            "Reading Damodaran's Excel files requires the optional "
+            "'fastexcel' package. Install it via "
+            "'pip install tidyfinance[excel]'."
+        ) from e
+
+
+def _read_excel_sheets(content: bytes) -> dict:
+    """Read every sheet of an Excel workbook as text, without a header.
+
+    Parameters
+    ----------
+    content : bytes
+        Content of the workbook ('.xls' or '.xlsx').
+
+    Returns
+    -------
+    dict of str to pl.DataFrame
+        One data frame per sheet, keyed by sheet name, with all columns
+        as strings and named 'column_1', 'column_2', ... in order.
+    """
+    return pl.read_excel(
+        io.BytesIO(content),
+        sheet_id=0,
+        has_header=False,
+        infer_schema_length=0,
+        raise_if_empty=False,
+    )
+
+
+def _damodaran_data_year(value) -> int | None:
+    """Year of the data from the 'Date updated:' cell of a workbook.
+
+    Damodaran updates the data each January with the data at the end
+    of the previous year, so the data year is the year of the update
+    minus one.
+
+    Parameters
+    ----------
+    value : str or None
+        Content of the cell: an Excel date serial (e.g. '46027') or an
+        ISO date (e.g. '2026-01-05 00:00:00').
+
+    Returns
+    -------
+    int or None
+        The data year, or None if the cell holds no date.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    try:
+        serial = float(text)
+    except ValueError:
+        try:
+            updated = dt.date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+    else:
+        updated = dt.date(1899, 12, 30) + dt.timedelta(days=serial)
+    return updated.year - 1
+
+
+def _parse_damodaran_wacc(content: bytes) -> pl.DataFrame:
+    """Parse a Damodaran WACC workbook.
+
+    The position of the sheet and of the header row differ across
+    years, so every sheet is searched for the row that starts with
+    'Industry Name'. The column headers are matched by name; the cost
+    of capital in local currency is named after the currency, e.g.
+    'Cost of Capital (Euros)', and becomes 'wacc_local'.
+
+    Parameters
+    ----------
+    content : bytes
+        Content of the workbook.
+
+    Returns
+    -------
+    pl.DataFrame
+        The columns 'year' (from the update date, null if the file has
+        none) and the renamed WACC columns, one row per industry.
+
+    Raises
+    ------
+    ValueError
+        If no sheet holds the industry table, or if a required column
+        is missing.
+    """
+    raw_data = None
+    for sheet in _read_excel_sheets(content).values():
+        if sheet.width > 0 and "Industry Name" in sheet.to_series(0).to_list():
+            raw_data = sheet
+            break
+
+    if raw_data is None:
+        raise ValueError("Could not find the industry table in the workbook.")
+
+    labels = raw_data.to_series(0).to_list()
+    values = raw_data.to_series(1).to_list() if raw_data.width > 1 else []
+    data_year = None
+    for label, value in zip(labels, values):
+        if label == "Date updated:":
+            data_year = _damodaran_data_year(value)
+            break
+
+    header_row = labels.index("Industry Name")
+    header = [
+        re.sub(r"\s+", " ", cell).strip() if cell is not None else None
+        for cell in raw_data.row(header_row)
+    ]
+    new_names = []
+    for cell in header:
+        if cell is not None and re.fullmatch(r"Cost of Capital \(.+\)", cell):
+            new_names.append("wacc_local")
+        else:
+            new_names.append(_DAMODARAN_WACC_COLUMNS.get(cell))
+
+    missing_columns = [
+        name
+        for name in _DAMODARAN_WACC_COLUMNS.values()
+        if name not in new_names
+    ]
+    if missing_columns:
+        raise ValueError(f"Missing columns: {', '.join(missing_columns)}")
+
+    processed_data = raw_data.slice(header_row + 1).select(
+        pl.col(column).alias(name)
+        for column, name in zip(raw_data.columns, new_names)
+        if name is not None
+    )
+    if "wacc_local" not in processed_data.columns:
+        processed_data = processed_data.with_columns(
+            pl.lit(None, dtype=pl.String).alias("wacc_local")
+        )
+
+    numeric = [c for c in processed_data.columns if c != "industry"]
+    return (
+        processed_data.filter(
+            pl.col("industry").is_not_null()
+            & pl.col("number_of_firms").is_not_null()
+        )
+        .with_columns(
+            pl.col("industry").str.strip_chars(),
+            *[
+                pl.col(c).str.strip_chars().cast(pl.Float64, strict=False)
+                for c in numeric
+            ],
+        )
+        .with_columns(pl.col("number_of_firms").cast(pl.Int64, strict=False))
+        .select(pl.lit(data_year, dtype=pl.Int64).alias("year"), pl.all())
+    )
+
+
+def _download_damodaran_file(file_path: str) -> pl.DataFrame | None:
+    """Download and parse one Damodaran WACC file.
+
+    Parameters
+    ----------
+    file_path : str
+        Path of the file relative to 'pc/' in the data library, e.g.
+        'datasets/wacc.xls' or 'archives/wacc20.xls'.
+
+    Returns
+    -------
+    pl.DataFrame or None
+        The parsed file, or None if the file does not exist (HTTP 404)
+        or the download fails. Other failures are reported with a
+        warning.
+    """
+    url = _DAMODARAN_URL + file_path
+
+    response = None
+    error = None
+    for attempt in range(3):
+        try:
+            response = requests.get(
+                url,
+                headers={"User-Agent": _get_random_user_agent()},
+                impersonate="chrome",
+                timeout=60,
+            )
+        except Exception as e:
+            error = e
+            response = None
+        else:
+            # Retry transient errors (too many requests, unavailable).
+            if response.status_code not in (429, 503):
+                break
+        if attempt < 2:
+            time.sleep(2**attempt)
+
+    if response is None:
+        warnings.warn(
+            "Failed to download or process the resource. The resource may "
+            "not be available, or the URL may have changed. "
+            f"Error message: {error}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+    # Missing years return 404, which the caller reports in one warning.
+    if response.status_code == 404:
+        return None
+    if response.status_code >= 400:
+        warnings.warn(
+            f"Failed to download {url} (HTTP status {response.status_code}).",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+    try:
+        return _parse_damodaran_wacc(response.content)
+    except Exception as e:
+        warnings.warn(
+            "Failed to download or process the resource. The resource may "
+            "not be available, or the URL may have changed. "
+            f"Error message: {e}",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+
+def _download_data_damodaran(
+    dataset: str = "wacc",
+    region="us",
+    year=None,
+) -> pl.DataFrame:
+    """
+    Download and process Damodaran industry data.
+
+    Downloads industry averages from Aswath Damodaran's data library
+    (https://pages.stern.nyu.edu/~adamodar/New_Home_Page/data.html).
+    Currently, the cost of capital (WACC) by industry is supported via
+    'dataset="wacc"'. The source files are Excel workbooks, so the
+    function requires the optional 'fastexcel' package
+    ('pip install tidyfinance[excel]').
+
+    Damodaran updates the data each January with the data at the end
+    of the previous year. The 'year' column refers to that previous
+    year, e.g., the file published in January 2026 has 'year=2025'.
+    Earlier years are read from the archive of the data library. The
+    archive starts in 1998 for the US, in 2013 for Europe, Japan,
+    emerging markets, global, China, and India, and in 2015 for
+    Australia, New Zealand, and Canada. China and India skip some
+    years.
+
+    Parameters
+    ----------
+    dataset : str, default 'wacc'
+        The dataset to download. Currently only 'wacc'.
+    region : str or list of str, default 'us'
+        One or more regions: 'us', 'europe', 'japan', 'emerging',
+        'global', 'china', 'india', or 'rest' (Australia, New Zealand,
+        and Canada).
+    year : int or list of int, optional
+        One or more years. If not provided, the most recent data is
+        returned. Years that are not available are skipped with a
+        warning.
+
+    Returns
+    -------
+    pl.DataFrame
+        One row per region, year, and industry with the columns
+        'region', 'year', 'industry', 'number_of_firms', 'beta',
+        'cost_of_equity', 'equity_to_capital' (E/(D+E)), 'sd_stock'
+        (standard deviation of stock returns), 'cost_of_debt',
+        'tax_rate', 'after_tax_cost_of_debt', 'debt_to_capital'
+        (D/(D+E)), 'wacc' (cost of capital in US dollars), and
+        'wacc_local' (cost of capital in local currency, null where the
+        source file does not provide it). Rates are decimals. The rows
+        'Total Market' and, in recent files, 'Total Market (without
+        financials)' hold the market-wide averages.
+
+    Raises
+    ------
+    ImportError
+        If the optional 'fastexcel' package is not installed.
+    ValueError
+        If 'dataset', 'region', or 'year' is not supported.
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import download_data
+    download_data('Damodaran', 'wacc')
+    download_data(
+        'Damodaran', 'wacc', region=['us', 'europe'], year=range(2020, 2025)
+    )
+    ```
+    """
+    _check_excel_reader()
+
+    if not isinstance(dataset, str) or dataset != "wacc":
+        raise ValueError(
+            f"Unsupported Damodaran dataset: {dataset!r}. "
+            "Supported datasets: 'wacc'."
+        )
+
+    regions = [region] if isinstance(region, str) else list(region)
+    unsupported = [
+        r
+        for r in regions
+        if not isinstance(r, str) or r not in _DAMODARAN_REGIONS
+    ]
+    if not regions or unsupported:
+        raise ValueError(
+            f"Unsupported region(s): {unsupported}. "
+            f"Supported regions: {list(_DAMODARAN_REGIONS)}."
+        )
+    regions = list(dict.fromkeys(regions))
+
+    years = None
+    if year is not None:
+        years = [year] if isinstance(year, numbers.Real) else list(year)
+        if not years or not all(
+            isinstance(y, numbers.Real)
+            and not isinstance(y, bool)
+            and float(y).is_integer()
+            for y in years
+        ):
+            raise ValueError("'year' must be one or more whole numbers.")
+        years = sorted({int(y) for y in years})
+
+    results = []
+    missing = []
+
+    for r in regions:
+        stem = _DAMODARAN_REGIONS[r]
+
+        if years is None:
+            wacc = _download_damodaran_file(f"datasets/{stem}.xls")
+            if wacc is None:
+                missing.append(r)
+            else:
+                results.append(wacc.with_columns(region=pl.lit(r)))
+            continue
+
+        unresolved = []
+        for y in years:
+            wacc = _download_damodaran_file(
+                f"archives/{stem}{y % 100:02d}.xls"
+            )
+            if wacc is None:
+                unresolved.append(y)
+            else:
+                results.append(
+                    wacc.with_columns(
+                        region=pl.lit(r),
+                        year=pl.lit(y, dtype=pl.Int64),
+                    )
+                )
+
+        # The most recent year is not archived yet, so look it up in the
+        # current file.
+        if unresolved:
+            wacc = _download_damodaran_file(f"datasets/{stem}.xls")
+            if (
+                wacc is not None
+                and wacc.height > 0
+                and wacc["year"][0] in unresolved
+            ):
+                results.append(wacc.with_columns(region=pl.lit(r)))
+                unresolved.remove(wacc["year"][0])
+        missing.extend(f"{r} ({y})" for y in unresolved)
+
+    if missing:
+        warnings.warn(
+            f"No Damodaran data available for {', '.join(missing)}.",
+            UserWarning,
+            stacklevel=2,
+        )
+
+    if not results:
+        warnings.warn(
+            "Returning an empty dataset due to download failure.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pl.DataFrame()
+
+    return (
+        pl.concat(results, how="diagonal_relaxed")
+        .with_columns(pl.col("year").cast(pl.Int64))
+        .select(_DAMODARAN_WACC_OUTPUT)
+    )

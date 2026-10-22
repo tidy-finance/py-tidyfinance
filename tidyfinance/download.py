@@ -6,6 +6,7 @@ import polars as pl
 
 from .download_open_source import (
     _download_data_constituents,
+    _download_data_damodaran,
     _download_data_factors_ff,
     _download_data_factors_q,
     _download_data_fred,
@@ -56,7 +57,8 @@ def download_data(
         'Fama-French', 'Global Q', 'Goyal-Welch', 'WRDS', 'Pseudo Data',
         'Index Constituents', 'FRED', 'Stock Prices',
         'Open Source Asset Pricing', 'Global Factor Data',
-        'Pastor-Stambaugh', 'Stambaugh-Yuan', 'Tidy Finance'. The
+        'Pastor-Stambaugh', 'Stambaugh-Yuan', 'Damodaran',
+        'Tidy Finance'. The
         previous short names (e.g. 'famafrench', 'wrds', 'pseudo') are
         still accepted but deprecated and will be removed in a future
         release.
@@ -89,7 +91,13 @@ def download_data(
         an explicit 'ids' vector that bypasses the grid filter and
         downloads the specified portfolios directly via
         '_download_factor_library_ids'; see
-        '_download_data_huggingface' for details.
+        '_download_data_huggingface' for details. If 'domain' is
+        'Damodaran', arguments such as 'region' and 'year' are passed to
+        '_download_data_damodaran', which selects years via 'year'
+        instead of 'start_date' and 'end_date'. If 'domain' is 'WRDS'
+        or 'Pseudo Data', 'quiet=True' suppresses the messages about the
+        WRDS connection and the download progress, or the pseudo-data
+        notice.
 
     Returns
     -------
@@ -128,6 +136,9 @@ def download_data(
     )
     download_data(
         'Stambaugh-Yuan', 'monthly', '2015-01-01', '2016-12-31'
+    )
+    download_data(
+        'Damodaran', 'wacc', region='europe', year=range(2020, 2025)
     )
     download_data(
         'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
@@ -223,6 +234,11 @@ def download_data(
             dataset=dataset if dataset is not None else "monthly",
             start_date=start_date,
             end_date=end_date,
+            **kwargs,
+        )
+    elif domain == "Damodaran":
+        processed_data = _download_data_damodaran(
+            dataset=dataset if dataset is not None else "wacc",
             **kwargs,
         )
     elif domain == "Tidy Finance":

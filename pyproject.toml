@@ -8,7 +8,7 @@ authors = [{name = "Christoph Frey", email = "christoph.frey@gmail.com"},
 	   {name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"},
        {name = "Stefan Voigt", email = "stefan.voigt@econ.ku.dk"}
            ]
-version = "0.5.3"
+version = "0.6.0"
 description = "Tidy Finance Helper Functions"
 readme = "README.md"
 license = "MIT"
@@ -40,13 +40,18 @@ polars = ["polars>=1.0.0"]
 # Kenneth French data library page and degrades with a clear
 # ImportError when lxml is absent.
 scraping = ["lxml>=5.3.1"]
+# Only needed by the Damodaran downloads, which read Excel workbooks
+# through polars.read_excel (engine: fastexcel) and raise a clear
+# ImportError pointing at 'pip install tidyfinance[excel]' without it.
+excel = ["fastexcel>=0.11.0"]
 
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
     "pytest-httpx>=0.35.0",
     "pytest-cov>=6.0.0",
-    "polars>=1.0.0"
+    "polars>=1.0.0",
+    "fastexcel>=0.11.0",
 ]
 docs = [
     "great-docs>=0.14.0",

@@ -28,7 +28,7 @@ def test_data_options_has_correct_default_values():
     assert opts["ret_excess"] == "ret_excess"
     assert opts["portfolio"] == "portfolio"
     assert opts["siccd"] == "siccd"
-    assert opts["price"] == "prc_adj"
+    assert opts["price"] == "prc_lag"
     assert opts["listing_age"] == "listing_age"
     assert opts["be"] == "be"
     assert opts["earnings"] == "ib"

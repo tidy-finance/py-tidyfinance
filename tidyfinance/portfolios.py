@@ -1,5 +1,7 @@
 """Portfolio sorting and return functions for tidyfinance."""
 
+import inspect
+import numbers
 import warnings
 
 import numpy as np
@@ -7,6 +9,8 @@ import polars as pl
 
 from ._internal import (
     _check_new_col,
+    _quantile,
+    _user_stacklevel,
     _validate_column_name,
     _validate_flag,
     _validate_optional_number,
@@ -21,7 +25,7 @@ def data_options(
     ret_excess: str = "ret_excess",
     portfolio: str = "portfolio",
     siccd: str = "siccd",
-    price: str = "prc_adj",
+    price: str = "prc_lag",
     listing_age: str = "listing_age",
     be: str = "be",
     earnings: str = "ib",
@@ -51,8 +55,11 @@ def data_options(
         Portfolio assignment column.
     siccd : str, default "siccd"
         SIC code column.
-    price : str, default "prc_adj"
-        Adjusted price column.
+    price : str, default "prc_lag"
+        Price column used by the 'min_stock_price' screen of
+        'filter_sorting_data'. The default is the nominal price at the
+        end of the previous month, as returned by
+        'download_data("WRDS", "crsp_monthly")'.
     listing_age : str, default "listing_age"
         Listing age column.
     be : str, default "be"
@@ -84,7 +91,7 @@ def data_options(
     _validate_column_name(
         siccd, "siccd", "Standard Industrial Classification code"
     )
-    _validate_column_name(price, "price", "(adjusted) price")
+    _validate_column_name(price, "price", "price")
     _validate_column_name(listing_age, "listing_age", "listing age")
     _validate_column_name(be, "be", "book equity")
     _validate_column_name(earnings, "earnings", "earnings")
@@ -516,7 +523,20 @@ def compute_breakpoints(
         )
         sorting_values = sorting_all[keep_mask]
 
-    if breakpoints_min_size_threshold is not None:
+    # An absolute minimum market cap is set internally by dependent
+    # bivariate sorts in compute_portfolio_returns(), which compute it
+    # once per date from the full cross-section instead of within each
+    # secondary portfolio.
+    min_mktcap = breakpoint_options.get("breakpoints_min_mktcap")
+
+    if breakpoints_min_size_threshold is not None or min_mktcap is not None:
+        if min_mktcap is None:
+            min_mktcap = _compute_min_mktcap(
+                data,
+                breakpoints_min_size_threshold,
+                breakpoints_exchanges,
+                data_options,
+            )
         mktcap_col = data_options["mktcap_lag"]
         if mktcap_col not in data.columns:
             raise ValueError(
@@ -526,15 +546,7 @@ def compute_breakpoints(
         all_mktcap = (
             data.get_column(mktcap_col).cast(pl.Float64).to_numpy()
         )
-        if keep_mask is not None:
-            mktcap_ref = all_mktcap[keep_mask]
-        else:
-            mktcap_ref = all_mktcap
-        mktcap_ref_clean = mktcap_ref[~np.isnan(mktcap_ref)]
-        size_cutoff = np.quantile(
-            mktcap_ref_clean, breakpoints_min_size_threshold
-        )
-        above_size = (~np.isnan(all_mktcap)) & (all_mktcap > size_cutoff)
+        above_size = (~np.isnan(all_mktcap)) & (all_mktcap > min_mktcap)
         combined_mask = (
             keep_mask & above_size if keep_mask is not None else above_size
         )
@@ -559,7 +571,7 @@ def compute_breakpoints(
         n_portfolios = len(probs) - 1
 
     sorting_values_clean = sorting_values[~np.isnan(sorting_values)]
-    breakpoints = np.quantile(sorting_values_clean, probs)
+    breakpoints = _quantile(sorting_values_clean, probs)
 
     if smooth_bunching:
         both_edges = (
@@ -582,7 +594,7 @@ def compute_breakpoints(
             )
             sorting_values_new = sorting_values_clean[mask]
             probs_new = np.linspace(0, 1, n_portfolios - 1)
-            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new = _quantile(sorting_values_new, probs_new)
             breakpoints_new[-1] += 1e-15
             breakpoints = np.concatenate(
                 [
@@ -603,7 +615,7 @@ def compute_breakpoints(
                 sorting_values_clean > breakpoints[0]
             ]
             probs_new = np.linspace(0, 1, n_portfolios)
-            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new = _quantile(sorting_values_new, probs_new)
             breakpoints = np.concatenate([[breakpoints[0]], breakpoints_new])
         elif upper_edge:
             if percentiles is not None:
@@ -617,7 +629,7 @@ def compute_breakpoints(
                 sorting_values_clean < breakpoints[n_portfolios - 1]
             ]
             probs_new = np.linspace(0, 1, n_portfolios)
-            breakpoints_new = np.quantile(sorting_values_new, probs_new)
+            breakpoints_new = _quantile(sorting_values_new, probs_new)
             breakpoints_new[-1] += 1e-15
             breakpoints = np.concatenate(
                 [breakpoints_new, [breakpoints[n_portfolios]]]
@@ -625,6 +637,91 @@ def compute_breakpoints(
 
     breakpoints[1:] += 1e-20
     return breakpoints
+
+
+def _compute_min_mktcap(
+    data: pl.DataFrame,
+    breakpoints_min_size_threshold: float,
+    breakpoints_exchanges,
+    data_options: dict,
+) -> float:
+    """The minimum market cap of 'breakpoints_min_size_threshold'.
+
+    The 'breakpoints_min_size_threshold' quantile of the market caps in
+    'data', among the 'breakpoints_exchanges' stocks if specified.
+    Returns NaN if no market cap is available, so no stock passes.
+    """
+    mktcap_col = data_options["mktcap_lag"]
+    if mktcap_col not in data.columns:
+        raise ValueError(
+            f"Column '{mktcap_col}' is required when using "
+            "'breakpoints_min_size_threshold'."
+        )
+    mktcap_ref = data.get_column(mktcap_col).cast(pl.Float64).to_numpy()
+    if breakpoints_exchanges is not None:
+        exchange_col = data_options["exchange"]
+        if exchange_col not in data.columns:
+            raise ValueError(
+                f"Please provide the column '{exchange_col}' when "
+                "filtering using 'breakpoints_exchanges'."
+            )
+        exchanges_list = (
+            [breakpoints_exchanges]
+            if isinstance(breakpoints_exchanges, str)
+            else list(breakpoints_exchanges)
+        )
+        keep = (
+            data.get_column(exchange_col)
+            .is_in(exchanges_list)
+            .fill_null(False)
+            .to_numpy()
+        )
+        mktcap_ref = mktcap_ref[keep]
+    return _quantile(mktcap_ref, breakpoints_min_size_threshold)
+
+
+def _main_min_mktcap(
+    data: pl.DataFrame,
+    breakpoint_options: dict,
+    breakpoint_function,
+    data_options: dict,
+) -> float | None:
+    """Minimum market cap of the main breakpoints in dependent sorts.
+
+    In dependent bivariate sorts, the main breakpoints are computed
+    within each secondary portfolio. The minimum market cap of
+    'breakpoints_min_size_threshold' must nevertheless come from the
+    full cross-section of a date, so it is computed here, before
+    grouping by the secondary portfolio. Only the default
+    'compute_breakpoints' uses it; custom breakpoint functions receive
+    their options unchanged.
+
+    Returns None if no minimum applies.
+    """
+    threshold = (breakpoint_options or {}).get(
+        "breakpoints_min_size_threshold"
+    )
+    if (
+        threshold is None
+        or inspect.unwrap(breakpoint_function) is not compute_breakpoints
+    ):
+        return None
+    return _compute_min_mktcap(
+        data,
+        threshold,
+        breakpoint_options.get("breakpoints_exchanges"),
+        data_options,
+    )
+
+
+def _with_min_mktcap(breakpoint_options: dict, min_mktcap) -> dict:
+    """Add an absolute minimum market cap to breakpoint options.
+
+    Returns the options unchanged if 'min_mktcap' is None or NaN.
+    """
+    if min_mktcap is None or np.isnan(min_mktcap):
+        return breakpoint_options
+    return {**breakpoint_options, "breakpoints_min_mktcap": min_mktcap}
 
 
 def filter_options(
@@ -635,6 +732,7 @@ def filter_options(
     min_listing_age: float = None,
     exclude_negative_book_equity: bool = False,
     exclude_negative_earnings: bool = False,
+    timing: str = "formation",
     **kwargs,
 ) -> dict:
     """Create filter options for sample construction.
@@ -668,6 +766,19 @@ def filter_options(
         Whether to exclude observations with non-positive book equity.
     exclude_negative_earnings : bool, default False
         Whether to exclude observations with non-positive earnings.
+    timing : {'formation', 'every_period'}, default 'formation'
+        When the screens apply if portfolios are rebalanced once a year
+        ('rebalancing_month' in 'filter_sorting_data' or
+        'implement_portfolio_sort'). 'formation' evaluates the screens
+        in the formation month only and keeps every stock that passes
+        them for the whole holding period (ex-ante screens).
+        'every_period' evaluates them in every month, so a stock that
+        fails a screen in a holding month loses that month's return
+        (ex-post screens). Ex-post screens use information that is not
+        available when the portfolios are formed, so the resulting
+        factor returns can contain look-ahead bias; a warning is issued
+        when they are used. With monthly rebalancing, every month is a
+        formation month and both options are identical.
     **kwargs
         Additional optional arguments, stored verbatim in the dict.
 
@@ -686,12 +797,22 @@ def filter_options(
         min_stock_price=1,
         min_listing_age=12,
     )
+    # Apply the screens in every month (ex-post), not only at formation
+    filter_options(min_stock_price=5, timing='every_period')
     ```
     """
     _validate_flag(exclude_financials, "exclude_financials")
     _validate_flag(exclude_utilities, "exclude_utilities")
     _validate_flag(exclude_negative_book_equity, "exclude_negative_book_equity")
     _validate_flag(exclude_negative_earnings, "exclude_negative_earnings")
+
+    if not isinstance(timing, str) or timing not in (
+        "formation",
+        "every_period",
+    ):
+        raise ValueError(
+            "timing must be either 'formation' or 'every_period'."
+        )
 
     _validate_optional_number(
         min_stock_price,
@@ -721,6 +842,7 @@ def filter_options(
         "min_listing_age": min_listing_age,
         "exclude_negative_book_equity": exclude_negative_book_equity,
         "exclude_negative_earnings": exclude_negative_earnings,
+        "timing": timing,
         **kwargs,
     }
 
@@ -780,6 +902,10 @@ def portfolio_sort_options(
           observations with non-positive book equity. Defaults to False.
         - 'exclude_negative_earnings' (bool): Whether to exclude
           observations with non-positive earnings. Defaults to False.
+        - 'timing' (str): Either 'formation' (the default) to apply the
+          screens only in the formation month when portfolios are
+          rebalanced once a year, or 'every_period' to apply them in
+          every month, which can introduce look-ahead bias.
 
     breakpoint_options_main : dict, optional
         Dict produced by 'breakpoint_options', specifying breakpoints
@@ -954,6 +1080,7 @@ def _aggregate_bivariate_returns(
     w_col: str,
     w_capped_col: str,
     min_portfolio_size: int,
+    by: list | None = None,
 ) -> pl.DataFrame:
     """Aggregate bivariate-sort returns across the secondary dimension.
 
@@ -973,25 +1100,30 @@ def _aggregate_bivariate_returns(
     min_portfolio_size : int
         Minimum firms per reported (portfolio_main, date) cross-section.
         Cross-sections below this size receive null.
+    by : list of str, optional
+        Additional grouping columns, e.g. the cohort of staggered
+        portfolios.
 
     Returns
     -------
     pl.DataFrame
-        Columns portfolio, the date column, and the three return
-        columns.
+        Columns portfolio, the date column, the 'by' columns, and the
+        three return columns.
     """
+    by = list(by or [])
+
     n_per_main = (
         portfolio_returns.filter(
             pl.col("portfolio_main").is_not_null()
             & pl.col("portfolio_secondary").is_not_null()
         )
-        .group_by(["portfolio_main", date_col], maintain_order=True)
+        .group_by(["portfolio_main", date_col] + by, maintain_order=True)
         .agg(n_firms=pl.len())
     )
 
     cell_returns = _summarise_portfolio_returns(
         portfolio_returns,
-        ["portfolio_main", "portfolio_secondary", date_col],
+        ["portfolio_main", "portfolio_secondary", date_col] + by,
         ret_col,
         w_col,
         w_capped_col,
@@ -999,7 +1131,9 @@ def _aggregate_bivariate_returns(
     )
 
     avg_returns = (
-        cell_returns.group_by(["portfolio_main", date_col], maintain_order=True)
+        cell_returns.group_by(
+            ["portfolio_main", date_col] + by, maintain_order=True
+        )
         .agg(
             ret_excess_vw=pl.col("ret_excess_vw").mean(),
             ret_excess_ew=pl.col("ret_excess_ew").mean(),
@@ -1010,7 +1144,7 @@ def _aggregate_bivariate_returns(
 
     result = avg_returns.join(
         n_per_main.rename({"portfolio_main": "portfolio"}),
-        on=["portfolio", date_col],
+        on=["portfolio", date_col] + by,
         how="left",
         maintain_order="left",
     )
@@ -1030,6 +1164,109 @@ def _aggregate_bivariate_returns(
     )
 
     return result.drop("n_firms")
+
+
+def _compute_staggered_returns(
+    assignments: pl.DataFrame,
+    holding_data: pl.DataFrame,
+    sorting_method: str,
+    holding_period: int,
+    skip: int,
+    dates: pl.Series,
+    id_col: str,
+    date_col: str,
+    ret_col: str,
+    w_col: str,
+    w_capped_col: str,
+    min_portfolio_size: int,
+) -> pl.DataFrame:
+    """Compute returns of staggered (overlapping) portfolios.
+
+    Holds each cohort of portfolios formed on a date for
+    'holding_period' dates, starting 'skip' dates after formation. The
+    return of a portfolio on a date is the equal-weighted average of
+    the returns of the cohorts held on that date (Jegadeesh and Titman,
+    1993). Each cohort's return is computed from 'holding_data', so a
+    stock stays in its cohort even if it lacks a sorting variable or
+    fails a screen in a holding month.
+
+    Parameters
+    ----------
+    assignments : pl.DataFrame
+        Portfolio assignments with the id and date columns and
+        'portfolio' (univariate) or 'portfolio_main' and
+        'portfolio_secondary' (bivariate).
+    holding_data : pl.DataFrame
+        The full panel with returns and (capped) weights.
+    sorting_method, holding_period, skip, min_portfolio_size
+        See 'compute_portfolio_returns'.
+    dates : pl.Series
+        The sorted dates of the panel. Holding dates are counted on
+        this grid, so it must not have gaps.
+    id_col, date_col, ret_col, w_col, w_capped_col : str
+        Column names.
+
+    Returns
+    -------
+    pl.DataFrame
+        Columns portfolio, the date column, and the three return
+        columns.
+    """
+    _check_new_col(assignments, ["_cohort", "_index", "_offset"])
+    grid = (
+        pl.DataFrame({date_col: dates})
+        .with_row_index("_index")
+        .with_columns(pl.col("_index").cast(pl.Int64))
+    )
+    offsets = pl.DataFrame(
+        {"_offset": list(range(skip, skip + holding_period))},
+        schema={"_offset": pl.Int64},
+    )
+
+    # Expand each assignment to its holding dates on the date grid
+    held = (
+        assignments.join(grid, on=date_col, how="inner")
+        .rename({date_col: "_cohort"})
+        .join(offsets, how="cross")
+        .with_columns((pl.col("_index") + pl.col("_offset")).alias("_index"))
+        .drop("_offset")
+        .join(grid, on="_index", how="inner")
+        .drop("_index")
+    )
+
+    cohort_returns = held.join(
+        holding_data.select([id_col, date_col, ret_col, w_col, w_capped_col]),
+        on=[id_col, date_col],
+        how="inner",
+    )
+
+    if sorting_method == "univariate":
+        cohort_returns = _summarise_portfolio_returns(
+            cohort_returns,
+            ["portfolio", "_cohort", date_col],
+            ret_col,
+            w_col,
+            w_capped_col,
+            min_portfolio_size,
+        )
+    else:
+        cohort_returns = _aggregate_bivariate_returns(
+            cohort_returns,
+            date_col,
+            ret_col,
+            w_col,
+            w_capped_col,
+            min_portfolio_size,
+            by=["_cohort"],
+        )
+
+    return cohort_returns.group_by(
+        ["portfolio", date_col], maintain_order=True
+    ).agg(
+        pl.col("ret_excess_vw").mean(),
+        pl.col("ret_excess_ew").mean(),
+        pl.col("ret_excess_vw_capped").mean(),
+    )
 
 
 def _join_rebalanced_portfolios(
@@ -1081,17 +1318,133 @@ def _join_rebalanced_portfolios(
     return merged.drop("_window_year")
 
 
+def _cap_market_cap(
+    data: pl.DataFrame,
+    w_col: str,
+    w_capped_col: str,
+    date_col: str,
+    exchange_col: str,
+    cap_weight: float,
+    cap_weight_exchanges,
+    quiet: bool,
+    cap_data: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """Cap market capitalization per date.
+
+    Caps 'w_col' at the 'cap_weight' percentile of the stocks listed on
+    'cap_weight_exchanges' on each date, or of all stocks if
+    'cap_weight_exchanges' is None, the exchange column is missing, or
+    no stock with market capitalization is listed on these exchanges on
+    a date. The result is stored in 'w_capped_col'.
+
+    The percentile is computed from 'cap_data' (default: 'data'), e.g.
+    the formation universe when the weights of held stocks are capped.
+    Missing market caps in 'cap_data' must still be null, not zero.
+    Dates of 'data' without rows in 'cap_data' are capped from 'data'
+    itself.
+    """
+    if cap_data is None:
+        cap_data = data
+
+    if (
+        cap_weight_exchanges is not None
+        and exchange_col not in cap_data.columns
+    ):
+        if not quiet:
+            warnings.warn(
+                f"Column '{exchange_col}' not found: capping market "
+                "capitalization at the percentile of all stocks. Add the "
+                "exchange column or set 'cap_weight_exchanges=None' to "
+                "silence this message.",
+                UserWarning,
+                stacklevel=_user_stacklevel(),
+            )
+        cap_weight_exchanges = None
+
+    exchanges = None
+    if cap_weight_exchanges is not None:
+        exchanges = (
+            [cap_weight_exchanges]
+            if isinstance(cap_weight_exchanges, str)
+            else list(cap_weight_exchanges)
+        )
+
+    def compute_caps(frame: pl.DataFrame) -> pl.DataFrame:
+        if exchanges is None or exchange_col not in frame.columns:
+            reference = pl.lit(True)
+        else:
+            reference = pl.col(exchange_col).is_in(exchanges).fill_null(False)
+        frame = frame.select(
+            pl.col(date_col),
+            pl.col(w_col).cast(pl.Float64),
+            reference.alias("_reference"),
+        )
+        rows = []
+        for (date,), part in frame.group_by(date_col, maintain_order=True):
+            w = part.get_column(w_col).to_numpy()
+            is_reference = part.get_column("_reference").to_numpy()
+            has_reference = bool((is_reference & ~np.isnan(w)).any())
+            cap = _quantile(
+                w[is_reference] if has_reference else w, cap_weight
+            )
+            rows.append((date, has_reference, None if np.isnan(cap) else cap))
+        return pl.DataFrame(
+            rows,
+            schema={
+                date_col: frame.schema[date_col],
+                "_has_reference": pl.Boolean,
+                "_cap": pl.Float64,
+            },
+            orient="row",
+        )
+
+    caps = compute_caps(cap_data)
+
+    n_fallback = caps.filter(~pl.col("_has_reference")).height
+    if not quiet and cap_weight_exchanges is not None and n_fallback > 0:
+        names = ", ".join(f"'{e}'" for e in exchanges)
+        dates = "that date" if n_fallback == 1 else "these dates"
+        warnings.warn(
+            f"No {names} stocks with market capitalization on "
+            f"{n_fallback} date{'' if n_fallback == 1 else 's'}: capping "
+            f"at the percentile of all stocks on {dates}.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+
+    # Dates of data without rows in cap_data are capped from data itself
+    missing_dates = data.join(caps.select(date_col), on=date_col, how="anti")
+    if missing_dates.height > 0:
+        caps = pl.concat([caps, compute_caps(missing_dates)])
+
+    caps = caps.select([date_col, "_cap"])
+
+    _check_new_col(data, "_cap")
+    return (
+        data.join(caps, on=date_col, how="left", maintain_order="left")
+        .with_columns(
+            pl.min_horizontal(pl.col(w_col), pl.col("_cap")).alias(
+                w_capped_col
+            )
+        )
+        .drop("_cap")
+    )
+
+
 def compute_portfolio_returns(
     data: pl.DataFrame,
     sorting_variables,
     sorting_method: str,
     rebalancing_month: int = None,
+    holding_period: int = 1,
+    skip: int = 0,
     breakpoint_options_main: dict = None,
     breakpoint_options_secondary: dict = None,
     breakpoint_function_main=None,
     breakpoint_function_secondary=None,
     min_portfolio_size: int = 1,
     cap_weight: float = 0.8,
+    cap_weight_exchanges="NYSE",
     data_options: dict = None,
     quiet: bool = False,
 ) -> pl.DataFrame:
@@ -1103,6 +1456,12 @@ def compute_portfolio_returns(
     month, which is only applicable at a monthly return frequency. The
     function supports univariate and bivariate sorts, with the latter
     supporting dependent and independent sorting methods.
+
+    Holding periods and skips are counted on the grid of dates in
+    'data', which must therefore not have gaps (e.g., one row per
+    stock-month in a monthly panel). With staggered rebalancing
+    ('holding_period > 1' or 'skip > 0'), the returned panel starts on
+    the first date on which all 'holding_period' cohorts are held.
 
     The function checks for consistency in the provided arguments. For
     univariate sorts, a single sorting variable and a corresponding
@@ -1138,6 +1497,26 @@ def compute_portfolio_returns(
         setting it to 7 creates portfolios in July that are held
         constant until June of the following year. The default None
         corresponds to periodic rebalancing.
+    holding_period : int, default 1
+        Number of periods for which portfolios are held. With the
+        default 1, portfolios are rebalanced every period. With
+        'holding_period=K > 1', portfolios are formed every period and
+        each cohort is held for K periods, so that K overlapping
+        cohorts are held at any time (staggered rebalancing, as in
+        Jegadeesh and Titman, 1993). The return of a portfolio in a
+        period is the equal-weighted average of the returns of the
+        cohorts held in that period; within a cohort, returns are
+        weighted as in the 'ret_excess_*' columns, using the weights of
+        the holding period. A stock stays in its cohort for the whole
+        holding period even if its sorting variables are missing in a
+        later period. Cannot be combined with 'rebalancing_month'.
+    skip : int, default 0
+        Number of periods between portfolio formation and the first
+        holding period. The default 0 holds a cohort from the period in
+        which it is formed, consistent with sorting variables that are
+        already lagged (i.e., known at the start of the period).
+        Jegadeesh and Titman (1993), e.g., also report strategies that
+        skip one period. Cannot be combined with 'rebalancing_month'.
     breakpoint_options_main : dict
         Named dict of 'breakpoint_options' passed to
         'breakpoint_function_main' for the main sorting variable.
@@ -1164,13 +1543,24 @@ def compute_portfolio_returns(
         which market capitalizations are capped per date when computing
         the capped value-weighted excess return ('ret_excess_vw_capped').
         Must be in [0, 1].
+    cap_weight_exchanges : str or list of str, optional
+        Exchange(s) whose stocks determine the cap: market
+        capitalization is capped at the 'cap_weight' percentile of the
+        stocks listed on these exchanges on each date. Defaults to
+        'NYSE', following Jensen, Kelly, and Pedersen (2023), who cap
+        at the 80th percentile of NYSE stocks. None uses all stocks.
+        If the exchange column (mapped via 'data_options') is missing,
+        or no stock is listed on these exchanges on a date, the
+        percentile of all stocks is used and a warning says so.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'id', 'date',
-        'ret_excess', and 'mktcap_lag' elements are used. Uses
-        'data_options' defaults when None.
+        'ret_excess', and 'mktcap_lag' elements are used, and
+        'exchange' with 'cap_weight_exchanges'. Uses 'data_options'
+        defaults when None.
     quiet : bool, default False
         If True, suppress informational warnings about missing
-        observations in the output panel.
+        observations in the output panel and about the fallback of
+        'cap_weight_exchanges'.
 
     Returns
     -------
@@ -1189,8 +1579,8 @@ def compute_portfolio_returns(
         - 'ret_excess_vw_capped': Capped value-weighted excess return
           (only if 'data' contains the market-cap lag column). Weights
           are computed using market capitalization capped at the
-          'cap_weight' percentile per date. Null if insufficient
-          observations.
+          'cap_weight' percentile per date (see
+          'cap_weight_exchanges'). Null if insufficient observations.
 
     Notes
     -----
@@ -1198,6 +1588,24 @@ def compute_portfolio_returns(
     sorting variables and excess returns (see options and defaults set
     in 'data_options'). A ValueError is raised if any required column
     is missing.
+
+    In dependent bivariate sorts, the minimum market cap of
+    'breakpoints_min_size_threshold' in 'breakpoint_options_main' is
+    computed once per date from the full cross-section, not within
+    each secondary portfolio. This applies to the default
+    'compute_breakpoints'; custom breakpoint functions receive their
+    options unchanged.
+
+    References
+    ----------
+    Jegadeesh, N., & Titman, S. (1993). Returns to buying winners and
+    selling losers: Implications for stock market efficiency. Journal
+    of Finance, 48(1), 65-91.
+    https://doi.org/10.1111/j.1540-6261.1993.tb04702.x
+
+    Jensen, T. I., Kelly, B., & Pedersen, L. H. (2023). Is there a
+    replication crisis in finance? Journal of Finance, 78(5),
+    2465-2518. https://doi.org/10.1111/jofi.13249
 
     Examples
     --------
@@ -1244,7 +1652,7 @@ def compute_portfolio_returns(
             "ret_excess": "ret_excess",
             "portfolio": "portfolio",
             "siccd": "siccd",
-            "price": "prc_adj",
+            "price": "prc_lag",
             "listing_age": "listing_age",
             "be": "be",
             "earnings": "ib",
@@ -1289,6 +1697,42 @@ def compute_portfolio_returns(
             "'cap_weight' must be a single numeric value in [0, 1]."
         )
 
+    if cap_weight_exchanges is not None and not (
+        (isinstance(cap_weight_exchanges, str) and cap_weight_exchanges)
+        or (
+            isinstance(cap_weight_exchanges, (list, tuple))
+            and len(cap_weight_exchanges) > 0
+            and all(
+                isinstance(e, str) and e for e in cap_weight_exchanges
+            )
+        )
+    ):
+        raise ValueError(
+            "'cap_weight_exchanges' must be None, a string, or a list of "
+            "strings."
+        )
+
+    def _is_whole_number(x) -> bool:
+        return (
+            not isinstance(x, bool)
+            and isinstance(x, numbers.Real)
+            and not np.isnan(x)
+            and x == round(x)
+        )
+
+    if not _is_whole_number(holding_period) or holding_period < 1:
+        raise ValueError("'holding_period' must be a single positive integer.")
+    if not _is_whole_number(skip) or skip < 0:
+        raise ValueError("'skip' must be a single non-negative integer.")
+    holding_period = int(holding_period)
+    skip = int(skip)
+    staggered = holding_period > 1 or skip > 0
+    if staggered and rebalancing_month is not None:
+        raise ValueError(
+            "'holding_period' and 'skip' cannot be combined with "
+            "'rebalancing_month'."
+        )
+
     id_col = data_options["id"]
     date_col = data_options["date"]
     ret_col = data_options["ret_excess"]
@@ -1320,26 +1764,64 @@ def compute_portfolio_returns(
         data = data.with_columns(
             [pl.col(c).fill_nan(None) for c in float_cols]
         )
+
+    # With staggered rebalancing, held stocks keep their returns even
+    # without sorting variables, so the full panel is kept for the
+    # holding periods.
+    _check_new_col(data, w_capped_col)
+    holding_data = data if staggered else None
+
     data = data.drop_nulls(subset=list(sorting_variables))
 
-    _check_new_col(data, w_capped_col)
-    data = data.with_columns(
-        pl.min_horizontal(
-            pl.col(w_col),
-            pl.col(w_col)
-            .quantile(cap_weight, interpolation="linear")
-            .over(date_col),
-        ).alias(w_capped_col)
+    # Compute capped market capitalization per date before replacing
+    # nulls, so that the quantile is not distorted by zero-filled values.
+    exchange_col = data_options.get("exchange", "exchange")
+    cap_exchanges = None if mktcap_lag_missing else cap_weight_exchanges
+    data = _cap_market_cap(
+        data,
+        w_col,
+        w_capped_col,
+        date_col,
+        exchange_col,
+        cap_weight,
+        cap_exchanges,
+        quiet,
     )
 
-    missing_mcap = pl.col(w_col).is_null()
-    data = data.with_columns(
-        pl.when(missing_mcap).then(0.0).otherwise(pl.col(w_col)).alias(w_col),
-        pl.when(missing_mcap)
-        .then(0.0)
-        .otherwise(pl.col(w_capped_col))
-        .alias(w_capped_col),
-    )
+    def _zero_fill_missing_mcap(df: pl.DataFrame) -> pl.DataFrame:
+        """Set missing market caps to 0, so these observations do not
+        contribute to the value-weighted returns."""
+        missing_mcap = pl.col(w_col).is_null()
+        return df.with_columns(
+            pl.when(missing_mcap)
+            .then(0.0)
+            .otherwise(pl.col(w_col))
+            .alias(w_col),
+            pl.when(missing_mcap)
+            .then(0.0)
+            .otherwise(pl.col(w_capped_col))
+            .alias(w_capped_col),
+        )
+
+    if staggered:
+        # Cap the weights of held stocks with the cap of the formation
+        # universe. This runs before the formation data is zero-filled,
+        # so missing market caps do not enter the percentile as zeros.
+        holding_data = _zero_fill_missing_mcap(
+            _cap_market_cap(
+                holding_data,
+                w_col,
+                w_capped_col,
+                date_col,
+                exchange_col,
+                cap_weight,
+                cap_exchanges,
+                quiet=True,
+                cap_data=data,
+            )
+        )
+
+    data = _zero_fill_missing_mcap(data)
 
     if data.height == 0:
         if not quiet:
@@ -1385,7 +1867,101 @@ def compute_portfolio_returns(
             parts.append(part.with_columns(assignments.alias(out_col)))
         return pl.concat(parts)
 
-    if sorting_method == "univariate":
+    def _assign_dependent_main(df, sv, bp_opts, bp_fn):
+        """Assign main portfolios within the secondary portfolios of
+        each date, with the minimum market cap of the main breakpoints
+        computed once per date from the full cross-section."""
+        parts = []
+        for part in df.partition_by(date_col, maintain_order=True):
+            min_mktcap = _main_min_mktcap(part, bp_opts, bp_fn, data_options)
+            parts.append(
+                _assign_grouped(
+                    part,
+                    [date_col, "portfolio_secondary"],
+                    sv,
+                    _with_min_mktcap(bp_opts, min_mktcap),
+                    bp_fn,
+                    "portfolio_main",
+                )
+            )
+        return pl.concat(parts)
+
+    def _assign_formation_portfolios(df):
+        """Assign portfolios on every date of 'df': 'portfolio' for
+        univariate sorts, 'portfolio_main' and 'portfolio_secondary'
+        for bivariate sorts."""
+        if sorting_method == "univariate":
+            return _assign_grouped(
+                df,
+                [date_col],
+                sorting_variables[0],
+                breakpoint_options_main,
+                breakpoint_function_main,
+                "portfolio",
+            ).select([id_col, date_col, "portfolio"])
+
+        df = _assign_grouped(
+            df,
+            [date_col],
+            sorting_variables[1],
+            breakpoint_options_secondary,
+            breakpoint_function_secondary,
+            "portfolio_secondary",
+        )
+        if sorting_method == "bivariate-dependent":
+            df = _assign_dependent_main(
+                df,
+                sorting_variables[0],
+                breakpoint_options_main,
+                breakpoint_function_main,
+            )
+        else:
+            df = _assign_grouped(
+                df,
+                [date_col],
+                sorting_variables[0],
+                breakpoint_options_main,
+                breakpoint_function_main,
+                "portfolio_main",
+            )
+        return df.select(
+            [id_col, date_col, "portfolio_main", "portfolio_secondary"]
+        )
+
+    if staggered:
+        if sorting_method == "univariate" and len(sorting_variables) > 1:
+            raise ValueError(
+                "Only provide one sorting variable for univariate sorts."
+            )
+        if sorting_method != "univariate" and len(sorting_variables) != 2:
+            raise ValueError(
+                "Provide two sorting variables for bivariate sorts."
+            )
+
+        dates = all_dates
+        portfolio_returns = _compute_staggered_returns(
+            _assign_formation_portfolios(data),
+            holding_data,
+            sorting_method,
+            holding_period,
+            skip,
+            dates,
+            id_col,
+            date_col,
+            ret_col,
+            w_col,
+            w_capped_col,
+            min_portfolio_size,
+        )
+
+        # The panel starts once all holding_period cohorts are held
+        first_formation = dates.to_list().index(
+            data.get_column(date_col).min()
+        )
+        first_full = first_formation + skip + holding_period - 1
+        all_dates = dates.slice(first_full)
+
+    elif sorting_method == "univariate":
         if len(sorting_variables) > 1:
             raise ValueError(
                 "Only provide one sorting variable for univariate sorts."
@@ -1454,13 +2030,11 @@ def compute_portfolio_returns(
                 breakpoint_function_secondary,
                 "portfolio_secondary",
             )
-            portfolio_returns = _assign_grouped(
+            portfolio_returns = _assign_dependent_main(
                 data,
-                [date_col, "portfolio_secondary"],
                 sv_main,
                 breakpoint_options_main,
                 breakpoint_function_main,
-                "portfolio_main",
             )
         else:
             filtered_data = data.filter(
@@ -1479,13 +2053,11 @@ def compute_portfolio_returns(
                 breakpoint_function_secondary,
                 "portfolio_secondary",
             )
-            portfolio_data = _assign_grouped(
+            portfolio_data = _assign_dependent_main(
                 portfolio_data,
-                [date_col, "portfolio_secondary"],
                 sv_main,
                 breakpoint_options_main,
                 breakpoint_function_main,
-                "portfolio_main",
             ).select(
                 [
                     id_col,
@@ -1799,6 +2371,7 @@ def filter_sorting_data(
     data: pl.DataFrame,
     filter_options: dict = None,
     data_options: dict = None,
+    rebalancing_month: int = None,
     quiet: bool = False,
 ) -> pl.DataFrame:
     """Filter sorting data.
@@ -1809,6 +2382,26 @@ def filter_sorting_data(
     minimum size quantile, minimum listing age, positive book equity,
     and positive earnings. An informational warning is emitted for
     each filter that actually removes at least one observation.
+
+    Without 'rebalancing_month', every month is a formation month and
+    each row is screened on its own values. The screens are then free
+    of look-ahead bias only if the screened columns are known at the
+    start of the month: the default price column 'prc_lag' and
+    'mktcap_lag' are lagged by one month, and accounting variables
+    such as book equity and earnings should be lagged as well (e.g.,
+    with 'join_lagged_values').
+
+    With 'rebalancing_month', portfolios are formed once a year and
+    held for twelve months. By default
+    ('filter_options(timing="formation")'), each screen is evaluated in
+    the formation month only, and a stock that passes all screens keeps
+    all its rows until the next formation month, even if it fails a
+    screen in a holding month. Rows of stocks that fail a screen at
+    formation, and rows before the first formation month, are removed.
+    With 'timing="every_period"', the screens are evaluated in every
+    month (ex-post) and a warning is issued, because dropping
+    holding-month returns based on information from those months can
+    bias factor returns.
 
     Parameters
     ----------
@@ -1840,15 +2433,27 @@ def filter_sorting_data(
           observations with non-positive book equity. Defaults to False.
         - 'exclude_negative_earnings' (bool): Whether to exclude
           observations with non-positive earnings. Defaults to False.
+        - 'timing' (str): Either 'formation' (the default) to apply the
+          screens only in the formation month when portfolios are
+          rebalanced once a year, or 'every_period' to apply them in
+          every month, which can introduce look-ahead bias.
 
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'siccd' element
-        specifies the SIC code column, 'price' specifies the (adjusted)
-        price column, 'mktcap_lag' specifies the market capitalization
-        column, 'date' specifies the date column, 'listing_age'
-        specifies the listing age column, 'be' specifies the book
-        equity column, and 'earnings' specifies the earnings column.
-        Uses the 'data_options' defaults when None.
+        specifies the SIC code column, 'price' specifies the price
+        column of the 'min_stock_price' screen, 'mktcap_lag' specifies
+        the market capitalization column, 'date' specifies the date
+        column, 'listing_age' specifies the listing age column, 'be'
+        specifies the book equity column, and 'earnings' specifies the
+        earnings column. With 'rebalancing_month', the 'id' element
+        (default 'permno') is used to keep a stock across its holding
+        period. Uses the 'data_options' defaults when None.
+    rebalancing_month : int, optional
+        Month (1 to 12) in which portfolios are formed when they are
+        rebalanced once a year (see 'compute_portfolio_returns'). None
+        (the default) means monthly rebalancing. Together with the
+        'timing' element of 'filter_options', it determines when the
+        screens apply.
     quiet : bool, default False
         Whether informational messages should be suppressed.
 
@@ -1868,7 +2473,7 @@ def filter_sorting_data(
         'permno': range(1, 6),
         'date': [dt.date(2020, 1, 1)] * 5,
         'siccd': [6100, 2000, 4950, 3000, 6500],
-        'prc_adj': [5.0, 0.5, 15.0, 20.0, 10.0],
+        'prc_lag':[5.0, 0.5, 15.0, 20.0, 10.0],
     })
     filter_sorting_data(
         data,
@@ -1876,6 +2481,18 @@ def filter_sorting_data(
             exclude_financials=True,
             min_stock_price=1,
         ),
+    )
+    # Annual rebalancing in July: the price screen is evaluated in July
+    # only, so stock 1 is kept in August although its price falls below 1
+    data_annual = pl.DataFrame({
+        'permno': [1, 1, 2, 2],
+        'date': [dt.date(2020, 7, 1), dt.date(2020, 8, 1)] * 2,
+        'prc_lag': [2.0, 0.5, 0.5, 2.0],
+    })
+    filter_sorting_data(
+        data_annual,
+        filter_options=filter_options(min_stock_price=1),
+        rebalancing_month=7,
     )
     ```
     """
@@ -1902,12 +2519,131 @@ def filter_sorting_data(
             "ret_excess": "ret_excess",
             "portfolio": "portfolio",
             "siccd": "siccd",
-            "price": "prc_adj",
+            "price": "prc_lag",
             "listing_age": "listing_age",
             "be": "be",
             "earnings": "ib",
         }
 
+    if rebalancing_month is not None and (
+        isinstance(rebalancing_month, bool)
+        or not isinstance(rebalancing_month, numbers.Real)
+        or rebalancing_month not in range(1, 13)
+    ):
+        raise ValueError(
+            "'rebalancing_month' must be a single integer between 1 and 12."
+        )
+
+    if rebalancing_month is None or not _has_active_screens(filter_options):
+        return _apply_screens(data, filter_options, data_options, quiet)
+
+    if filter_options.get("timing", "formation") == "every_period":
+        _warn_every_period_screens()
+        return _apply_screens(data, filter_options, data_options, quiet)
+
+    return _screen_at_formation(
+        data, filter_options, data_options, int(rebalancing_month), quiet
+    )
+
+
+def _has_active_screens(filter_options: dict) -> bool:
+    """Whether any screen in 'filter_options' is active."""
+    return (
+        bool(filter_options.get("exclude_financials"))
+        or bool(filter_options.get("exclude_utilities"))
+        or filter_options.get("min_stock_price") is not None
+        or filter_options.get("min_size_quantile") is not None
+        or filter_options.get("min_listing_age") is not None
+        or bool(filter_options.get("exclude_negative_book_equity"))
+        or bool(filter_options.get("exclude_negative_earnings"))
+    )
+
+
+def _warn_every_period_screens() -> None:
+    """Warn that screens applied in every period can bias factor
+    returns."""
+    warnings.warn(
+        "Screens are applied in every month, including holding months. "
+        "A stock that fails a screen after portfolio formation loses "
+        "those months' returns, so factor returns can contain "
+        "look-ahead bias. Use filter_options(timing='formation') to "
+        "apply the screens only when portfolios are formed.",
+        UserWarning,
+        stacklevel=_user_stacklevel(),
+    )
+
+
+def _screen_at_formation(
+    data: pl.DataFrame,
+    filter_options: dict,
+    data_options: dict,
+    rebalancing_month: int,
+    quiet: bool,
+) -> pl.DataFrame:
+    """Apply the screens in the formation month and keep the stocks
+    that pass for the holding period.
+
+    Portfolios formed in 'rebalancing_month' of year y are held until
+    the month before 'rebalancing_month' of year y + 1.
+    """
+    col_id = data_options["id"]
+    col_date = data_options["date"]
+    _require_column(data, col_id, "data_options['id']")
+    _require_column(data, col_date, "data_options['date']")
+    _check_new_col(data, ["_cohort", "_keep"])
+
+    year = pl.col(col_date).dt.year()
+    month = pl.col(col_date).dt.month()
+    is_formation = month == rebalancing_month
+
+    passed = _apply_screens(
+        data.filter(is_formation), filter_options, data_options, quiet
+    )
+    passed_keys = (
+        passed.select(pl.col(col_id), year.alias("_cohort"))
+        .unique()
+        .with_columns(pl.lit(True).alias("_keep"))
+    )
+
+    data = (
+        data.with_columns(
+            (
+                year
+                - pl.when(month < rebalancing_month).then(1).otherwise(0)
+            ).alias("_cohort")
+        )
+        .join(
+            passed_keys,
+            on=[col_id, "_cohort"],
+            how="left",
+            maintain_order="left",
+        )
+        .with_columns(pl.col("_keep").fill_null(False))
+    )
+
+    n_holding_dropped = data.filter(
+        ~pl.col("_keep") & ~is_formation
+    ).height
+    if not quiet and n_holding_dropped > 0:
+        warnings.warn(
+            f"Screens applied in formation month {rebalancing_month}: "
+            f"removed {n_holding_dropped} holding-month observation(s) "
+            "of stocks that failed a screen at formation or precede the "
+            "first formation month.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+
+    return data.filter(pl.col("_keep")).drop(["_cohort", "_keep"])
+
+
+def _apply_screens(
+    data: pl.DataFrame,
+    filter_options: dict,
+    data_options: dict,
+    quiet: bool,
+) -> pl.DataFrame:
+    """Apply the screens of 'filter_options' to every row of 'data'."""
     # Treat float NaN as missing in the filter columns (polars-native
     # inputs can carry NaN, which would otherwise pass the filters and
     # shift quantile cutoffs).
@@ -1972,10 +2708,20 @@ def filter_sorting_data(
         n_before = data.height
         size_threshold = filter_options["min_size_quantile"]
         nyse_data = data.filter(pl.col(col_exchange) == "NYSE")
-        size_cutoffs = nyse_data.group_by(col_date, maintain_order=True).agg(
-            _size_cutoff=pl.col(col_mktcap_lag).quantile(
-                size_threshold, interpolation="linear"
+        cutoff_dates, cutoff_values = [], []
+        for (date,), part in nyse_data.group_by(col_date, maintain_order=True):
+            cutoff = _quantile(
+                part.get_column(col_mktcap_lag).cast(pl.Float64).to_numpy(),
+                size_threshold,
             )
+            cutoff_dates.append(date)
+            cutoff_values.append(None if np.isnan(cutoff) else cutoff)
+        size_cutoffs = pl.DataFrame(
+            {col_date: cutoff_dates, "_size_cutoff": cutoff_values},
+            schema={
+                col_date: data.schema[col_date],
+                "_size_cutoff": pl.Float64,
+            },
         )
 
         dates_in_data = set(data.get_column(col_date).unique().to_list())
@@ -2038,16 +2784,86 @@ def filter_sorting_data(
     return data
 
 
+def _screen_staggered_formation(
+    data: pl.DataFrame,
+    sorting_variables,
+    filter_options: dict,
+    data_options: dict | None,
+    quiet: bool,
+) -> pl.DataFrame:
+    """Apply screens to the formation of staggered portfolios.
+
+    With staggered rebalancing, every month is a formation month, but
+    stocks are held for several months. With 'timing="formation"', a
+    stock that fails a screen is not added to the cohort formed in that
+    month, but stays in the cohorts formed earlier: its sorting
+    variables are set to null in that month instead of removing the
+    row. With 'timing="every_period"', failing rows are removed, so
+    earlier cohorts lose the stock's return, and a warning is issued.
+    """
+    if data_options is None:
+        data_options = {
+            "id": "permno",
+            "date": "date",
+            "exchange": "exchange",
+            "mktcap_lag": "mktcap_lag",
+            "ret_excess": "ret_excess",
+            "portfolio": "portfolio",
+            "siccd": "siccd",
+            "price": "prc_lag",
+            "listing_age": "listing_age",
+            "be": "be",
+            "earnings": "ib",
+        }
+
+    passed = _apply_screens(data, filter_options, data_options, quiet)
+
+    if filter_options.get("timing", "formation") == "every_period":
+        _warn_every_period_screens()
+        return passed
+
+    id_col = data_options["id"]
+    date_col = data_options["date"]
+    _require_column(data, id_col, "data_options['id']")
+    _require_column(data, date_col, "data_options['date']")
+    _check_new_col(data, "_passed")
+
+    if isinstance(sorting_variables, str):
+        sorting_variables = [sorting_variables]
+
+    passed_keys = (
+        passed.select([id_col, date_col])
+        .unique()
+        .with_columns(pl.lit(True).alias("_passed"))
+    )
+    data = data.join(
+        passed_keys, on=[id_col, date_col], how="left", maintain_order="left"
+    ).with_columns(pl.col("_passed").fill_null(False))
+
+    return data.with_columns(
+        [
+            pl.when(pl.col("_passed"))
+            .then(pl.col(sv))
+            .otherwise(None)
+            .alias(sv)
+            for sv in sorting_variables
+        ]
+    ).drop("_passed")
+
+
 def implement_portfolio_sort(
     data: pl.DataFrame,
     sorting_variables,
     sorting_method: str,
     portfolio_sort_options: dict,
     rebalancing_month: int = None,
+    holding_period: int = 1,
+    skip: int = 0,
     breakpoint_function_main=None,
     breakpoint_function_secondary=None,
     min_portfolio_size: int = 1,
     cap_weight: float = 0.8,
+    cap_weight_exchanges="NYSE",
     data_options: dict = None,
     quiet: bool = False,
 ) -> pl.DataFrame:
@@ -2075,7 +2891,17 @@ def implement_portfolio_sort(
         'breakpoint_options_secondary'.
     rebalancing_month : int, optional
         Month in which portfolios are rebalanced annually. None (the
-        default) means monthly rebalancing.
+        default) means monthly rebalancing. Also determines the
+        formation month in which the screens of 'filter_options' are
+        applied (see 'filter_sorting_data').
+    holding_period, skip : int, default 1 and 0
+        Staggered rebalancing: portfolios are formed every period and
+        each cohort is held for 'holding_period' periods, starting
+        'skip' periods after formation. See 'compute_portfolio_returns'.
+        With the default 'filter_options(timing="formation")', the
+        screens only decide which stocks enter the cohort formed in a
+        period; a stock that fails a screen later stays in its earlier
+        cohorts until their holding period ends.
     breakpoint_function_main : callable, optional
         Function used to compute breakpoints for the main sorting
         variable. Defaults to 'compute_breakpoints'.
@@ -2094,6 +2920,9 @@ def implement_portfolio_sort(
         which market capitalizations are capped per date when computing
         the capped value-weighted excess return ('ret_excess_vw_capped').
         Must be in [0, 1].
+    cap_weight_exchanges : str or list of str, optional
+        Exchange(s) whose stocks determine the cap, or None for all
+        stocks. Defaults to 'NYSE'. See 'compute_portfolio_returns'.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). All elements are
         forwarded to 'filter_sorting_data' and
@@ -2129,7 +2958,7 @@ def implement_portfolio_sort(
         'date': dates.to_numpy().repeat(5),
         'mktcap_lag': rng.uniform(100, 1000, 500),
         'ret_excess': rng.standard_normal(500),
-        'prc_adj': rng.uniform(0.5, 50, 500),
+        'prc_lag':rng.uniform(0.5, 50, 500),
         'size': rng.uniform(50, 150, 500),
     })
     implement_portfolio_sort(
@@ -2187,24 +3016,42 @@ def implement_portfolio_sort(
         "breakpoint_options_secondary"
     ]
 
-    data = filter_sorting_data(
-        data,
-        filter_options=filter_opts,
-        data_options=data_options,
-        quiet=quiet,
-    )
+    staggered = holding_period != 1 or skip != 0
+    if (
+        staggered
+        and filter_opts is not None
+        and _has_active_screens(filter_opts)
+    ):
+        data = _screen_staggered_formation(
+            data,
+            sorting_variables=sorting_variables,
+            filter_options=filter_opts,
+            data_options=data_options,
+            quiet=quiet,
+        )
+    else:
+        data = filter_sorting_data(
+            data,
+            filter_options=filter_opts,
+            data_options=data_options,
+            rebalancing_month=rebalancing_month,
+            quiet=quiet,
+        )
 
     return compute_portfolio_returns(
         data,
         sorting_variables=sorting_variables,
         sorting_method=sorting_method,
         rebalancing_month=rebalancing_month,
+        holding_period=holding_period,
+        skip=skip,
         breakpoint_options_main=breakpoint_options_main,
         breakpoint_options_secondary=breakpoint_options_secondary,
         breakpoint_function_main=breakpoint_function_main,
         breakpoint_function_secondary=breakpoint_function_secondary,
         min_portfolio_size=min_portfolio_size,
         cap_weight=cap_weight,
+        cap_weight_exchanges=cap_weight_exchanges,
         data_options=data_options,
         quiet=quiet,
     )
