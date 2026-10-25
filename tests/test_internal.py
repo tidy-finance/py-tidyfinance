@@ -91,29 +91,38 @@ def test_winsorize_edge_cases():
 
 
 def test_trim_correct_removal():
-    """Test that trim correctly removes extreme values."""
+    """Values outside the cut quantiles become NaN; the length is kept."""
     np.random.seed(123)
     x = np.random.randn(100)
     cut = 0.05
 
     trimmed_x = trim(x, cut)
 
-    assert np.min(trimmed_x) >= np.quantile(x, cut), (
-        "Lower bound not correctly applied"
-    )
-    assert np.max(trimmed_x) <= np.quantile(x, 1 - cut), (
-        "Upper bound not correctly applied"
-    )
+    assert trimmed_x.shape == x.shape
+    lb, ub = np.quantile(x, [cut, 1 - cut])
+    outside = (x < lb) | (x > ub)
+    assert np.all(np.isnan(trimmed_x[outside]))
+    assert np.array_equal(trimmed_x[~outside], x[~outside])
 
 
 def test_trim_handles_na():
-    """Test that trim correctly handles NaN values."""
-    x = np.array([np.nan, 1, 2, 3, 4, 5, np.nan])
-    cut = 0.1
+    """Missing values stay missing and the tails are set to NaN."""
+    np.random.seed(123)
+    x = np.concatenate([[np.nan], np.random.randn(100), [np.nan]])
+    cut = 0.05
 
     trimmed_x = trim(x, cut)
 
-    assert not np.any(np.isnan(trimmed_x)), "NaN values should be removed"
+    assert trimmed_x.shape == x.shape
+    assert np.all(np.isnan(trimmed_x[np.isnan(x)]))
+    lb, ub = np.nanquantile(x, [cut, 1 - cut])
+    assert np.all(np.isnan(trimmed_x[(x < lb) | (x > ub)]))
+
+
+def test_trim_keeps_the_length_and_sets_the_tails_to_nan():
+    out = trim(np.arange(1, 101), 0.05)
+    assert out.shape == (100,)
+    assert np.isnan(out).sum() == 10
 
 
 def test_trim_edge_cases():

@@ -789,11 +789,43 @@ def test_create_summary_statistics_rejects_strings() -> None:
 
 
 def test_create_summary_statistics_handles_na() -> None:
-    """NA values are dropped before statistics are computed."""
-    df = pl.DataFrame({"x": [1.0, 2.0, None, 4.0]})
-    result = create_summary_statistics(df, ["x"])
-    assert result["n"][0] == 3
-    assert result["mean"][0] == pytest.approx((1.0 + 2.0 + 4.0) / 3)
+    """Missing values propagate unless drop_na is True."""
+    df = pl.DataFrame({"x": [1.0, 2.0, None, 4.0, 5.0]})
+    keep_na = create_summary_statistics(df, ["x"], detail=True)
+    drop_na = create_summary_statistics(df, ["x"], drop_na=True)
+    assert keep_na["n"][0] == drop_na["n"][0] == 4
+    for column in ["mean", "sd", "min", "q01", "q50", "q99", "max"]:
+        assert keep_na[column][0] is None
+    assert drop_na["mean"][0] == pytest.approx(3.0)
+    assert drop_na["q50"][0] == pytest.approx(3.0)
+
+
+def test_create_summary_statistics_drop_na_per_variable() -> None:
+    """drop_na removes missing values of each variable separately."""
+    df = pl.DataFrame(
+        {
+            "x": [1.0, 2.0, 3.0, 4.0],
+            "y": [10.0, None, 30.0, 40.0],
+            "g": ["a", "a", "b", None],
+        }
+    )
+    result = create_summary_statistics(df, ["x", "y"], by="g", drop_na=True)
+    assert result.columns[:3] == ["variable", "g", "n"]
+    assert result.select("variable", "g").rows() == [
+        ("x", "a"),
+        ("x", "b"),
+        ("y", "a"),
+        ("y", "b"),
+    ]
+    assert result["n"].to_list() == [2, 1, 1, 1]
+    assert result["mean"][0] == pytest.approx(1.5)
+
+
+def test_create_summary_statistics_keeps_missing_group() -> None:
+    """Without drop_na, a missing group is kept and sorted last."""
+    df = pl.DataFrame({"x": [1.0, 2.0, 3.0], "g": ["b", None, "a"]})
+    result = create_summary_statistics(df, ["x"], by="g")
+    assert result["g"].to_list() == ["a", "b", None]
 
 
 def sample_data_ls() -> pl.DataFrame:

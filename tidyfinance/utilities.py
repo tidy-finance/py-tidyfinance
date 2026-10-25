@@ -56,6 +56,12 @@ def create_summary_statistics(
     for the whole dataset, or separately for each group when 'by' is
     supplied.
 
+    Missing values (null or NaN) propagate: unless 'drop_na' is True, a
+    variable with missing values gets missing statistics, while 'n'
+    still counts its non-missing values. With 'drop_na=True', missing
+    values are dropped separately for each variable, together with
+    observations whose 'by' group is missing.
+
     Parameters
     ----------
     data : pl.DataFrame
@@ -74,14 +80,15 @@ def create_summary_statistics(
         (q01, q05, q10, q25, q75, q90, q95, q99) are computed.
     drop_na : bool, default False
         Whether to drop missing values for each variable before
-        summarizing.
+        summarizing. If False, statistics of a variable with missing
+        values are missing.
 
     Returns
     -------
     pl.DataFrame
-        Data frame with summary statistics for each selected variable.
-        If 'by' is specified, the output includes the grouping variable
-        as well. Each row represents a variable (and a group if 'by' is
+        Data frame with summary statistics for each selected variable,
+        sorted by 'variable'. If 'by' is specified, the grouping column
+        follows 'variable' and the rows are sorted by both. Each row represents a variable (and a group if 'by' is
         used), and each column contains the computed statistics.
 
     Examples
@@ -105,9 +112,7 @@ def create_summary_statistics(
     non_numeric_vars = [
         var
         for var in variables
-        if not (
-            data.schema[var].is_numeric() or data.schema[var] == pl.Boolean
-        )
+        if not (data.schema[var].is_numeric() or data.schema[var] == pl.Boolean)
     ]
     if non_numeric_vars:
         raise ValueError(
@@ -123,9 +128,6 @@ def create_summary_statistics(
             [pl.col(c).cast(pl.Float64) for c in bool_cols]
         )
 
-    if drop_na:
-        data = data.drop_nulls(subset=variables)
-
     quantiles = (
         _SUMMARY_QUANTILES_DETAIL if detail else _SUMMARY_QUANTILES_BASIC
     )
@@ -134,35 +136,49 @@ def create_summary_statistics(
     long = data.select(id_cols + list(variables)).unpivot(
         index=id_cols, variable_name="variable", value_name="_value"
     )
-    if long.schema["_value"].is_float():
-        # Treat float NaN like missing so statistics ignore it, as
-        # pandas does.
-        long = long.with_columns(pl.col("_value").fill_nan(None))
+    long = long.with_columns(pl.col("_value").cast(pl.Float64).fill_nan(None))
 
-    aggs = [
-        pl.col("_value").count().alias("n"),
-        pl.col("_value").mean().alias("mean"),
-        pl.col("_value").std().alias("sd"),
-        pl.col("_value").min().alias("min"),
-        *[
-            pl.col("_value")
-            .quantile(p, interpolation="linear")
-            .alias(_quantile_label(p))
-            for p in quantiles
-        ],
-        pl.col("_value").max().alias("max"),
-    ]
+    if drop_na:
+        # Drop missing values per variable (and missing groups), so one
+        # variable's gaps do not remove observations of another.
+        long = long.drop_nulls()
 
-    group_cols = id_cols + ["variable"]
-    result = long.group_by(group_cols, maintain_order=True).agg(aggs)
+    group_cols = ["variable"] + id_cols
+    labels = [_quantile_label(p) for p in quantiles]
+    any_null = pl.col("_value").null_count() > 0
 
-    # Order quantile columns around the median as documented.
-    ordered_stats = (
-        ["n", "mean", "sd", "min"]
-        + [_quantile_label(p) for p in quantiles]
-        + ["max"]
+    def _na_if_missing(expr: pl.Expr) -> pl.Expr:
+        # A variable with missing values gets missing statistics unless
+        # 'drop_na' is True; only 'n' counts the non-missing values.
+        return pl.when(any_null).then(None).otherwise(expr)
+
+    result = long.group_by(group_cols).agg(
+        pl.col("_value").count().cast(pl.Int32).alias("n"),
+        _na_if_missing(pl.col("_value").mean()).alias("mean"),
+        _na_if_missing(pl.col("_value").std()).alias("sd"),
+        _na_if_missing(pl.col("_value").min()).alias("min"),
+        pl.col("_value").alias("_values"),
+        any_null.alias("_any_null"),
+        _na_if_missing(pl.col("_value").max()).alias("max"),
     )
-    return result.select(group_cols + ordered_stats).sort(group_cols)
+
+    quantile_values = [
+        [None] * len(quantiles)
+        if any_null or not values.len()
+        else _quantile(values.to_numpy(), quantiles).tolist()
+        for values, any_null in zip(result["_values"], result["_any_null"])
+    ]
+    result = result.with_columns(
+        [
+            pl.Series(label, [q[i] for q in quantile_values], pl.Float64)
+            for i, label in enumerate(labels)
+        ]
+    )
+
+    ordered_stats = ["n", "mean", "sd", "min"] + labels + ["max"]
+    return result.select(group_cols + ordered_stats).sort(
+        group_cols, nulls_last=True
+    )
 
 
 def list_supported_indexes() -> pl.DataFrame:
@@ -258,9 +274,7 @@ def list_supported_indexes() -> pl.DataFrame:
             2,
         ),
     ]
-    return pl.DataFrame(
-        data, schema=["index", "url", "skip"], orient="row"
-    )
+    return pl.DataFrame(data, schema=["index", "url", "skip"], orient="row")
 
 
 def list_supported_jkp_factors(
@@ -485,25 +499,26 @@ def winsorize(x, cut: float) -> np.ndarray:
 
 
 def trim(x, cut: float) -> np.ndarray:
-    """Trim a numeric vector by removing extreme observations.
+    """Trim a numeric vector by setting extreme observations to NaN.
 
-    Drops values below the lower 'cut' quantile and above the upper
-    '1 - cut' quantile. The returned vector is therefore shorter than
-    the input.
+    Sets values below the lower 'cut' quantile and above the upper
+    '1 - cut' quantile to NaN. The returned vector has the same length
+    as the input, so it can be assigned back to a column.
 
     Parameters
     ----------
     x : numpy.ndarray or polars.Series
         A numeric vector to trim.
     cut : float
-        Proportion of observations removed at each tail. For example,
-        'cut=0.05' removes the lowest and highest five percent. Must
-        lie in '[0, 0.5]'.
+        Proportion of observations set to NaN at each tail. For
+        example, 'cut=0.05' sets the lowest and highest five percent to
+        NaN. Must lie in '[0, 0.5]'.
 
     Returns
     -------
     numpy.ndarray
-        Vector with the extreme observations removed.
+        Float vector with the same length as 'x' in which the extreme
+        observations are NaN. Missing values in 'x' stay missing.
 
     Examples
     --------
@@ -523,7 +538,9 @@ def trim(x, cut: float) -> np.ndarray:
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")
 
-    lb = _quantile(x, cut)
-    ub = _quantile(x, 1 - cut)
+    x = np.asarray(x, dtype=float)
+    if x.size == 0:
+        return x
 
-    return x[(x >= lb) & (x <= ub)]
+    lb, ub = _quantile(x, [cut, 1 - cut])
+    return np.where((x < lb) | (x > ub), np.nan, x)
