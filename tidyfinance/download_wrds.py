@@ -1914,7 +1914,7 @@ def _redact_wrds_credentials(message: str, user: str, password: str) -> str:
     return message
 
 
-def disconnect_connection(connection: object) -> bool:
+def disconnect_connection(con: object) -> bool:
     """Close an open WRDS database connection safely.
 
     Attempts to close the supplied connection. Any exception raised by
@@ -1923,7 +1923,7 @@ def disconnect_connection(connection: object) -> bool:
 
     Parameters
     ----------
-    connection : object
+    con : object
         The connection object to close. Typically the value returned by
         'get_wrds_connection'.
 
@@ -1942,7 +1942,7 @@ def disconnect_connection(connection: object) -> bool:
     ```
     """
     try:
-        connection.close()
+        con.close()
         return True
     except Exception:
         return False
