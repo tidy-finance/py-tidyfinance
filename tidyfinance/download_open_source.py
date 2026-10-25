@@ -1770,8 +1770,8 @@ def _download_data_pastor_stambaugh(
     start_date: str = None,
     end_date: str = None,
     url: str = (
-        "https://faculty.chicagobooth.edu/-/media/faculty/lubos-pastor/"
-        "data/liq_data_1962_2025.txt"
+        "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/"
+        "liq_data_1962_2025.txt"
     ),
 ) -> pl.DataFrame:
     """
@@ -1779,8 +1779,8 @@ def _download_data_pastor_stambaugh(
 
     Downloads and processes the liquidity factor data of Pastor and
     Stambaugh (2003) from
-    `Pastor's data library
-    <https://faculty.chicagobooth.edu/lubos-pastor/data>`_. The source
+    `Stambaugh's data library
+    <https://fnce.wharton.upenn.edu/profile/stambaug/#misc>`_. The source
     is a whitespace-delimited text file whose header lines start with
     a percent sign. The function reads the three liquidity series,
     aligns the monthly date to the beginning of the month, and
@@ -1886,7 +1886,9 @@ def _download_data_stambaugh_yuan(
     dataset: str = "monthly",
     start_date: str = None,
     end_date: str = None,
-    url: str = "https://finance.wharton.upenn.edu/~stambaug/",
+    url: str = (
+        "https://faculty.wharton.upenn.edu/wp-content/uploads/2016/11/"
+    ),
 ) -> pl.DataFrame:
     """
     Download and process Stambaugh-Yuan mispricing factors.
@@ -1894,8 +1896,8 @@ def _download_data_stambaugh_yuan(
     Downloads and processes the mispricing factor data of Stambaugh
     and Yuan (2017) from
     `Stambaugh's data library
-    <https://finance.wharton.upenn.edu/~stambaug/>`_. The four-factor
-    model (M4) combines the market and size factors with two
+    <https://fnce.wharton.upenn.edu/profile/stambaug/#misc>`_. The
+    four-factor model (M4) combines the market and size factors with two
     mispricing factors, 'mgmt' (management) and 'perf' (performance).
     The function downloads the requested frequency, aligns the date,
     renames the columns to the package conventions, and optionally

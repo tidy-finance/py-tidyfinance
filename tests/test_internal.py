@@ -142,6 +142,21 @@ def test_list_supported_indexes():
     assert "skip" in df.columns
 
 
+def test_list_supported_indexes_content():
+    """The indexes and providers match the R package."""
+    df = list_supported_indexes()
+    assert df.columns == ["index", "url", "skip"]
+    assert df.height == 20
+    assert df["index"].to_list()[-3:] == [
+        "MSCI Europe",
+        "MSCI ACWI",
+        "S&P SmallCap 600",
+    ]
+    # iShares removed the German retail pages; all files are read from
+    # the Swiss professional pages or BlackRock Japan.
+    assert not df["url"].str.contains("/de/privatanleger/").any()
+
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])
