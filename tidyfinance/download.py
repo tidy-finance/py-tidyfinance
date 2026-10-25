@@ -201,7 +201,7 @@ def download_data(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "Index Constituents":
-        processed_data = download_data_constituents(dataset=dataset, **kwargs)
+        processed_data = download_data_constituents(**kwargs)
     elif domain == "FRED":
         if dataset in ("FRED-MD", "FRED-QD"):
             # Curated McCracken-Ng databases (selected by 'vintage', not date-sliced).

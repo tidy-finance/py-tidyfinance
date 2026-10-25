@@ -798,9 +798,7 @@ def download_data_macro_predictors(
     return raw_data
 
 
-def download_data_constituents(
-    index: str = None, dataset: str = None, path=None, **kwargs
-) -> pl.DataFrame:
+def download_data_constituents(index: str = None, path=None) -> pl.DataFrame:
     """
     Download constituent data for a given stock index.
 
@@ -818,22 +816,11 @@ def download_data_constituents(
         Name of the financial index for which to download constituent
         data. Must be one of the supported indexes listed by
         'list_supported_indexes'. Optional when 'path' is given.
-    dataset : str, optional
-        Convenience alias accepted from the unified 'download_data'
-        dispatcher. Forwarded to 'index' with a UserWarning when
-        'index' is not supplied directly.
     path : str or os.PathLike, optional
         Path to a local iShares or BlackRock holdings CSV, as saved from
         the fund's web page, to read instead of downloading. 'index' is
         optional in this case; when given, rows whose name contains the
         index name are dropped.
-    **kwargs
-        Additional keyword arguments are accepted and silently
-        ignored. They exist so that calls routed through
-        'download_data' (which forwards arguments such as
-        'start_date' and 'end_date' to every downloader) do not fail
-        with a TypeError, even when those arguments are not meaningful
-        for the constituents endpoint.
 
     Returns
     -------
@@ -859,16 +846,6 @@ def download_data_constituents(
     download_data('Index Constituents', path='DAXEX_holdings.csv')
     ```
     """
-    if dataset is not None and index is None:
-        warnings.warn(
-            "The 'dataset' argument is not valid for "
-            "domain='Index Constituents'. Use 'index' instead, e.g. "
-            "download_data(domain='Index Constituents', index='DAX').",
-            UserWarning,
-            stacklevel=2,
-        )
-        index = dataset
-
     symbol_blacklist = {"", "-", "USD", "GXU4", "EUR", "MARGIN_EUR", "MLIFT"}
     if index is None and path is None:
         raise ValueError(
