@@ -174,7 +174,9 @@ def test_invalid_date_column():
     """Test that invalid date column raises error"""
     data = create_test_data()
     with pytest.raises(ValueError):
-        add_lagged_columns(data, cols=["bm"], lag=1, date_col="invalid_date")
+        add_lagged_columns(
+            data, cols=["bm"], lag=1, data_options={"date": "invalid_date"}
+        )
 
 
 @pytest.fixture
@@ -581,7 +583,7 @@ def test_estimate_fama_macbeth_small_cross_section_raises() -> None:
 
 
 def test_estimate_fama_macbeth_data_options_date_column() -> None:
-    """data_options={'date': ...} maps the date column like date_col."""
+    """data_options={'date': ...} maps the date column."""
     data = sample_data_fmb()
     expected = estimate_fama_macbeth(
         data, "ret_excess ~ beta + bm + log_mktcap"

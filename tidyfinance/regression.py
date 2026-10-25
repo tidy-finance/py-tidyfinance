@@ -744,14 +744,13 @@ def estimate_fama_macbeth(
     model: str,
     vcov: str = "newey-west",
     vcov_options: dict | None = None,
-    date_col: str = "date",
     data_options: dict | None = None,
     detail: bool = False,
 ) -> pl.DataFrame | dict:
     """Estimate Fama-MacBeth regressions.
 
     Runs one cross-sectional ordinary least squares regression per period
-    of 'date_col', then averages the per-period coefficients to obtain
+    of the date column, then averages the per-period coefficients to obtain
     risk premia and aggregates them into a single tidy frame.
 
     Parameters
@@ -785,12 +784,9 @@ def estimate_fama_macbeth(
         - 'maxlags' : int, optional
             Deprecated alias for 'lag' (with 'prewhite' defaulting
             to 0). Emits a DeprecationWarning.
-    date_col : str, default 'date'
-        Column in 'data' identifying the time index for cross-sectional
-        regressions.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'date' element is
-        used to specify the date column, overriding 'date_col'. Uses
+        used to specify the date column of the cross-sections. Uses
         the 'data_options' default when None: 'date' -> 'date'.
     detail : bool, default False
         If 'False' (default), return only the coefficient estimates. If
@@ -824,8 +820,8 @@ def estimate_fama_macbeth(
     ------
     ValueError
         If 'vcov' is not 'iid' or 'newey-west', if 'vcov_options'
-        contains an unrecognized key, if 'date_col' is missing from
-        'data', or if any date grouping has too few rows to estimate
+        contains an unrecognized key, if the date column is missing
+        from 'data', or if any date grouping has too few rows to estimate
         the cross-sectional coefficients (each grouping needs more
         rows than the number of variables in 'model').
 
@@ -878,8 +874,7 @@ def estimate_fama_macbeth(
     )
     ```
     """
-    if data_options is not None:
-        date_col = data_options.get("date", date_col)
+    date_col = (data_options or {}).get("date", "date")
 
     if vcov not in ["iid", "newey-west"]:
         raise ValueError("vcov must be either 'iid' or 'newey-west'.")

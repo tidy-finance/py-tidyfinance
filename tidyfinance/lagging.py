@@ -97,7 +97,6 @@ def add_lagged_columns(
     by: list[str] | str | None = None,
     drop_na: bool = False,
     ff_adjustment: bool = False,
-    date_col: str = "date",
     data_options: dict | None = None,
 ) -> pl.DataFrame:
     """Append lagged columns to a data frame via a join-based approach.
@@ -141,8 +140,6 @@ def add_lagged_columns(
         are ignored. Combine with 'drop_na=True' when 'data' is a
         monthly panel in which the accounting columns are only filled
         at fiscal year-ends. Defaults to False.
-    date_col : str, optional
-        Name of the date column. Defaults to 'date'.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'date' element is
         used to specify the date column. Uses the 'data_options' default
@@ -180,8 +177,7 @@ def add_lagged_columns(
     )
     ```
     """
-    if data_options is not None:
-        date_col = data_options.get("date", date_col)
+    date_col = (data_options or {}).get("date", "date")
 
     if isinstance(cols, str):
         cols = [cols]
@@ -390,7 +386,6 @@ def join_lagged_values(
     min_lag=None,
     max_lag=None,
     ff_adjustment: bool = False,
-    date_col: str = "date",
     data_options: dict | None = None,
 ) -> pl.DataFrame:
     """Join lagged values of variables over a date range.
@@ -427,8 +422,6 @@ def join_lagged_values(
         fiscal year-end. A value for a fiscal year ending in December
         2020 or in June 2020 is thus used from July 2021 to June 2022.
         'min_lag' and 'max_lag' are ignored. Defaults to False.
-    date_col : str, optional
-        Name of the date column. Defaults to 'date'.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'date' element is
         used to identify the date column. Uses the 'data_options'
@@ -480,8 +473,7 @@ def join_lagged_values(
     join_lagged_values(monthly, annual, id_keys='id', ff_adjustment=True)
     ```
     """
-    if data_options is not None:
-        date_col = data_options.get("date", date_col)
+    date_col = (data_options or {}).get("date", "date")
 
     if ff_adjustment:
         _inform_ff_lags_ignored(

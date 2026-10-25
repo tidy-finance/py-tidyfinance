@@ -184,21 +184,6 @@ def test_lag_is_required_without_ff_adjustment():
         add_lagged_columns(data, cols="size")
 
 
-def test_non_default_date_col_is_respected():
-    """Test non-default date_col uses the specified column name."""
-    data = pl.DataFrame(
-        {
-            "my_date": pl.date_range(
-                dt.date(2023, 1, 1), dt.date(2023, 3, 1), "1mo", eager=True
-            ),
-            "size": [1.0, 2.0, 3.0],
-        }
-    )
-    result = add_lagged_columns(
-        data, cols="size", lag="1mo", date_col="my_date"
-    )
-    assert result["size_lag"][0] is None
-    assert result["size_lag"][1] == 1
 
 
 def test_error_when_date_column_is_absent_from_data():

@@ -163,31 +163,6 @@ def test_min_lag_and_max_lag_are_required_without_ff_adjustment():
         join_lagged_values(orig, new, id_keys="id", min_lag="1mo")
 
 
-def test_non_default_date_col_uses_specified_column():
-    """Test non-default date_col uses the specified column."""
-    orig = pl.DataFrame(
-        {
-            "id": [1, 1],
-            "my_date": [dt.date(2023, 2, 1), dt.date(2023, 5, 1)],
-        }
-    )
-    new = pl.DataFrame(
-        {
-            "id": [1],
-            "my_date": [dt.date(2023, 1, 1)],
-            "x": [7.0],
-        }
-    )
-    result = join_lagged_values(
-        orig,
-        new,
-        id_keys="id",
-        min_lag="1mo",
-        max_lag="3mo",
-        date_col="my_date",
-    )
-    assert result["x"][0] == 7
-    assert result["x"][1] is None
 
 
 def test_error_when_id_keys_is_not_a_character_vector():
