@@ -766,6 +766,15 @@ def test_create_summary_statistics_basic(sample_data) -> None:
     assert "mean" in result.columns, "Output should include mean calculation"
 
 
+def test_create_summary_statistics_accepts_variables_as_arguments():
+    """Variables can be passed as separate arguments, like R's '...'."""
+    data = sample_data_summary()
+    expected = create_summary_statistics(data, ["x", "y"])
+    assert create_summary_statistics(data, "x", "y").equals(expected)
+    with pytest.raises(ValueError, match="at least one variable"):
+        create_summary_statistics(data)
+
+
 def test_create_summary_statistics_by_group(sample_data) -> None:
     result = create_summary_statistics(
         sample_data_summary(), ["x", "y"], by="group"

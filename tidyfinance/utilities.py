@@ -29,7 +29,7 @@ def _quantile_label(p: float) -> str:
 
 def create_summary_statistics(
     data: pl.DataFrame,
-    variables: list,
+    *variables: str,
     by: str = None,
     detail: bool = False,
     drop_na: bool = False,
@@ -66,9 +66,11 @@ def create_summary_statistics(
     ----------
     data : pl.DataFrame
         Data frame containing the variables to be summarized.
-    variables : list of str
-        List of column names in the data frame to summarize. These
-        variables must be of a numeric dtype (int, float, or bool).
+    *variables : str
+        Names of the columns in the data frame to summarize, e.g.
+        'create_summary_statistics(data, "ret", "size")'. A single list
+        of names is accepted as well. These variables must be of a
+        numeric dtype (int, float, or bool).
     by : str, optional
         Column name to group the data before summarizing. If None (the
         default), summary statistics are computed across all
@@ -88,8 +90,9 @@ def create_summary_statistics(
     pl.DataFrame
         Data frame with summary statistics for each selected variable,
         sorted by 'variable'. If 'by' is specified, the grouping column
-        follows 'variable' and the rows are sorted by both. Each row represents a variable (and a group if 'by' is
-        used), and each column contains the computed statistics.
+        follows 'variable' and the rows are sorted by both. Each row
+        represents a variable (and a group if 'by' is used), and each
+        column contains the computed statistics.
 
     Examples
     --------
@@ -102,13 +105,19 @@ def create_summary_statistics(
         'group': ['A', 'A', 'B', 'B', 'A'],
     })
     # Basic summary across all observations
-    create_summary_statistics(data, ['ret', 'size'])
+    create_summary_statistics(data, 'ret', 'size')
     # Grouped summary
-    create_summary_statistics(data, ['ret', 'size'], by='group')
+    create_summary_statistics(data, 'ret', 'size', by='group')
     # Detailed quantiles
-    create_summary_statistics(data, ['ret'], detail=True)
+    create_summary_statistics(data, 'ret', detail=True)
     ```
     """
+    if len(variables) == 1 and isinstance(variables[0], (list, tuple)):
+        variables = variables[0]
+    variables = list(variables)
+    if not variables:
+        raise ValueError("Pass at least one variable to summarize.")
+
     non_numeric_vars = [
         var
         for var in variables
