@@ -318,8 +318,9 @@ def test_data_options_specifies_date_column_name():
     assert result["x"][1] is None
 
 
-def test_error_when_lower_helper_column_already_exists():
-    """Test error when '_lower' helper column already exists in new_data."""
+def test_warns_when_lower_helper_column_already_exists():
+    """Test join_lagged_values warns when '_lower' already exists in
+    new_data."""
     orig = pl.DataFrame(
         {
             "id": [1],
@@ -334,10 +335,34 @@ def test_error_when_lower_helper_column_already_exists():
             "_lower": [0],
         }
     )
-    with pytest.raises(ValueError, match="_lower"):
-        join_lagged_values(
+    with pytest.warns(UserWarning, match="overwrites.*'_lower'"):
+        result = join_lagged_values(
             orig, new, id_keys="id", min_lag="1mo", max_lag="3mo"
         )
+    assert result.columns == ["id", "date", "x"]
+    assert result["x"].to_list() == [10.0]
+
+
+def test_warns_when_new_data_has_year_and_ff_adjustment_is_true():
+    """Test join_lagged_values warns when new_data already has '_year'
+    and ff_adjustment is True."""
+    orig = pl.DataFrame(
+        {"id": [1, 1], "date": [dt.date(2021, 6, 1), dt.date(2021, 7, 1)]}
+    )
+    new = pl.DataFrame(
+        {
+            "id": [1],
+            "date": [dt.date(2020, 12, 1)],
+            "bm": [0.5],
+            "_year": [None],
+        }
+    )
+    with pytest.warns(UserWarning, match="overwrites.*'_year'"):
+        result = join_lagged_values(
+            orig, new, id_keys="id", ff_adjustment=True
+        )
+    assert result.columns == ["id", "date", "bm"]
+    assert result["bm"].to_list() == [None, 0.5]
 
 
 if __name__ == "__main__":

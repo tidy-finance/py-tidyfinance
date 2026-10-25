@@ -1261,7 +1261,9 @@ def _compute_staggered_returns(
         Columns portfolio, the date column, and the three return
         columns.
     """
-    _check_new_col(assignments, ["_cohort", "_index", "_offset"])
+    assignments = _check_new_col(
+        assignments, ["_cohort", "_index", "_offset"], "compute_portfolio_returns"
+    )
     grid = (
         pl.DataFrame({date_col: dates})
         .with_row_index("_index")
@@ -1468,7 +1470,7 @@ def _cap_market_cap(
 
     caps = caps.select([date_col, "_cap"])
 
-    _check_new_col(data, "_cap")
+    data = _check_new_col(data, "_cap", "compute_portfolio_returns")
     return (
         data.join(caps, on=date_col, how="left", maintain_order="left")
         .with_columns(
@@ -1814,10 +1816,21 @@ def compute_portfolio_returns(
             [pl.col(c).fill_nan(None) for c in float_cols]
         )
 
+    portfolio_cols = (
+        ["portfolio"]
+        if sorting_method == "univariate"
+        else ["portfolio_secondary", "portfolio_main"]
+    )
+    data = _check_new_col(
+        data,
+        [w_capped_col]
+        + [c for c in portfolio_cols if c not in sorting_variables],
+        "compute_portfolio_returns",
+    )
+
     # With staggered rebalancing, held stocks keep their returns even
     # without sorting variables, so the full panel is kept for the
     # holding periods.
-    _check_new_col(data, w_capped_col)
     holding_data = data if staggered else None
 
     data = data.drop_nulls(subset=list(sorting_variables))
@@ -2371,7 +2384,9 @@ def compute_long_short_returns(
             f"contains '{ret_excess_col}'."
         )
 
-    work = data.with_columns(
+    work = _check_new_col(
+        data, ["_min_p", "_max_p", "_leg"], "compute_long_short_returns"
+    ).with_columns(
         _min_p=pl.col(portfolio_col).min().over(date_col),
         _max_p=pl.col(portfolio_col).max().over(date_col),
     )
@@ -2667,7 +2682,7 @@ def _screen_at_formation(
     col_date = data_options["date"]
     _require_column(data, col_id, "data_options['id']")
     _require_column(data, col_date, "data_options['date']")
-    _check_new_col(data, ["_cohort", "_keep"])
+    data = _check_new_col(data, ["_cohort", "_keep"], "filter_sorting_data")
 
     year = pl.col(col_date).dt.year()
     month = pl.col(col_date).dt.month()
@@ -2816,6 +2831,7 @@ def _apply_screens(
                 stacklevel=2,
             )
 
+        data = _check_new_col(data, "_size_cutoff", "filter_sorting_data")
         data = data.join(
             size_cutoffs, on=col_date, how="inner", maintain_order="left"
         )
@@ -2903,7 +2919,7 @@ def _screen_staggered_formation(
     date_col = data_options["date"]
     _require_column(data, id_col, "data_options['id']")
     _require_column(data, date_col, "data_options['date']")
-    _check_new_col(data, "_passed")
+    data = _check_new_col(data, "_passed", "implement_portfolio_sort")
 
     if isinstance(sorting_variables, str):
         sorting_variables = [sorting_variables]

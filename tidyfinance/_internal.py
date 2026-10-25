@@ -410,36 +410,47 @@ def _offset_end(start: dt.date, offset: str) -> dt.date:
     return pl.Series([start]).dt.offset_by(offset).item()
 
 
-def _check_new_col(data: pl.DataFrame, names) -> None:
+def _check_new_col(
+    data: pl.DataFrame, names, caller: str | None = None
+) -> pl.DataFrame:
     """
-    Guard against overwriting user columns with internal helpers.
+    Warn before overwriting existing columns.
 
-    Raises 'ValueError' if any of 'names' already exist in
-    'data.columns'. Used before adding temporary columns like
-    '_upper', '_lower', '_src_date' inside lagging functions, so
-    user data is never silently clobbered.
+    Emits one 'UserWarning' that names the columns of 'names' that
+    already exist in 'data' and drops them, so that the caller can
+    create them afresh. Used before adding portfolio columns or
+    temporary helpers like '_upper', '_lower', or '_year'.
 
     Parameters
     ----------
     data : pl.DataFrame
         Input frame whose columns are checked.
     names : str or iterable of str
-        Column name(s) the caller intends to introduce.
+        Column name(s) the caller intends to create.
+    caller : str, optional
+        Name of the public function that creates the columns, used in
+        the warning message.
 
-    Raises
-    ------
-    ValueError
-        If any name in 'names' is already a column of 'data'.
+    Returns
+    -------
+    pl.DataFrame
+        'data' without the columns in 'names'.
     """
     if isinstance(names, str):
         names = [names]
     existing = [n for n in names if n in data.columns]
-    if existing:
-        raise ValueError(
-            f"Cannot proceed: column(s) {existing} would be created by "
-            "this operation but already exist in the input. Rename or "
-            "drop them first."
-        )
+    if not existing:
+        return data
+    s = "" if len(existing) == 1 else "s"
+    listed = ", ".join(f"'{n}'" for n in existing)
+    lead = f"'{caller}' overwrites" if caller else "Overwriting"
+    warnings.warn(
+        f"{lead} {len(existing)} existing column{s}: {listed}. "
+        "Consider renaming or removing existing columns.",
+        UserWarning,
+        stacklevel=_user_stacklevel(),
+    )
+    return data.drop(existing)
 
 
 def _validate_column_name(value, arg: str, description: str) -> None:

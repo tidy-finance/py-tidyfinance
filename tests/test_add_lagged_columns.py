@@ -247,8 +247,9 @@ def test_error_when_join_key_is_not_unique():
         add_lagged_columns(data, cols="size", lag="1mo")
 
 
-def test_error_when_upper_helper_column_already_exists():
-    """Test error when '_upper' helper column already exists in data."""
+def test_warns_when_upper_helper_column_already_exists():
+    """Test add_lagged_columns warns when '_upper' already exists and
+    max_lag is used."""
     data = pl.DataFrame(
         {
             "date": pl.date_range(
@@ -258,8 +259,12 @@ def test_error_when_upper_helper_column_already_exists():
             "_upper": [0, 0, 0],
         }
     )
-    with pytest.raises(ValueError, match="_upper"):
-        add_lagged_columns(data, cols="size", lag="1mo", max_lag="2mo")
+    with pytest.warns(UserWarning, match="overwrites.*'_upper'"):
+        result = add_lagged_columns(
+            data, cols="size", lag="1mo", max_lag="2mo"
+        )
+    assert result["size_lag"].to_list() == [None, 1.0, 2.0]
+    assert "_upper" not in result.columns
 
 
 def test_data_options_specifies_date_column_name():

@@ -232,7 +232,7 @@ def add_lagged_columns(
         )
 
     if ff_adjustment:
-        _check_new_col(data, "_year")
+        data = _check_new_col(data, "_year", "add_lagged_columns")
         result = data
         for col in cols:
             lag_col_name = f"{col}_lag"
@@ -255,7 +255,9 @@ def add_lagged_columns(
     result = data
 
     if not exact_lag:
-        _check_new_col(result, ["_upper", "_lower"])
+        result = _check_new_col(
+            result, ["_upper", "_lower"], "add_lagged_columns"
+        )
         result = result.with_columns(
             pl.col(date_col)
             .dt.offset_by(_negate_offset(lag_offset))
@@ -324,11 +326,12 @@ def _window_lag_join(
     ----------
     result : pl.DataFrame
         Target frame. Must contain the columns in by_list plus
-        _upper and _lower (window bounds). Must not contain a
-        column named _orig_idx.
+        _upper and _lower (window bounds). A column named _orig_idx
+        is overwritten with a warning.
     lagged : pl.DataFrame
         Source frame. Must contain the columns in by_list plus
-        date_col and col. Must not contain a column named _src_date.
+        date_col and col. A column named _src_date is overwritten
+        with a warning.
     by_list : list of str
         Grouping columns shared by both frames. Pass an empty list
         for an ungrouped join.
@@ -348,8 +351,8 @@ def _window_lag_join(
         return; the caller is responsible for dropping _upper and
         _lower.
     """
-    _check_new_col(result, "_orig_idx")
-    _check_new_col(lagged, "_src_date")
+    result = _check_new_col(result, "_orig_idx", "add_lagged_columns")
+    lagged = _check_new_col(lagged, "_src_date", "add_lagged_columns")
     result = result.with_row_index("_orig_idx")
     lagged = lagged.rename({date_col: "_src_date", col: lag_col_name})
 
@@ -545,8 +548,11 @@ def join_lagged_values(
         new_data = new_data.with_columns(pl.col(date_col).cast(orig_dtype))
 
     if ff_adjustment:
-        _check_new_col(new_data, "_year")
-        _check_new_col(original_data, "_year")
+        new_data = _check_new_col(new_data, "_year", "join_lagged_values")
+        original_data = _check_new_col(
+            original_data, "_year", "join_lagged_values"
+        )
+        new_column_names = [c for c in new_column_names if c != "_year"]
         result = original_data
         for col in new_column_names:
             windows = _ff_windows(new_data, id_keys, date_col, col)
@@ -556,7 +562,12 @@ def join_lagged_values(
     min_lag_offset = _to_offset(min_lag)
     max_lag_offset = _to_offset(max_lag)
 
-    _check_new_col(new_data, ["_lower", "_upper"])
+    new_data = _check_new_col(
+        new_data, ["_lower", "_upper"], "join_lagged_values"
+    )
+    new_column_names = [
+        c for c in new_column_names if c not in ("_lower", "_upper")
+    ]
     new_data = new_data.with_columns(
         pl.col(date_col).dt.offset_by(min_lag_offset).alias("_lower"),
         pl.col(date_col).dt.offset_by(max_lag_offset).alias("_upper"),
@@ -568,7 +579,7 @@ def join_lagged_values(
         select_cols = id_keys + [col, "_lower", "_upper"]
         tmp = new_data.select(select_cols)
 
-        _check_new_col(result, "_orig_idx")
+        result = _check_new_col(result, "_orig_idx", "join_lagged_values")
         result = result.with_row_index("_orig_idx")
         # join_asof requires the merge key sorted in ascending order;
         # the by= argument handles the grouping itself, so we only
