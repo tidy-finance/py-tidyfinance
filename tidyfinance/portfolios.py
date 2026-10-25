@@ -14,6 +14,7 @@ from ._internal import (
     _validate_column_name,
     _validate_flag,
     _validate_optional_number,
+    _warn_near_option_names,
 )
 
 
@@ -95,6 +96,24 @@ def data_options(
     _validate_column_name(listing_age, "listing_age", "listing age")
     _validate_column_name(be, "be", "book equity")
     _validate_column_name(earnings, "earnings", "earnings")
+
+    _warn_near_option_names(
+        kwargs,
+        [
+            "id",
+            "date",
+            "exchange",
+            "mktcap_lag",
+            "ret_excess",
+            "portfolio",
+            "siccd",
+            "price",
+            "listing_age",
+            "be",
+            "earnings",
+        ],
+        "data_options",
+    )
 
     return {
         "id": id,
@@ -367,6 +386,18 @@ def breakpoint_options(
         max=1,
         min_strict=True,
         max_strict=True,
+    )
+
+    _warn_near_option_names(
+        kwargs,
+        [
+            "n_portfolios",
+            "percentiles",
+            "breakpoints_exchanges",
+            "smooth_bunching",
+            "breakpoints_min_size_threshold",
+        ],
+        "breakpoint_options",
     )
 
     return {
@@ -832,6 +863,21 @@ def filter_options(
         min_listing_age,
         "min_listing_age must be a single non-negative numeric.",
         min=0,
+    )
+
+    _warn_near_option_names(
+        kwargs,
+        [
+            "exclude_financials",
+            "exclude_utilities",
+            "min_stock_price",
+            "min_size_quantile",
+            "min_listing_age",
+            "exclude_negative_book_equity",
+            "exclude_negative_earnings",
+            "timing",
+        ],
+        "filter_options",
     )
 
     return {
@@ -2230,12 +2276,16 @@ def compute_long_short_returns(
     ----------
     data : pl.DataFrame
         Data frame containing portfolio returns. Must include columns
-        for the portfolio identifier, date, and return measurements
-        (as specified in 'data_options').
+        for the portfolio identifier and date (as specified in
+        'data_options') and one or more of the return columns that
+        'compute_portfolio_returns' produces ('ret_excess_vw',
+        'ret_excess_ew', 'ret_excess_vw_capped'). Columns whose name
+        contains data_options['ret_excess'] are also used.
     direction : str, default 'top_minus_bottom'
         Direction of the long-short return calculation. Must be either
         'top_minus_bottom' or 'bottom_minus_top'. If set to
         'bottom_minus_top', the return is computed as (bottom - top).
+        Any other value raises a 'ValueError'.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'date' element
         specifies the date column, the 'ret_excess' element specifies
@@ -2281,6 +2331,13 @@ def compute_long_short_returns(
     compute_long_short_returns(portfolio_returns)
     ```
     """
+    valid_directions = ("top_minus_bottom", "bottom_minus_top")
+    if not isinstance(direction, str) or direction not in valid_directions:
+        raise ValueError(
+            "'direction' must be one of 'top_minus_bottom' and "
+            "'bottom_minus_top'."
+        )
+
     if data_options is None:
         data_options = {
             "date": "date",
@@ -2292,7 +2349,23 @@ def compute_long_short_returns(
     ret_excess_col = data_options["ret_excess"]
     portfolio_col = data_options["portfolio"]
 
-    ret_cols = [c for c in data.columns if ret_excess_col in c]
+    # The return columns are those that 'compute_portfolio_returns'
+    # produces, which it names the same way regardless of
+    # data_options['ret_excess']. For backward compatibility also accept
+    # any column whose name contains the configured 'ret_excess' name.
+    # Columns are kept in data order.
+    canonical = ("ret_excess_vw", "ret_excess_ew", "ret_excess_vw_capped")
+    ret_cols = [
+        c for c in data.columns if c in canonical or ret_excess_col in c
+    ]
+    if not ret_cols:
+        raise ValueError(
+            "No portfolio return columns found in 'data'. Expected one or "
+            "more of 'ret_excess_vw', 'ret_excess_ew', and "
+            "'ret_excess_vw_capped' (as returned by "
+            "'compute_portfolio_returns'), or a column whose name "
+            f"contains '{ret_excess_col}'."
+        )
 
     work = data.with_columns(
         _min_p=pl.col(portfolio_col).min().over(date_col),

@@ -153,3 +153,15 @@ def test_filter_options_errors_for_non_logical_exclude_negative_earnings():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_an_option_name_close_to_a_known_one_warns_about_the_likely_typo():
+    with pytest.warns(UserWarning, match="Did you mean 'exclude_financials'"):
+        options = filter_options(exclude_finacials=True)
+    assert options["exclude_finacials"] is True
+
+
+def test_distant_custom_options_do_not_warn(recwarn):
+    options = filter_options(my_custom_option=1)
+    assert options["my_custom_option"] == 1
+    assert not [w for w in recwarn if "Did you mean" in str(w.message)]

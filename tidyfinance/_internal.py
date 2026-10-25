@@ -542,3 +542,44 @@ def _validate_optional_number(
     upper_ok = (value < max) if max_strict else (value <= max)
     if not (lower_ok and upper_ok):
         raise ValueError(message)
+
+
+def _edit_distance(a: str, b: str) -> int:
+    """Return the Levenshtein distance between two strings."""
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i]
+        for j, cb in enumerate(b, start=1):
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (ca != cb),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _warn_near_option_names(extra_names, known, fn: str) -> None:
+    """Warn about option names that look like typos of known options.
+
+    Used by the option constructors ('breakpoint_options',
+    'filter_options', 'data_options') to flag a name passed via
+    '**kwargs' that is within one edit of a known option, which usually
+    means a typo. The name is still kept, so that genuine custom
+    options (e.g. for a custom breakpoint function) keep working.
+    """
+    known = [k for k in known if len(k) >= 4]
+    for name in extra_names:
+        if not name:
+            continue
+        near = [k for k in known if _edit_distance(name, k) <= 1]
+        if near:
+            warnings.warn(
+                f"Unknown option '{name}' passed to '{fn}'. Did you mean "
+                f"{', '.join(repr(k) for k in near)}? '{name}' is kept "
+                "as given.",
+                UserWarning,
+                stacklevel=_user_stacklevel(),
+            )

@@ -7,6 +7,8 @@ import numpy as np
 import polars as pl
 from formulaic import model_matrix
 
+from ._internal import _user_stacklevel
+
 
 class _OLSFit:
     """Minimal OLS fit mirroring the parts of the pyfixest API used here.
@@ -304,7 +306,7 @@ def estimate_betas(
     model: str,
     lookback,
     min_obs: int = None,
-    id_col: str = "permno",
+    data_options: dict | None = None,
 ) -> pl.DataFrame:
     """Estimate rolling betas.
 
@@ -329,7 +331,8 @@ def estimate_betas(
     data : pl.DataFrame
         Data frame containing the data with a date identifier (defaults
         to 'date'), a stock identifier (defaults to 'permno'), and the
-        other variables used in the model.
+        other variables used in the model. No variable in 'model' may
+        be called 'intercept'.
     model : str
         Formula describing the model to be estimated (e.g.,
         'ret_excess ~ mkt_excess + hml + smb'). An intercept is
@@ -350,14 +353,17 @@ def estimate_betas(
     min_obs : int, optional
         Minimum number of observations required to estimate the model.
         Defaults to 'round(0.8 * lookback)'.
-    id_col : str, default 'permno'
-        Column name representing the stock identifier.
+    data_options : dict, optional
+        Column-name mapping (see 'data_options'). The 'id' element
+        specifies the stock identifier and the 'date' element the date
+        column. Uses the 'data_options' defaults when None: 'id' ->
+        'permno', 'date' -> 'date'.
 
     Returns
     -------
     pl.DataFrame
         Data frame with the estimated betas for each stock and time
-        period. Contains the stock identifier and the 'date' column,
+        period. Contains the stock identifier and the date column,
         followed by one column per model term: an 'intercept' column
         (when the model includes one) and one 'beta_<variable>' column
         per regressor.
@@ -392,6 +398,11 @@ def estimate_betas(
     estimate_betas(data_monthly, 'ret_excess ~ mkt_excess', lookback='3mo')
     ```
     """
+    if data_options is None:
+        data_options = {"id": "permno", "date": "date"}
+    id_col = data_options.get("id", "permno")
+    date_col = data_options.get("date", "date")
+
     length, period = _parse_lookback(lookback)
 
     if min_obs is None:
@@ -404,15 +415,30 @@ def estimate_betas(
 
     dep_var, regressors, has_intercept = _parse_linear_formula(model)
 
+    if "intercept" in [dep_var] + regressors:
+        raise ValueError(
+            "None of the columns in 'model' may be called 'intercept'. "
+            "Please rename the column and try again."
+        )
+
+    if length < len(regressors):
+        warnings.warn(
+            "'lookback' is too low to estimate all model parameters. "
+            "Consider increasing it.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+
     # Column names: a bare 'intercept' plus one
     # 'beta_<variable>' per regressor.
     coef_names = (["intercept"] if has_intercept else []) + [
         f"beta_{name}" for name in regressors
     ]
 
-    if period in _SUBDAY_PERIODS and data.schema["date"] == pl.Date:
+    if period in _SUBDAY_PERIODS and data.schema[date_col] == pl.Date:
         raise ValueError(
-            f"A '{period}' lookback requires a datetime 'date' column; "
+            f"A '{period}' lookback requires a datetime '{date_col}' "
+            "column; "
             "got a date column."
         )
 
@@ -420,7 +446,7 @@ def estimate_betas(
     n_coefs = len(coef_names)
 
     results = []
-    sorted_data = data.sort([id_col, "date"], maintain_order=True)
+    sorted_data = data.sort([id_col, date_col], maintain_order=True)
     for group in sorted_data.partition_by(id_col, maintain_order=True):
         values = group.select(
             [pl.col(c).cast(pl.Float64) for c in model_vars]
@@ -434,7 +460,7 @@ def estimate_betas(
                 results.append(
                     _betas_frame(
                         group.get_column(id_col),
-                        group.get_column("date"),
+                        group.get_column(date_col),
                         np.full((group.height, n_coefs), np.nan),
                         coef_names,
                     )
@@ -452,7 +478,7 @@ def estimate_betas(
             index = np.arange(pos.size)
         else:
             index = (
-                group.select(_period_index_expr("date", period).alias("_i"))
+                group.select(_period_index_expr(date_col, period).alias("_i"))
                 .get_column("_i")
                 .to_numpy()[pos]
             )
@@ -467,7 +493,7 @@ def estimate_betas(
             results.append(
                 _betas_frame(
                     group.get_column(id_col),
-                    group.get_column("date"),
+                    group.get_column(date_col),
                     full,
                     coef_names,
                 )
@@ -475,7 +501,7 @@ def estimate_betas(
         else:
             # One row per period, dated at the start of that period.
             period_dates = (
-                group.get_column("date")
+                group.get_column(date_col)
                 .dt.truncate(_LOOKBACK_TRUNCATE[period])
                 .gather(pos)
                 .gather(start)
@@ -493,12 +519,12 @@ def estimate_betas(
         return pl.DataFrame(
             schema={
                 id_col: data.schema[id_col],
-                "date": data.schema["date"],
+                date_col: data.schema[date_col],
                 **{name: pl.Float64 for name in coef_names},
             }
         )
 
-    out = pl.concat(results).select([id_col, "date"] + coef_names)
+    out = pl.concat(results).select([id_col, date_col] + coef_names)
     if period is not None:
         # Windows with fewer than 'min_obs' observations are dropped
         # rather than returned as null rows.

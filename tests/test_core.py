@@ -287,16 +287,36 @@ def test_estimate_betas_match_per_window_ols(
     )
 
 
-def test_estimate_betas_custom_id_column(
+def test_estimate_betas_custom_data_options(
     sample_data: pl.DataFrame,
 ) -> None:
-    """A non-default stock identifier column is honored."""
-    renamed = sample_data.rename({"permno": "gvkey"})
+    """Non-default identifier and date columns are honored."""
+    renamed = sample_data.rename({"permno": "gvkey", "date": "day"})
     result = estimate_betas(
-        renamed, "ret_excess ~ mkt_excess", "30d", id_col="gvkey"
+        renamed,
+        "ret_excess ~ mkt_excess",
+        "30d",
+        data_options={"id": "gvkey", "date": "day"},
     )
-    assert "gvkey" in result.columns
-    assert "permno" not in result.columns
+    assert result.columns[:2] == ["gvkey", "day"]
+    expected = estimate_betas(sample_data, "ret_excess ~ mkt_excess", "30d")
+    assert result.rename({"gvkey": "permno", "day": "date"}).equals(expected)
+
+
+def test_estimate_betas_rejects_a_regressor_named_intercept(
+    sample_data: pl.DataFrame,
+) -> None:
+    data = sample_data.rename({"mkt_excess": "intercept"})
+    with pytest.raises(ValueError, match="may be called 'intercept'"):
+        estimate_betas(data, "ret_excess ~ intercept", "30d")
+
+
+def test_estimate_betas_warns_when_lookback_is_below_num_params(
+    sample_data: pl.DataFrame,
+) -> None:
+    data = sample_data.with_columns(smb=pl.col("mkt_excess") * 2)
+    with pytest.warns(UserWarning, match="too low"):
+        estimate_betas(data, "ret_excess ~ mkt_excess + smb", "1d", min_obs=1)
 
 
 def test_estimate_betas_invalid_formula_raises(
@@ -852,10 +872,10 @@ def test_breakpoint_options_custom():
     options = breakpoint_options(
         n_portfolios=5,
         percentiles=[0.2, 0.4, 0.6, 0.8],
-        breakpoint_exchanges="NYSE",
+        breakpoints_exchanges="NYSE",
     )
     assert options["n_portfolios"] == 5, "Custom n_portfolios should be 5"
-    assert options["breakpoint_exchanges"] == "NYSE", (
+    assert options["breakpoints_exchanges"] == "NYSE", (
         "Custom exchange should be 'NYSE'"
     )
 
