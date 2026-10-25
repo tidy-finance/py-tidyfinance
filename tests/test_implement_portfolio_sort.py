@@ -102,6 +102,26 @@ def test_errors_when_portfolio_sort_options_has_wrong_shape():
         )
 
 
+def test_errors_when_portfolio_sort_options_is_missing():
+    """Test portfolio_sort_options is required although it has a default
+    so that it can follow skip, as in R."""
+    with pytest.raises(ValueError, match="portfolio_sort_options"):
+        implement_portfolio_sort(make_data(), "size", "univariate")
+
+
+def test_portfolio_sort_options_follows_skip_as_in_r():
+    """Test the arguments are in the order of the R function."""
+    import inspect
+
+    params = list(inspect.signature(implement_portfolio_sort).parameters)
+    assert params[3:7] == [
+        "rebalancing_month",
+        "holding_period",
+        "skip",
+        "portfolio_sort_options",
+    ]
+
+
 def test_delegates_to_filter_and_compute_on_valid_inputs():
     """Test delegates to filter and compute on valid inputs."""
     data = make_data()

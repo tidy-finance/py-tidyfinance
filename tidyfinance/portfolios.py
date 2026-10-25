@@ -131,127 +131,6 @@ def data_options(
     }
 
 
-def assign_portfolio(
-    data: pl.DataFrame,
-    sorting_variable: str,
-    breakpoint_options: dict = None,
-    breakpoint_function=None,
-    data_options: dict = None,
-) -> pl.Series:
-    """Assign data points to portfolios based on a sorting variable.
-
-    Users may pass a custom function to compute breakpoints. The
-    function must take 'data' and 'sorting_variable' as the first two
-    arguments, then 'breakpoint_options' and 'data_options'. The
-    function must return an ascending sequence of breakpoints.
-    Defaults to compute_breakpoints.
-
-    Parameters
-    ----------
-    data : pl.DataFrame
-        Dataset for portfolio assignment.
-    sorting_variable : str
-        Column in 'data' used for sorting and portfolio assignment.
-    breakpoint_options : dict, optional
-        Named arguments passed to 'breakpoint_function'. Typically
-        produced by breakpoint_options.
-    breakpoint_function : callable, optional
-        Function to compute breakpoints. Must return an ascending
-        sequence. Defaults to compute_breakpoints.
-    data_options : dict, optional
-        Column-name mapping (see data_options). Passed through to
-        'breakpoint_function'.
-
-    Returns
-    -------
-    pl.Series
-        Portfolio assignments as an Int64 series aligned with the
-        input rows. Each entry is the 1-indexed portfolio number;
-        values outside the breakpoint range fall into the boundary
-        portfolios. Missing inputs are returned as null.
-
-    Examples
-    --------
-    ```python
-    import numpy as np
-    import polars as pl
-    from tidyfinance import assign_portfolio, breakpoint_options
-    rng = np.random.default_rng(42)
-    data = pl.DataFrame({
-        'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
-        'market_cap': rng.uniform(1, 100, 100),
-    })
-    # Quintile portfolios on market_cap with NYSE breakpoints
-    assign_portfolio(
-        data,
-        sorting_variable='market_cap',
-        breakpoint_options=breakpoint_options(
-            n_portfolios=5,
-            breakpoints_exchanges='NYSE',
-        ),
-    )
-    ```
-    """
-    if breakpoint_function is None:
-        breakpoint_function = compute_breakpoints
-
-    if sorting_variable not in data.columns:
-        raise ValueError(
-            f"Sorting variable '{sorting_variable}' not found in data."
-        )
-
-    x = data.get_column(sorting_variable).cast(pl.Float64).fill_nan(None)
-    n = len(x)
-
-    # Constant check: count of distinct non-missing values.
-    non_na = x.drop_nulls().to_numpy()
-    if len(np.unique(non_na)) <= 1:
-        warnings.warn(
-            "The sorting variable is constant and only one portfolio "
-            "is returned.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return pl.Series("portfolio", [1] * n, dtype=pl.Int64)
-
-    breakpoints = breakpoint_function(
-        data, sorting_variable, breakpoint_options, data_options
-    )
-
-    breakpoints = np.asarray(breakpoints, dtype=float)
-    if np.any(np.isnan(breakpoints)):
-        warnings.warn(
-            "No portfolios were assigned due to missing breakpoints.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return pl.Series("portfolio", [None] * n, dtype=pl.Int64)
-
-    # The outer breakpoint edges are treated as -/+ infinity so values
-    # outside the original range still fall into a boundary portfolio.
-    # Intervals are closed on the left and open on the right, so the
-    # portfolio index is the count of interior breakpoints <= x plus 1.
-    xa = x.to_numpy()
-    assignments = np.searchsorted(breakpoints[1:-1], xa, side="right") + 1
-    result = pl.Series("portfolio", assignments, dtype=pl.Int64)
-    result = pl.select(
-        pl.when(x.is_null()).then(None).otherwise(result).alias("portfolio")
-    ).to_series()
-
-    # Cluster warning: number of populated portfolios differs from
-    # the expected count (ties collapsed adjacent breakpoints).
-    n_expected = len(breakpoints) - 1
-    n_actual = result.drop_nulls().n_unique()
-    if n_actual != n_expected:
-        warnings.warn(
-            "The number of portfolios differs from the specified "
-            "parameter due to clusters in the sorting variable.",
-            UserWarning,
-            stacklevel=2,
-        )
-    return result
-
-
 def breakpoint_options(
     n_portfolios: int = None,
     percentiles: list = None,
@@ -666,6 +545,124 @@ def compute_breakpoints(
 
     breakpoints[1:] += 1e-20
     return breakpoints
+
+
+def assign_portfolio(
+    data: pl.DataFrame,
+    sorting_variable: str,
+    breakpoint_options: dict = None,
+    breakpoint_function=compute_breakpoints,
+    data_options: dict = None,
+) -> pl.Series:
+    """Assign data points to portfolios based on a sorting variable.
+
+    Users may pass a custom function to compute breakpoints. The
+    function must take 'data' and 'sorting_variable' as the first two
+    arguments, then 'breakpoint_options' and 'data_options'. The
+    function must return an ascending sequence of breakpoints.
+    Defaults to compute_breakpoints.
+
+    Parameters
+    ----------
+    data : pl.DataFrame
+        Dataset for portfolio assignment.
+    sorting_variable : str
+        Column in 'data' used for sorting and portfolio assignment.
+    breakpoint_options : dict, optional
+        Named arguments passed to 'breakpoint_function'. Typically
+        produced by breakpoint_options.
+    breakpoint_function : callable, optional
+        Function to compute breakpoints. Must return an ascending
+        sequence. Defaults to compute_breakpoints.
+    data_options : dict, optional
+        Column-name mapping (see data_options). Passed through to
+        'breakpoint_function'.
+
+    Returns
+    -------
+    pl.Series
+        Portfolio assignments as an Int64 series aligned with the
+        input rows. Each entry is the 1-indexed portfolio number;
+        values outside the breakpoint range fall into the boundary
+        portfolios. Missing inputs are returned as null.
+
+    Examples
+    --------
+    ```python
+    import numpy as np
+    import polars as pl
+    from tidyfinance import assign_portfolio, breakpoint_options
+    rng = np.random.default_rng(42)
+    data = pl.DataFrame({
+        'exchange': rng.choice(['NYSE', 'NASDAQ'], 100),
+        'market_cap': rng.uniform(1, 100, 100),
+    })
+    # Quintile portfolios on market_cap with NYSE breakpoints
+    assign_portfolio(
+        data,
+        sorting_variable='market_cap',
+        breakpoint_options=breakpoint_options(
+            n_portfolios=5,
+            breakpoints_exchanges='NYSE',
+        ),
+    )
+    ```
+    """
+    if sorting_variable not in data.columns:
+        raise ValueError(
+            f"Sorting variable '{sorting_variable}' not found in data."
+        )
+
+    x = data.get_column(sorting_variable).cast(pl.Float64).fill_nan(None)
+    n = len(x)
+
+    # Constant check: count of distinct non-missing values.
+    non_na = x.drop_nulls().to_numpy()
+    if len(np.unique(non_na)) <= 1:
+        warnings.warn(
+            "The sorting variable is constant and only one portfolio "
+            "is returned.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pl.Series("portfolio", [1] * n, dtype=pl.Int64)
+
+    breakpoints = breakpoint_function(
+        data, sorting_variable, breakpoint_options, data_options
+    )
+
+    breakpoints = np.asarray(breakpoints, dtype=float)
+    if np.any(np.isnan(breakpoints)):
+        warnings.warn(
+            "No portfolios were assigned due to missing breakpoints.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return pl.Series("portfolio", [None] * n, dtype=pl.Int64)
+
+    # The outer breakpoint edges are treated as -/+ infinity so values
+    # outside the original range still fall into a boundary portfolio.
+    # Intervals are closed on the left and open on the right, so the
+    # portfolio index is the count of interior breakpoints <= x plus 1.
+    xa = x.to_numpy()
+    assignments = np.searchsorted(breakpoints[1:-1], xa, side="right") + 1
+    result = pl.Series("portfolio", assignments, dtype=pl.Int64)
+    result = pl.select(
+        pl.when(x.is_null()).then(None).otherwise(result).alias("portfolio")
+    ).to_series()
+
+    # Cluster warning: number of populated portfolios differs from
+    # the expected count (ties collapsed adjacent breakpoints).
+    n_expected = len(breakpoints) - 1
+    n_actual = result.drop_nulls().n_unique()
+    if n_actual != n_expected:
+        warnings.warn(
+            "The number of portfolios differs from the specified "
+            "parameter due to clusters in the sorting variable.",
+            UserWarning,
+            stacklevel=2,
+        )
+    return result
 
 
 def _compute_min_mktcap(
@@ -1491,8 +1488,8 @@ def compute_portfolio_returns(
     skip: int = 0,
     breakpoint_options_main: dict = None,
     breakpoint_options_secondary: dict = None,
-    breakpoint_function_main=None,
-    breakpoint_function_secondary=None,
+    breakpoint_function_main=compute_breakpoints,
+    breakpoint_function_secondary=compute_breakpoints,
     min_portfolio_size: int = 1,
     cap_weight: float = 0.8,
     cap_weight_exchanges="NYSE",
@@ -1709,10 +1706,6 @@ def compute_portfolio_returns(
             "earnings": "ib",
         }
 
-    if breakpoint_function_main is None:
-        breakpoint_function_main = compute_breakpoints
-    if breakpoint_function_secondary is None:
-        breakpoint_function_secondary = compute_breakpoints
 
     if isinstance(sorting_variables, str):
         sorting_variables = [sorting_variables]
@@ -2948,12 +2941,12 @@ def implement_portfolio_sort(
     data: pl.DataFrame,
     sorting_variables,
     sorting_method: str,
-    portfolio_sort_options: dict,
     rebalancing_month: int = None,
     holding_period: int = 1,
     skip: int = 0,
-    breakpoint_function_main=None,
-    breakpoint_function_secondary=None,
+    portfolio_sort_options: dict | None = None,
+    breakpoint_function_main=compute_breakpoints,
+    breakpoint_function_secondary=compute_breakpoints,
     min_portfolio_size: int = 1,
     cap_weight: float = 0.8,
     cap_weight_exchanges="NYSE",
@@ -2977,11 +2970,6 @@ def implement_portfolio_sort(
     sorting_method : str
         Sorting method to use. One of 'univariate',
         'bivariate-dependent', or 'bivariate-independent'.
-    portfolio_sort_options : dict
-        Dict produced by 'portfolio_sort_options', bundling filter and
-        breakpoint specifications. The accepted entries include
-        'filter_options', 'breakpoint_options_main', and
-        'breakpoint_options_secondary'.
     rebalancing_month : int, optional
         Month in which portfolios are rebalanced annually. None (the
         default) means monthly rebalancing. Also determines the
@@ -2995,6 +2983,11 @@ def implement_portfolio_sort(
         screens only decide which stocks enter the cohort formed in a
         period; a stock that fails a screen later stays in its earlier
         cohorts until their holding period ends.
+    portfolio_sort_options : dict
+        Dict produced by 'portfolio_sort_options', bundling filter and
+        breakpoint specifications. The accepted entries include
+        'filter_options', 'breakpoint_options_main', and
+        'breakpoint_options_secondary'. Required.
     breakpoint_function_main : callable, optional
         Function used to compute breakpoints for the main sorting
         variable. Defaults to 'compute_breakpoints'.
