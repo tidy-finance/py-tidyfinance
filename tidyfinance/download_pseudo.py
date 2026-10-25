@@ -3,7 +3,9 @@
 Generates synthetic CRSP, Compustat, and CCM-links data with the same
 column layout as the real WRDS tables, for testing and tutorials
 without a WRDS subscription. Values are simulated and not suitable
-for inference.
+for inference. The R package simulates the same schema and
+distributions with R's random number generator, so the values for a
+given seed differ between the two packages.
 """
 
 from __future__ import annotations
@@ -282,6 +284,9 @@ def download_data_pseudo_crsp(
         identical output across calls and match the identifier universe
         used by 'download_data_pseudo_compustat' and
         'download_data_pseudo_ccm_links'.
+        The draws come from numpy's random generator, so the
+        simulated values differ from those of the R package for the
+        same seed; the schema and the distributions are the same.
 
     Returns
     -------
@@ -561,6 +566,9 @@ def download_data_pseudo_compustat(
         identical output across calls and match the identifier universe
         used by 'download_data_pseudo_crsp' and
         'download_data_pseudo_ccm_links'.
+        The draws come from numpy's random generator, so the
+        simulated values differ from those of the R package for the
+        same seed; the schema and the distributions are the same.
 
     Returns
     -------
@@ -847,6 +855,9 @@ def download_data_pseudo_ccm_links(
         Number of pseudo firms in the universe.
     seed : int, default 1234
         Random seed controlling the pseudo identifier universe.
+        The draws come from numpy's random generator, so the
+        simulated values differ from those of the R package for the
+        same seed; the schema and the distributions are the same.
     linktype : list of str, optional
         Accepted for API compatibility with
         'download_data_wrds_ccm_links'; ignored for pseudo data.
