@@ -230,7 +230,9 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
     # Breakpoint dataset cases
     read_kwargs = {}
     if stem.endswith("_Breakpoints"):
-        if "-" in stem:
+        # Ratio files (BE-ME, E-P, CF-P, D-P) count the stocks with
+        # non-positive and positive ratios; the others count all stocks.
+        if "-" in stem and stem != "Prior_2-12_Breakpoints":
             cols = ["<=0", ">0"]
         else:
             cols = ["Count"]
@@ -239,7 +241,6 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
             ["Date"] + cols + [f"{lo}-{hi}" for lo, hi in zip(r, r[1:])]
         )
         read_kwargs["has_header"] = False
-        read_kwargs["skip_rows"] = 1 if stem != "Prior_2-12_Breakpoints" else 3
 
     start = _parse_date(start_date) if start_date else None
     end = _parse_date(end_date) if end_date else None
@@ -254,12 +255,18 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
     for src in tables:
         match = re.search(r"^\s*,", src, re.M)  # the table starts there
         table_start = 0 if not match else match.start()
+        table = "Date" + src[table_start:]
+        if read_kwargs:
+            # Breakpoint files are read without a header: drop the header
+            # row if the table has one, and keep the first data row
+            # otherwise.
+            table = src[table_start:]
+            if match:
+                table = table.split("\r\n", 1)[1]
 
         # raw to dataframe
         try:
-            df = pl.read_csv(
-                ("Date" + src[table_start:]).encode("utf-8"), **read_kwargs
-            )
+            df = pl.read_csv(table.encode("utf-8"), **read_kwargs)
         except Exception as e:
             warnings.warn(str(e), UserWarning, stacklevel=2)
             continue

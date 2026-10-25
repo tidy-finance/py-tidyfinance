@@ -556,6 +556,56 @@ def test_famafrench_downloader_applies_date_filter():
     assert result["date"].max() <= dt.date(2010, 12, 31)
 
 
+def _breakpoint_rows(first_month, n_lead):
+    """Rows of a breakpoint file: date, n_lead counts, 20 percentiles."""
+    pct = ",".join(f"{p:.2f}" for p in range(5, 105, 5))
+    lead = ",".join(["100"] * n_lead)
+    year, month = first_month
+    rows = []
+    for i in range(80):
+        y, m = year + (month - 1 + i) // 12, (month - 1 + i) % 12 + 1
+        rows.append(f"{y}{m:02d},{lead},{pct}")
+    return "\r\n".join(rows)
+
+
+@pytest.mark.parametrize(
+    "file_url",
+    ["ftp/ME_Breakpoints_CSV.zip", "ftp/Prior_2-12_Breakpoints_CSV.zip"],
+)
+def test_famafrench_downloader_keeps_first_row_of_headerless_breakpoints(
+    file_url,
+):
+    """Test headerless breakpoint files keep their first row and count."""
+    response = _make_french_zip(_breakpoint_rows((1925, 12), 1))
+
+    with patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    ):
+        result = _famafrench_downloader(file_url)
+
+    assert result.columns[:3] == ["date", "Count", "0-5"]
+    assert result.columns[-1] == "95-100"
+    assert result.height == 80
+    assert result["date"][0] == dt.date(1925, 12, 1)
+    assert result["Count"][0] == 100
+
+
+def test_famafrench_downloader_drops_header_of_ratio_breakpoints():
+    """Test ratio breakpoint files drop their header row."""
+    response = _make_french_zip(
+        "  ,<= 0,>0\r\n" + _breakpoint_rows((1926, 1), 2)
+    )
+
+    with patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    ):
+        result = _famafrench_downloader("ftp/BE-ME_Breakpoints_CSV.zip")
+
+    assert result.columns[:4] == ["date", "<=0", ">0", "0-5"]
+    assert result.height == 80
+    assert result["date"][0] == dt.date(1926, 1, 1)
+
+
 def test_famafrench_downloader_propagates_download_error():
     """Test _famafrench_downloader propagates HTTP download errors."""
     response = MagicMock()
