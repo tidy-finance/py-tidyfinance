@@ -16,7 +16,7 @@ from tidyfinance.download_open_source import (  # noqa: E402
     _check_excel_reader,
     _damodaran_data_year,
     _download_damodaran_file,
-    _download_data_damodaran,
+    download_data_damodaran,
     _parse_damodaran_wacc,
 )
 from tidyfinance.supported_datasets import list_supported_datasets  # noqa: E402
@@ -258,7 +258,7 @@ def test_downloads_the_current_file_by_default():
             side_effect=fake_download,
         ),
     ):
-        result = _download_data_damodaran()
+        result = download_data_damodaran()
 
     assert requested == ["datasets/wacc.xls"]
     assert result["region"].to_list() == ["us"]
@@ -286,7 +286,7 @@ def test_stacks_archived_years_and_falls_back_to_the_current_file():
             side_effect=fake_download,
         ),
     ):
-        result = _download_data_damodaran(
+        result = download_data_damodaran(
             region="europe", year=range(2023, 2026)
         )
 
@@ -316,7 +316,7 @@ def test_warns_about_unavailable_years():
         ),
     ):
         with pytest.warns(UserWarning, match=r"us \(1997\)"):
-            result = _download_data_damodaran(year=[1998, 1997])
+            result = download_data_damodaran(year=[1998, 1997])
 
     assert result["year"].to_list() == [1998]
 
@@ -331,7 +331,7 @@ def test_returns_empty_dataframe_after_download_failure():
         ),
     ):
         with pytest.warns(UserWarning) as record:
-            result = _download_data_damodaran()
+            result = download_data_damodaran()
 
     messages = [str(w.message) for w in record]
     assert any("No Damodaran data" in m for m in messages)
@@ -344,11 +344,11 @@ def test_validates_arguments():
     """Test validates arguments."""
     with patch("tidyfinance.download_open_source._check_excel_reader"):
         with pytest.raises(ValueError, match="Unsupported Damodaran"):
-            _download_data_damodaran("betas")
+            download_data_damodaran("betas")
         with pytest.raises(ValueError, match="Unsupported region"):
-            _download_data_damodaran(region="mars")
+            download_data_damodaran(region="mars")
         with pytest.raises(ValueError, match="whole numbers"):
-            _download_data_damodaran(year=2020.5)
+            download_data_damodaran(year=2020.5)
 
 
 def test_explains_a_missing_excel_reader():
@@ -367,7 +367,7 @@ def test_download_data_forwards_to_download_data_damodaran():
         return pl.DataFrame({"ok": [True]})
 
     with patch(
-        "tidyfinance.download._download_data_damodaran",
+        "tidyfinance.download.download_data_damodaran",
         side_effect=fake_damodaran,
     ):
         download_data("Damodaran", region="japan")

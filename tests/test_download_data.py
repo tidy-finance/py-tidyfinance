@@ -61,7 +61,7 @@ def test_download_data_rejects_unsupported_domain():
 def test_download_data_legacy_type_kwarg_warns():
     """Emit DeprecationWarning when 'type=' is used and translate it."""
     with patch(
-        "tidyfinance.download._download_data_factors_ff",
+        "tidyfinance.download.download_data_factors_ff",
         return_value="sentinel",
     ):
         with pytest.warns(DeprecationWarning, match="'type' is deprecated"):
@@ -72,7 +72,7 @@ def test_download_data_legacy_type_kwarg_warns():
 def test_download_data_legacy_type_as_domain_warns():
     """Emit DeprecationWarning when a legacy type is passed as 'domain'."""
     with patch(
-        "tidyfinance.download._download_data_factors_ff",
+        "tidyfinance.download.download_data_factors_ff",
         return_value="sentinel",
     ):
         with pytest.warns(DeprecationWarning, match="legacy"):
@@ -97,7 +97,7 @@ def test_download_data_pseudo_dispatches_to_simulate():
 
 def test_download_data_forwards_dataset_to_global_factor_data():
     """A missing 'dataset' defaults to 'factors'; explicit values pass through."""
-    with patch("tidyfinance.download._download_data_jkp") as mock_jkp:
+    with patch("tidyfinance.download.download_data_jkp") as mock_jkp:
         mock_jkp.return_value = "sentinel"
 
         download_data(domain="Global Factor Data")
@@ -109,7 +109,7 @@ def test_download_data_forwards_dataset_to_global_factor_data():
 
 def test_download_data_forwards_dataset_to_stambaugh_yuan():
     """A missing 'dataset' defaults to 'monthly'; explicit values pass through."""
-    with patch("tidyfinance.download._download_data_stambaugh_yuan") as mock_sy:
+    with patch("tidyfinance.download.download_data_stambaugh_yuan") as mock_sy:
         mock_sy.return_value = "sentinel"
 
         download_data(domain="Stambaugh-Yuan")
@@ -120,9 +120,9 @@ def test_download_data_forwards_dataset_to_stambaugh_yuan():
 
 
 def test_download_data_dispatches_pastor_stambaugh():
-    """domain='Pastor-Stambaugh' routes to _download_data_pastor_stambaugh."""
+    """domain='Pastor-Stambaugh' routes to download_data_pastor_stambaugh."""
     with patch(
-        "tidyfinance.download._download_data_pastor_stambaugh",
+        "tidyfinance.download.download_data_pastor_stambaugh",
         return_value="sentinel",
     ) as mock_ps:
         result = download_data(
@@ -139,7 +139,7 @@ def test_download_data_dispatches_pastor_stambaugh():
 def test_download_data_legacy_domain_alias_warns():
     """Emit DeprecationWarning when a legacy machine-readable domain is used."""
     with patch(
-        "tidyfinance.download._download_data_factors_ff",
+        "tidyfinance.download.download_data_factors_ff",
         return_value="sentinel",
     ):
         with pytest.warns(DeprecationWarning, match="is deprecated"):

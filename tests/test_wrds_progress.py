@@ -15,7 +15,7 @@ sys.path.insert(
 
 from tidyfinance.download_pseudo import _simulate_pseudo_data  # noqa: E402
 from tidyfinance.download_wrds import (  # noqa: E402
-    _download_data_wrds_ccm_links,
+    download_data_wrds_ccm_links,
     _report_batch_progress,
     get_wrds_connection,
 )
@@ -106,7 +106,7 @@ def test_download_reports_its_step_after_connecting(capsys):
             return_value=_ccm_links_result(),
         ),
     ):
-        _download_data_wrds_ccm_links()
+        download_data_wrds_ccm_links()
 
     err = capsys.readouterr().err
     messages = [
@@ -131,7 +131,7 @@ def test_download_reports_a_failed_download(capsys):
         ),
     ):
         with pytest.raises(RuntimeError, match="query failed"):
-            _download_data_wrds_ccm_links()
+            download_data_wrds_ccm_links()
 
     err = capsys.readouterr().err
     assert "Downloading CRSP-Compustat links from WRDS failed." in err
@@ -142,7 +142,7 @@ def test_download_is_not_announced_when_the_connection_fails(capsys):
     """Test nothing is said about the download if it never started."""
     with _engine(Exception("connection refused")):
         with pytest.raises(ConnectionError):
-            _download_data_wrds_ccm_links()
+            download_data_wrds_ccm_links()
 
     err = capsys.readouterr().err
     assert "Connection to WRDS failed." in err
@@ -158,7 +158,7 @@ def test_download_is_silent_with_quiet(capsys):
             return_value=_ccm_links_result(),
         ),
     ):
-        _download_data_wrds_ccm_links(quiet=True)
+        download_data_wrds_ccm_links(quiet=True)
 
     assert capsys.readouterr().err == ""
 

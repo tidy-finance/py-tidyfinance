@@ -13,7 +13,7 @@ sys.path.insert(
 )
 
 import tidyfinance as tf  # noqa: E402
-from tidyfinance.download_wrds import _download_data_wrds_trace_enhanced  # noqa: E402
+from tidyfinance.download_wrds import download_data_wrds_trace_enhanced  # noqa: E402
 from tidyfinance.download_wrds import process_trace_data  # noqa: E402
 
 
@@ -28,7 +28,7 @@ def _restore_backend():
 def test_download_data_wrds_trace_enhanced_validates_cusips():
     """Test download_data_wrds_trace_enhanced validates cusips."""
     with pytest.raises(ValueError, match="CUSIP"):
-        _download_data_wrds_trace_enhanced(["123", None])
+        download_data_wrds_trace_enhanced(["123", None])
 
 
 def test_download_data_wrds_trace_enhanced_cleans_trace_data():
@@ -121,7 +121,7 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
         patch("tidyfinance.download_wrds.disconnect_connection"),
         patch("tidyfinance.download_wrds._read_sql", return_value=trace),
     ):
-        out = _download_data_wrds_trace_enhanced(
+        out = download_data_wrds_trace_enhanced(
             ["00101JAH9"], "2010-01-01", "2014-01-01"
         )
 

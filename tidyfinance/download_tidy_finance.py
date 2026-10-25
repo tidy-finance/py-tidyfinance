@@ -130,7 +130,7 @@ def _cast_date_column(data: pl.DataFrame, column: str = "date") -> pl.DataFrame:
     return data.with_columns(pl.col(column).cast(pl.Date))
 
 
-def _download_data_risk_free(
+def download_data_risk_free(
     start_date: str = None,
     end_date: str = None,
     frequency: str = "monthly",
@@ -237,7 +237,7 @@ def _download_data_risk_free(
 # %% hugging face functions for tidy finance data
 
 
-def _get_available_huggingface_files(
+def get_available_huggingface_files(
     organization: str, dataset: str
 ) -> pl.DataFrame:
     """
@@ -265,10 +265,8 @@ def _get_available_huggingface_files(
     Examples
     --------
     ```python
-    from tidyfinance.download_tidy_finance import (
-        _get_available_huggingface_files,
-    )
-    _get_available_huggingface_files('voigtstefan', 'sp500')
+    from tidyfinance import get_available_huggingface_files
+    get_available_huggingface_files('voigtstefan', 'sp500')
     ```
     """
     api_url = (
@@ -300,7 +298,7 @@ def _get_available_huggingface_files(
 
 # Session cache for the factor library grid, one grid per revision. The
 # grid has more than four million rows, so it is downloaded at most once
-# per session and revision by '_download_factor_library_grid'.
+# per session and revision by 'download_factor_library_grid'.
 _factor_library_cache: dict = {}
 
 _FACTOR_LIBRARY_RETURNS_SCHEMA = {
@@ -546,7 +544,7 @@ def _read_factor_library_file(
     return data
 
 
-def _download_factor_library_grid(
+def download_factor_library_grid(
     refresh: bool = False, grid_revision: str = "main"
 ) -> pl.DataFrame:
     """
@@ -702,7 +700,7 @@ def _filter_factor_library_grid(
             if col not in filters and col not in unrestricted:
                 filters[col] = default
 
-    grid = _download_factor_library_grid(grid_revision=grid_revision)
+    grid = download_factor_library_grid(grid_revision=grid_revision)
     for col, value in filters.items():
         values = value if isinstance(value, (list, tuple)) else [value]
         if values == [None]:
@@ -759,7 +757,7 @@ def _download_factor_library_table(
             "Check that your filter criteria match at least one portfolio."
         )
 
-    id_grid = _download_factor_library_grid(grid_revision=grid_revision).filter(
+    id_grid = download_factor_library_grid(grid_revision=grid_revision).filter(
         pl.col("id").is_in(ids)
     )
     if id_grid.is_empty():
@@ -820,7 +818,7 @@ def _download_factor_library_table(
     return data.join(id_grid, on="id", how="inner", maintain_order="left")
 
 
-def _download_factor_library_ids(
+def download_factor_library_ids(
     ids: list, revision: str = "main", grid_revision: str = "main"
 ) -> pl.DataFrame:
     """
@@ -1036,7 +1034,7 @@ def _download_data_huggingface_factor_library(
     return result
 
 
-def _download_data_huggingface(
+def download_data_huggingface(
     dataset: str = None,
     start_date: str | date = None,
     end_date: str | date = None,
@@ -1149,7 +1147,7 @@ def _download_data_huggingface(
         'factor_library_costs': either named arguments
         used to filter the portfolio grid, or 'ids=<vector>' to bypass
         the grid filter and download specific portfolios directly via
-        '_download_factor_library_ids'. Filter arguments take the form
+        'download_factor_library_ids'. Filter arguments take the form
         'column=value', where 'value' may be a list or tuple to match
         multiple levels. Optionally pass 'fill_all=True' to leave
         unspecified columns unrestricted (default False, i.e.,
@@ -1187,27 +1185,25 @@ def _download_data_huggingface(
     Examples
     --------
     ```python
-    from tidyfinance.download_tidy_finance import (
-        _download_data_huggingface,
-    )
-    _download_data_huggingface(
+    from tidyfinance import download_data_huggingface
+    download_data_huggingface(
         'high_frequency_sp500', '2007-07-26', '2007-07-27'
     )
-    _download_data_huggingface(
+    download_data_huggingface(
         'factor_library',
         sorting_variable='high52',
         rebalancing='annual',
     )
-    _download_data_huggingface(
+    download_data_huggingface(
         'factor_library', sorting_variable='assetgrowth', fill_all=True
     )
-    _download_data_huggingface(
+    download_data_huggingface(
         'factor_library',
         sorting_variable='size',
         start_date='2000-01-01',
         end_date='2020-12-31',
     )
-    _download_data_huggingface('factor_library', ids=[1, 2, 3])
+    download_data_huggingface('factor_library', ids=[1, 2, 3])
     ```
     """
     if type is not None:
@@ -1245,7 +1241,7 @@ def _download_data_huggingface(
         if end_date is None:
             end_date = "2007-07-27"
 
-        available_files = _get_available_huggingface_files(
+        available_files = get_available_huggingface_files(
             organization, dataset_name
         )
         available_files = available_files.with_columns(
@@ -1291,7 +1287,7 @@ def _download_data_huggingface(
         )
 
     if dataset == "factor_library_grid":
-        return _download_factor_library_grid(**kwargs)
+        return download_factor_library_grid(**kwargs)
 
     if dataset == "factor_library_persistence":
         return _download_factor_library_persistence(

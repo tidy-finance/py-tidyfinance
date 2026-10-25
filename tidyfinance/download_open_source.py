@@ -309,7 +309,7 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
         return df
 
 
-def _download_data_factors_ff(
+def download_data_factors_ff(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -449,7 +449,7 @@ def _download_data_factors_ff(
         return pl.DataFrame()
 
 
-def _download_data_factors_q(
+def download_data_factors_q(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -595,7 +595,7 @@ def _download_data_factors_q(
     return raw_data
 
 
-def _download_data_macro_predictors(
+def download_data_macro_predictors(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -784,7 +784,7 @@ def _download_data_macro_predictors(
     return raw_data
 
 
-def _download_data_constituents(
+def download_data_constituents(
     index: str = None, dataset: str = None, path=None, **kwargs
 ) -> pl.DataFrame:
     """
@@ -1036,7 +1036,7 @@ def _download_data_constituents(
     return df
 
 
-def _download_data_fred(
+def download_data_fred(
     series: str | list,
     start_date: str = None,
     end_date: str = None,
@@ -1330,7 +1330,7 @@ def _read_archive(
     return out
 
 
-def _download_data_fred_md(
+def download_data_fred_md(
     database: str = "FRED-MD",
     transform: bool = False,
     vintage: str = "latest",
@@ -1507,7 +1507,7 @@ def _download_fred_md_all(database: str, transform: bool) -> pl.DataFrame:
     return out.sort(["vintage", "date"])
 
 
-def _download_data_stock_prices(
+def download_data_stock_prices(
     symbols: str | list,
     start_date: str = None,
     end_date: str = None,
@@ -1647,7 +1647,7 @@ def _download_data_stock_prices(
     return df_all
 
 
-def _download_data_osap(
+def download_data_osap(
     start_date: str = None,
     end_date: str = None,
     sheet_id: str = "10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI",
@@ -1766,7 +1766,7 @@ def _download_data_osap(
     return raw_data
 
 
-def _download_data_pastor_stambaugh(
+def download_data_pastor_stambaugh(
     start_date: str = None,
     end_date: str = None,
     url: str = (
@@ -1882,7 +1882,7 @@ def _download_data_pastor_stambaugh(
     return processed_data
 
 
-def _download_data_stambaugh_yuan(
+def download_data_stambaugh_yuan(
     dataset: str = "monthly",
     start_date: str = None,
     end_date: str = None,
@@ -2336,7 +2336,7 @@ def _process_jkp_data(
     return data
 
 
-def _download_data_jkp(
+def download_data_jkp(
     dataset: str = "factors",
     region: str = "usa",
     factors: str = "all_factors",
@@ -2827,7 +2827,7 @@ def _download_damodaran_file(file_path: str) -> pl.DataFrame | None:
         return None
 
 
-def _download_data_damodaran(
+def download_data_damodaran(
     dataset: str = "wacc",
     region="us",
     year=None,

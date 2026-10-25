@@ -20,7 +20,7 @@ from ._internal import (
     _validate_dates,
     _validate_flag,
 )
-from .download_tidy_finance import _download_data_risk_free
+from .download_tidy_finance import download_data_risk_free
 from .supported_datasets import (
     _check_supported_dataset_wrds,
     _check_supported_dataset_wrds_crsp,
@@ -189,7 +189,7 @@ def _cast_columns(df: pl.DataFrame, dtypes: dict) -> pl.DataFrame:
     return df.with_columns(exprs) if exprs else df
 
 
-def _download_data_wrds(
+def download_data_wrds(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -271,17 +271,17 @@ def _download_data_wrds(
     _check_supported_dataset_wrds(dataset)
 
     if dataset.startswith("crsp"):
-        return _download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
+        return download_data_wrds_crsp(dataset, start_date, end_date, **kwargs)
     elif dataset.startswith("compustat"):
-        return _download_data_wrds_compustat(
+        return download_data_wrds_compustat(
             dataset, start_date, end_date, **kwargs
         )
     elif dataset == "ccm_links":
-        return _download_data_wrds_ccm_links(**kwargs)
+        return download_data_wrds_ccm_links(**kwargs)
     elif dataset == "fisd":
-        return _download_data_wrds_fisd(**kwargs)
+        return download_data_wrds_fisd(**kwargs)
     elif dataset == "trace_enhanced":
-        return _download_data_wrds_trace_enhanced(
+        return download_data_wrds_trace_enhanced(
             start_date=start_date, end_date=end_date, **kwargs
         )
     else:
@@ -405,7 +405,7 @@ def _crsp_step_label(arguments: dict):
 
 
 @_wrds_download_step(_crsp_step_label)
-def _download_data_wrds_crsp(
+def download_data_wrds_crsp(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -463,7 +463,7 @@ def _download_data_wrds_crsp(
         'exchcd' for 'v1'); a 'ValueError' is raised otherwise.
     add_ccm_links : bool, optional
         A boolean indicating whether CRSP-Compustat links should be
-        added automatically using '_download_data_wrds_ccm_links'.
+        added automatically using 'download_data_wrds_ccm_links'.
         Defaults to False.
     adjust_volume : bool, optional
         A boolean indicating whether daily CRSP trading volume data
@@ -752,7 +752,7 @@ def _download_data_wrds_crsp(
                 )
 
                 # Merge risk-free and compute excess return
-                risk_free_monthly = _download_data_risk_free(
+                risk_free_monthly = download_data_risk_free(
                     start_date=start_date, end_date=end_date
                 )
                 crsp_monthly = (
@@ -846,7 +846,7 @@ def _download_data_wrds_crsp(
                     _exchange_expr_v2(),
                     _industry_expr(pl.col("siccd")),
                 )
-                risk_free_monthly = _download_data_risk_free(
+                risk_free_monthly = download_data_risk_free(
                     start_date=start_date,
                     end_date=end_date,
                 )
@@ -880,7 +880,7 @@ def _download_data_wrds_crsp(
 
                 if len(permnos) > 0:
                     batches = math.ceil(len(permnos) / batch_size)
-                    risk_free_daily = _download_data_risk_free(
+                    risk_free_daily = download_data_risk_free(
                         start_date=start_date,
                         end_date=end_date,
                         frequency="daily",
@@ -1055,7 +1055,7 @@ def _download_data_wrds_crsp(
                 permnos = [str(p) for p in permnos["permno"].to_list()]
                 batches = math.ceil(len(permnos) / batch_size)
 
-                risk_free_daily = _download_data_risk_free(
+                risk_free_daily = download_data_risk_free(
                     start_date=start_date,
                     end_date=end_date,
                     frequency="daily",
@@ -1163,7 +1163,7 @@ def _download_data_wrds_crsp(
         disconnect_connection(wrds_connection)
 
     if add_ccm_links:
-        ccm_links = _download_data_wrds_ccm_links(quiet=quiet)
+        ccm_links = download_data_wrds_ccm_links(quiet=quiet)
         merged = processed_data.select("permno", "date").join(
             ccm_links, on="permno", how="inner", maintain_order="left"
         )
@@ -1183,7 +1183,7 @@ def _download_data_wrds_crsp(
 
 
 @_wrds_download_step("CRSP-Compustat links")
-def _download_data_wrds_ccm_links(
+def download_data_wrds_ccm_links(
     linktype: list[str] = ["LU", "LC"],
     linkprim: list[str] = ["P", "C"],
     quiet: bool = False,
@@ -1242,7 +1242,7 @@ def _compustat_step_label(arguments: dict):
 
 
 @_wrds_download_step(_compustat_step_label)
-def _download_data_wrds_compustat(
+def download_data_wrds_compustat(
     dataset: str = None,
     start_date: str = None,
     end_date: str = None,
@@ -1537,7 +1537,7 @@ def _download_data_wrds_compustat(
 
 
 @_wrds_download_step("FISD bond characteristics")
-def _download_data_wrds_fisd(
+def download_data_wrds_fisd(
     additional_columns: list = None, quiet: bool = False
 ) -> pl.DataFrame:
     """
@@ -1668,7 +1668,7 @@ def _download_data_wrds_fisd(
 
 
 @_wrds_download_step("enhanced TRACE data")
-def _download_data_wrds_trace_enhanced(
+def download_data_wrds_trace_enhanced(
     cusips: list,
     start_date: str = None,
     end_date: str = None,

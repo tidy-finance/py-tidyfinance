@@ -15,7 +15,7 @@ sys.path.insert(
 from tidyfinance.download_open_source import (  # noqa: E402
     _build_jkp_reference_url,
     _build_jkp_url,
-    _download_data_jkp,
+    download_data_jkp,
 )
 from tidyfinance.utilities import list_supported_jkp_factors  # noqa: E402
 
@@ -32,7 +32,7 @@ def _manifest():
     }
 
 
-# %% _download_data_jkp: factors
+# %% download_data_jkp: factors
 
 
 def test_downloads_and_processes_monthly_factor_returns():
@@ -57,7 +57,7 @@ def test_downloads_and_processes_monthly_factor_returns():
             return_value=raw,
         ),
     ):
-        result = _download_data_jkp(region="usa", factors="mkt")
+        result = download_data_jkp(region="usa", factors="mkt")
 
     assert isinstance(result, pl.DataFrame)
     # Dates are aligned to the beginning of the month.
@@ -83,7 +83,7 @@ def test_keeps_daily_dates_as_is():
             return_value=raw,
         ),
     ):
-        result = _download_data_jkp(
+        result = download_data_jkp(
             region="usa", factors="mkt", frequency="daily"
         )
 
@@ -116,7 +116,7 @@ def test_downloads_portfolios_and_coerces_pf_to_integer():
             return_value=raw,
         ),
     ):
-        result = _download_data_jkp(dataset="portfolios", factors="be_me")
+        result = download_data_jkp(dataset="portfolios", factors="be_me")
 
     assert result["pf"].dtype.is_integer()
     assert result["pf"].to_list() == [1, 3]
@@ -148,7 +148,7 @@ def test_downloads_industry_returns_at_monthly_frequency():
             return_value=raw,
         ),
     ):
-        result = _download_data_jkp(dataset="industry", classification="gics")
+        result = download_data_jkp(dataset="industry", classification="gics")
 
     assert result["date"].to_list() == [
         dt.date(1999, 7, 1),
@@ -157,7 +157,7 @@ def test_downloads_industry_returns_at_monthly_frequency():
     assert "gics" in result.columns
 
 
-# %% _download_data_jkp: reference datasets
+# %% download_data_jkp: reference datasets
 
 
 def test_downloads_reference_cutoffs_and_renames_eom_to_date():
@@ -171,7 +171,7 @@ def test_downloads_reference_cutoffs_and_renames_eom_to_date():
     with patch(
         "tidyfinance.download_open_source._download_jkp_csv", return_value=raw
     ):
-        result = _download_data_jkp(dataset="nyse_cutoffs")
+        result = download_data_jkp(dataset="nyse_cutoffs")
 
     assert "date" in result.columns
     assert "eom" not in result.columns
@@ -192,7 +192,7 @@ def test_return_cutoffs_selects_the_daily_file_by_frequency():
         "tidyfinance.download_open_source._download_jkp_csv",
         side_effect=fake_download,
     ):
-        _download_data_jkp(dataset="return_cutoffs", frequency="daily")
+        download_data_jkp(dataset="return_cutoffs", frequency="daily")
 
     assert captured_url["url"].endswith("return_cutoffs_daily.csv")
 
@@ -203,13 +203,13 @@ def test_returns_empty_dataframe_when_a_reference_download_fails():
         side_effect=Exception("boom"),
     ):
         with pytest.warns(UserWarning, match="download or parsing failure"):
-            result = _download_data_jkp(dataset="nyse_cutoffs")
+            result = download_data_jkp(dataset="nyse_cutoffs")
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
 
 
-# %% _download_data_jkp: date filtering
+# %% download_data_jkp: date filtering
 
 
 def test_filters_rows_when_both_dates_are_supplied():
@@ -229,7 +229,7 @@ def test_filters_rows_when_both_dates_are_supplied():
             return_value=raw,
         ),
     ):
-        result = _download_data_jkp(
+        result = download_data_jkp(
             region="usa",
             factors="mkt",
             start_date="2020-02-01",
@@ -240,17 +240,17 @@ def test_filters_rows_when_both_dates_are_supplied():
     assert result["date"][0] == dt.date(2020, 2, 1)
 
 
-# %% _download_data_jkp: validation errors
+# %% download_data_jkp: validation errors
 
 
 def test_aborts_on_unsupported_dataset():
     with pytest.raises(ValueError, match="dataset"):
-        _download_data_jkp(dataset="bogus")
+        download_data_jkp(dataset="bogus")
 
 
 def test_aborts_on_daily_request_for_the_industry_dataset():
     with pytest.raises(ValueError, match="monthly frequency"):
-        _download_data_jkp(dataset="industry", frequency="daily")
+        download_data_jkp(dataset="industry", frequency="daily")
 
 
 def test_aborts_on_invalid_region():
@@ -259,7 +259,7 @@ def test_aborts_on_invalid_region():
         return_value=_manifest(),
     ):
         with pytest.raises(ValueError, match="Unsupported"):
-            _download_data_jkp(region="atlantis", factors="mkt")
+            download_data_jkp(region="atlantis", factors="mkt")
 
 
 def test_aborts_on_factor_not_available_in_region():
@@ -268,7 +268,7 @@ def test_aborts_on_factor_not_available_in_region():
         return_value=_manifest(),
     ):
         with pytest.raises(ValueError, match="Unsupported"):
-            _download_data_jkp(region="frontier", factors="value")
+            download_data_jkp(region="frontier", factors="value")
 
 
 def test_aborts_on_invalid_industry_classification():
@@ -277,7 +277,7 @@ def test_aborts_on_invalid_industry_classification():
         return_value=_manifest(),
     ):
         with pytest.raises(ValueError, match="Unsupported"):
-            _download_data_jkp(
+            download_data_jkp(
                 dataset="industry", region="usa", classification="naics"
             )
 
@@ -288,16 +288,16 @@ def test_aborts_on_daily_request_for_a_monthly_only_factor():
         return_value=_manifest(),
     ):
         with pytest.raises(ValueError, match="only available at monthly"):
-            _download_data_jkp(
+            download_data_jkp(
                 region="frontier", factors="aliq_mat", frequency="daily"
             )
 
 
 def test_aborts_on_invalid_frequency_or_weighting():
     with pytest.raises(ValueError, match="frequency"):
-        _download_data_jkp(frequency="weekly")
+        download_data_jkp(frequency="weekly")
     with pytest.raises(ValueError, match="weighting"):
-        _download_data_jkp(weighting="gdp_weighted")
+        download_data_jkp(weighting="gdp_weighted")
 
 
 def test_returns_empty_dataframe_when_the_manifest_is_unavailable():
@@ -306,7 +306,7 @@ def test_returns_empty_dataframe_when_the_manifest_is_unavailable():
         side_effect=Exception("boom"),
     ):
         with pytest.warns(UserWarning, match="download failure"):
-            result = _download_data_jkp()
+            result = download_data_jkp()
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
@@ -324,7 +324,7 @@ def test_returns_empty_dataframe_when_a_factor_download_fails():
         ),
     ):
         with pytest.warns(UserWarning, match="download or parsing failure"):
-            result = _download_data_jkp(region="usa", factors="mkt")
+            result = download_data_jkp(region="usa", factors="mkt")
 
     assert len(result) == 0
 

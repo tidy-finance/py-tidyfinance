@@ -13,7 +13,7 @@ sys.path.insert(
 )
 
 from tidyfinance.download_open_source import (  # noqa: E402
-    _download_data_stambaugh_yuan,
+    download_data_stambaugh_yuan,
 )
 
 
@@ -29,7 +29,7 @@ def test_downloads_and_processes_monthly_mispricing_factors():
         }
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        result = _download_data_stambaugh_yuan()
+        result = download_data_stambaugh_yuan()
 
     assert isinstance(result, pl.DataFrame)
     assert result.columns == [
@@ -70,7 +70,7 @@ def test_parses_daily_dates_from_the_date_column():
         "tidyfinance.download_open_source._fetch_csv",
         side_effect=fake_fetch_csv,
     ):
-        result = _download_data_stambaugh_yuan(dataset="daily")
+        result = download_data_stambaugh_yuan(dataset="daily")
 
     assert captured_url["url"].endswith("M4d.csv")
     assert result["date"].to_list() == [
@@ -91,7 +91,7 @@ def test_filters_rows_when_both_dates_are_supplied():
         }
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        result = _download_data_stambaugh_yuan(
+        result = download_data_stambaugh_yuan(
             start_date="1963-02-01", end_date="1963-02-28"
         )
 
@@ -112,7 +112,7 @@ def test_warns_when_the_requested_range_is_outside_the_available_data():
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         with pytest.warns(UserWarning, match="outside the available"):
-            result = _download_data_stambaugh_yuan(
+            result = download_data_stambaugh_yuan(
                 start_date="2020-01-01", end_date="2020-12-31"
             )
 
@@ -122,7 +122,7 @@ def test_warns_when_the_requested_range_is_outside_the_available_data():
 
 def test_aborts_on_unsupported_dataset():
     with pytest.raises(ValueError, match="dataset"):
-        _download_data_stambaugh_yuan(dataset="weekly")
+        download_data_stambaugh_yuan(dataset="weekly")
 
 
 def test_returns_empty_dataframe_after_download_failure():
@@ -131,7 +131,7 @@ def test_returns_empty_dataframe_after_download_failure():
         side_effect=Exception("download failure"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            result = _download_data_stambaugh_yuan()
+            result = download_data_stambaugh_yuan()
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0

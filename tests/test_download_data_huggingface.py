@@ -16,10 +16,10 @@ sys.path.insert(
 
 import tidyfinance.download_tidy_finance as tfhf  # noqa: E402
 from tidyfinance.download_tidy_finance import (  # noqa: E402
-    _download_data_huggingface,
+    download_data_huggingface,
     _download_data_huggingface_factor_library,
-    _download_factor_library_grid,
-    _download_factor_library_ids,
+    download_factor_library_grid,
+    download_factor_library_ids,
     _download_factor_library_persistence,
     _download_factor_library_table,
     _factor_library_cache,
@@ -27,7 +27,7 @@ from tidyfinance.download_tidy_finance import (  # noqa: E402
     _factor_library_url,
     _fetch_parquet_url,
     _filter_factor_library_grid,
-    _get_available_huggingface_files,
+    get_available_huggingface_files,
     _rate_limit_reset,
     _RateLimited,
     _read_factor_library_files,
@@ -120,7 +120,7 @@ def _available(paths, sizes=None):
     )
 
 
-# %% _get_available_huggingface_files
+# %% get_available_huggingface_files
 
 
 def test_single_page_returns_only_parquet_files():
@@ -139,7 +139,7 @@ def test_single_page_returns_only_parquet_files():
         "tidyfinance.download_tidy_finance.requests.get",
         return_value=response_mock,
     ):
-        result = _get_available_huggingface_files("org", "ds")
+        result = get_available_huggingface_files("org", "ds")
 
     assert len(result) == 1
     assert result.columns == ["path", "size"]
@@ -167,28 +167,28 @@ def test_multi_page_paginates_until_rel_next_link_absent():
     with patch(
         "tidyfinance.download_tidy_finance.requests.get", side_effect=responses
     ):
-        result = _get_available_huggingface_files("org", "ds")
+        result = get_available_huggingface_files("org", "ds")
 
     assert len(result) == 2
 
 
-# %% _download_data_huggingface
+# %% download_data_huggingface
 
 
 def test_aborts_when_dataset_is_none():
     """Test aborts when dataset is NULL."""
     with pytest.raises(ValueError):
-        _download_data_huggingface(dataset=None)
+        download_data_huggingface(dataset=None)
 
 
 def test_deprecated_type_arg_warns_and_strips_hf_prefix():
     """Test deprecated type arg warns and strips hf_ prefix."""
     with patch(
-        "tidyfinance.download_tidy_finance._download_factor_library_grid",
+        "tidyfinance.download_tidy_finance.download_factor_library_grid",
         return_value=pl.DataFrame(),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            _download_data_huggingface(type="hf_factor_library_grid")
+            download_data_huggingface(type="hf_factor_library_grid")
 
 
 def test_legacy_hf_dataset_value_warns_and_strips_prefix():
@@ -199,7 +199,7 @@ def test_legacy_hf_dataset_value_warns_and_strips_prefix():
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             try:
-                _download_data_huggingface(dataset="hf_factor_library")
+                download_data_huggingface(dataset="hf_factor_library")
             except ValueError:
                 pass
 
@@ -207,18 +207,18 @@ def test_legacy_hf_dataset_value_warns_and_strips_prefix():
 def test_aborts_for_unsupported_dataset():
     """Test aborts for unsupported dataset."""
     with pytest.raises(ValueError):
-        _download_data_huggingface(dataset="unknown")
+        download_data_huggingface(dataset="unknown")
 
 
 def test_factor_library_grid_delegates_to_helper():
     """Test factor_library_grid: delegates to helper."""
     mock_grid = pl.DataFrame({"id": [1]})
     with patch(
-        "tidyfinance.download_tidy_finance._download_factor_library_grid",
+        "tidyfinance.download_tidy_finance.download_factor_library_grid",
         return_value=mock_grid,
         create=True,
     ):
-        result = _download_data_huggingface("factor_library_grid")
+        result = download_data_huggingface("factor_library_grid")
     assert_frame_equal(result, mock_grid)
 
 
@@ -229,7 +229,7 @@ def test_high_frequency_sp500_filters_by_date_and_downloads():
 
     with (
         patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance.get_available_huggingface_files",
             return_value=available,
         ),
         patch(
@@ -237,7 +237,7 @@ def test_high_frequency_sp500_filters_by_date_and_downloads():
             return_value=mock_trades,
         ),
     ):
-        result = _download_data_huggingface(
+        result = download_data_huggingface(
             "high_frequency_sp500", "2007-07-26", "2007-07-26"
         )
 
@@ -252,7 +252,7 @@ def test_factor_library_delegates_to_inner_helper():
         "tidyfinance.download_tidy_finance._download_data_huggingface_factor_library",
         return_value=mock_returns,
     ):
-        result = _download_data_huggingface(
+        result = download_data_huggingface(
             "factor_library", sorting_variable="size"
         )
     assert_frame_equal(result, mock_returns)
@@ -270,7 +270,7 @@ def test_factor_library_forwards_start_date_and_end_date():
         "tidyfinance.download_tidy_finance._download_data_huggingface_factor_library",
         side_effect=fake_inner,
     ):
-        _download_data_huggingface(
+        download_data_huggingface(
             "factor_library",
             sorting_variable="size",
             start_date="2020-01-01",
@@ -286,7 +286,7 @@ def test_high_frequency_sp500_uses_sample_window_when_no_dates():
     available = _available(["date=2007-06-27/part.parquet"])
     with (
         patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files",
+            "tidyfinance.download_tidy_finance.get_available_huggingface_files",
             return_value=available,
         ),
         patch(
@@ -294,7 +294,7 @@ def test_high_frequency_sp500_uses_sample_window_when_no_dates():
             return_value=pl.DataFrame({"price": [100.0]}),
         ),
     ):
-        result = _download_data_huggingface("high_frequency_sp500")
+        result = download_data_huggingface("high_frequency_sp500")
     assert len(result) == 1
 
 
@@ -466,14 +466,14 @@ def test_reads_the_grid_file_by_name():
     mock_grid = pl.DataFrame({"id": [1]})
     with (
         patch(
-            "tidyfinance.download_tidy_finance._get_available_huggingface_files"
+            "tidyfinance.download_tidy_finance.get_available_huggingface_files"
         ) as listing,
         patch(
             "tidyfinance.download_tidy_finance._fetch_parquet_url",
             return_value=mock_grid,
         ) as read,
     ):
-        result = _download_factor_library_grid()
+        result = download_factor_library_grid()
 
     assert_frame_equal(result, mock_grid)
     read.assert_called_once_with(
@@ -501,8 +501,8 @@ def test_caches_the_grid_within_the_session():
     with patch(
         "tidyfinance.download_tidy_finance._fetch_parquet_url", side_effect=read
     ):
-        first = _download_factor_library_grid()
-        second = _download_factor_library_grid()
+        first = download_factor_library_grid()
+        second = download_factor_library_grid()
 
     assert calls["n"] == 1
     assert second is first
@@ -515,9 +515,9 @@ def test_refresh_downloads_the_grid_again():
     with patch(
         "tidyfinance.download_tidy_finance._fetch_parquet_url", side_effect=read
     ):
-        _download_factor_library_grid()
-        refreshed = _download_factor_library_grid(refresh=True)
-        cached = _download_factor_library_grid()
+        download_factor_library_grid()
+        refreshed = download_factor_library_grid(refresh=True)
+        cached = download_factor_library_grid()
 
     assert calls["n"] == 2
     assert refreshed["id"].to_list() == [2]
@@ -531,7 +531,7 @@ def test_does_not_cache_a_failed_download():
         side_effect=ConnectionError("network down"),
     ):
         with pytest.raises(ConnectionError, match="network down"):
-            _download_factor_library_grid()
+            download_factor_library_grid()
 
     assert not _factor_library_cache.get("grids")
 
@@ -540,7 +540,7 @@ def test_aborts_on_an_invalid_refresh_argument():
     """Test refresh must be True or False."""
     for value in (None, "yes", 1):
         with pytest.raises(ValueError, match="refresh"):
-            _download_factor_library_grid(refresh=value)
+            download_factor_library_grid(refresh=value)
 
 
 def test_download_factor_library_ids_reuses_the_cached_grid():
@@ -557,8 +557,8 @@ def test_download_factor_library_ids_reuses_the_cached_grid():
         "tidyfinance.download_tidy_finance._fetch_parquet_url",
         side_effect=fetch,
     ):
-        _download_factor_library_ids([1])
-        _download_factor_library_ids([2])
+        download_factor_library_ids([1])
+        download_factor_library_ids([2])
 
     assert n_grid_downloads["n"] == 1
 
@@ -570,8 +570,8 @@ def test_factor_library_grid_dataset_passes_refresh():
     with patch(
         "tidyfinance.download_tidy_finance._fetch_parquet_url", side_effect=read
     ):
-        _download_data_huggingface("factor_library_grid")
-        refreshed = _download_data_huggingface(
+        download_data_huggingface("factor_library_grid")
+        refreshed = download_data_huggingface(
             "factor_library_grid", refresh=True
         )
 
@@ -693,18 +693,18 @@ def test_fetch_parquet_url_does_not_retry_a_file_it_cannot_parse():
     assert not isinstance(err.value, ConnectionError)
 
 
-# %% _download_factor_library_ids
+# %% download_factor_library_ids
 
 
 def test_aborts_when_ids_are_empty():
     """Test aborts when no ids are passed, before any download."""
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid"
+            "tidyfinance.download_tidy_finance.download_factor_library_grid"
         ) as grid,
         pytest.raises(ValueError, match="No portfolio IDs"),
     ):
-        _download_factor_library_ids([])
+        download_factor_library_ids([])
     grid.assert_not_called()
 
 
@@ -712,13 +712,13 @@ def test_aborts_when_no_grid_rows_match_requested_ids():
     """Test aborts when no grid rows match requested ids."""
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([42]),
         ),
         patch("tidyfinance.download_tidy_finance._fetch_parquet_url") as fetch,
         pytest.raises(ValueError, match="None of the requested"),
     ):
-        _download_factor_library_ids([999])
+        download_factor_library_ids([999])
     fetch.assert_not_called()
 
 
@@ -733,7 +733,7 @@ def test_downloads_the_files_that_hold_the_ids_and_joins_grid_metadata():
     requested = []
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([1, 2, 3, 1001]),
         ),
         patch(
@@ -741,7 +741,7 @@ def test_downloads_the_files_that_hold_the_ids_and_joins_grid_metadata():
             side_effect=_serve_files(files, requested),
         ),
     ):
-        result = _download_factor_library_ids([1, 2, 1001])
+        result = download_factor_library_ids([1, 2, 1001])
 
     # One download per file, although the first file holds two of the ids.
     assert sorted(requested) == [f"{_FACTOR_LIBRARY_URL}/{f}" for f in files]
@@ -759,7 +759,7 @@ def test_ids_without_returns_are_absent_with_a_warning():
     files = {"id_0000001-0001000.parquet": _make_returns([1], [0.01])}
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([1, 2, 1001]),
         ),
         patch(
@@ -768,7 +768,7 @@ def test_ids_without_returns_are_absent_with_a_warning():
         ),
         pytest.warns(UserWarning, match="without returns.*: 2, 1001"),
     ):
-        result = _download_factor_library_ids([1, 2, 1001])
+        result = download_factor_library_ids([1, 2, 1001])
 
     assert result["id"].to_list() == [1]
 
@@ -777,7 +777,7 @@ def test_returns_empty_frame_when_no_requested_id_has_returns():
     """Test an empty frame with all columns when no id has returns."""
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([1001]),
         ),
         patch(
@@ -786,7 +786,7 @@ def test_returns_empty_frame_when_no_requested_id_has_returns():
         ),
         pytest.warns(UserWarning, match="without returns"),
     ):
-        result = _download_factor_library_ids([1001])
+        result = download_factor_library_ids([1001])
 
     assert result.is_empty()
     assert result.columns == ["id", "date", "ret", *_make_grid().columns[1:]]
@@ -944,7 +944,7 @@ def test_factor_library_costs_delegates_with_the_costs_table():
         "_download_data_huggingface_factor_library",
         return_value=pl.DataFrame({"id": [1]}),
     ) as inner:
-        _download_data_huggingface(
+        download_data_huggingface(
             "factor_library_costs", sorting_variable="size"
         )
     assert inner.call_args.kwargs["table"] == "costs"
@@ -953,10 +953,10 @@ def test_factor_library_costs_delegates_with_the_costs_table():
 
 def test_factor_library_grid_forwards_refresh_and_grid_revision():
     with patch(
-        "tidyfinance.download_tidy_finance._download_factor_library_grid",
+        "tidyfinance.download_tidy_finance.download_factor_library_grid",
         return_value=_make_grid(),
     ) as grid:
-        _download_data_huggingface(
+        download_data_huggingface(
             "factor_library_grid", refresh=True, grid_revision="v1"
         )
     grid.assert_called_once_with(refresh=True, grid_revision="v1")
@@ -968,7 +968,7 @@ def test_factor_library_persistence_delegates_with_dates():
         "_download_factor_library_persistence",
         return_value=_make_persistence(),
     ) as persistence:
-        _download_data_huggingface(
+        download_data_huggingface(
             "factor_library_persistence",
             start_date="2020-01-01",
             end_date="2020-12-31",
@@ -986,7 +986,7 @@ def test_factor_library_persistence_delegates_with_dates():
 )
 def test_grid_and_persistence_reject_revision(dataset):
     with pytest.raises(ValueError, match="'revision' does not apply"):
-        _download_data_huggingface(dataset, revision="abc")
+        download_data_huggingface(dataset, revision="abc")
 
 
 def test_filters_the_grid_of_the_requested_revision():
@@ -1021,10 +1021,10 @@ def test_caches_one_grid_per_revision():
         "tidyfinance.download_tidy_finance._fetch_parquet_url",
         side_effect=fetch,
     ):
-        main = _download_factor_library_grid()
-        v1 = _download_factor_library_grid(grid_revision="v1")
-        assert _download_factor_library_grid() is main
-        assert _download_factor_library_grid(grid_revision="v1") is v1
+        main = download_factor_library_grid()
+        v1 = download_factor_library_grid(grid_revision="v1")
+        assert download_factor_library_grid() is main
+        assert download_factor_library_grid(grid_revision="v1") is v1
     assert n["n"] == 2
 
 
@@ -1036,15 +1036,15 @@ def test_aborts_when_the_revision_has_no_grid():
         ),
         pytest.raises(ValueError, match="is not in revision 'v1'"),
     ):
-        _download_factor_library_grid(grid_revision="v1")
+        download_factor_library_grid(grid_revision="v1")
 
 
 @pytest.mark.parametrize("value", [None, "", 1, ["main"]])
 def test_aborts_on_an_invalid_revision(value):
     with pytest.raises(ValueError, match="grid_revision"):
-        _download_factor_library_grid(grid_revision=value)
+        download_factor_library_grid(grid_revision=value)
     with pytest.raises(ValueError, match="'revision' must be"):
-        _download_factor_library_ids([1], revision=value)
+        download_factor_library_ids([1], revision=value)
     with pytest.raises(ValueError, match="grid_revision"):
         _download_factor_library_persistence(grid_revision=value)
 
@@ -1062,7 +1062,7 @@ def test_reads_the_returns_and_the_grid_at_their_revisions():
         "tidyfinance.download_tidy_finance._fetch_parquet_url",
         side_effect=fetch,
     ):
-        _download_factor_library_ids([1], revision="r1", grid_revision="g1")
+        download_factor_library_ids([1], revision="r1", grid_revision="g1")
     base = "https://huggingface.co/datasets/tidy-finance/"
     assert requested == [
         f"{base}factor-library-grid/resolve/g1/portfolio_sort_grid.parquet",
@@ -1075,7 +1075,7 @@ def test_costs_reads_the_files_of_the_same_names_in_costs():
     files = {"id_0000001-0001000.parquet": _make_costs([1, 2])}
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([1, 2]),
         ),
         patch(
@@ -1103,7 +1103,7 @@ def test_costs_warn_about_ids_without_costs():
     files = {"id_0000001-0001000.parquet": _make_costs([1])}
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([1, 2]),
         ),
         patch(
@@ -1119,7 +1119,7 @@ def test_costs_warn_about_ids_without_costs():
 def test_costs_return_no_rows_but_all_columns_when_no_id_has_costs():
     with (
         patch(
-            "tidyfinance.download_tidy_finance._download_factor_library_grid",
+            "tidyfinance.download_tidy_finance.download_factor_library_grid",
             return_value=_make_grid([1]),
         ),
         patch(

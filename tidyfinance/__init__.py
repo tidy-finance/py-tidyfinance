@@ -6,12 +6,12 @@ Two toggles control what is exposed:
 - _INCLUDE_PRIVATE_MODULES: scan submodules whose name starts with '_'
   (e.g. '_internal', '_pseudo') in addition to public ones.
 - _INCLUDE_PRIVATE_NAMES: within each scanned module, expose attributes
-  whose name starts with '_' (e.g. '_download_data_wrds_crsp') in
+  whose name starts with '_' (e.g. '_download_factor_library_table') in
   addition to the public ones.
 
 Set both to False for a strictly public API. Set both to True to mirror
-the previous behaviour where '_download_data_*' helpers and internal
-utilities were importable directly from 'tidyfinance'.
+the previous behaviour where private helpers and internal utilities
+were importable directly from 'tidyfinance'.
 """
 
 import importlib
@@ -20,7 +20,7 @@ import types
 
 # Toggle these to control auto-discovery scope.
 _INCLUDE_PRIVATE_MODULES = False  # scan '_internal', '_pseudo', etc.
-_INCLUDE_PRIVATE_NAMES = False  # expose '_download_data_*' etc.
+_INCLUDE_PRIVATE_NAMES = False  # expose '_check_revision' etc.
 
 # Names to never expose, even if the filters above would include them.
 # Use this for things like '__future__' re-imports or sentinel objects.
@@ -85,7 +85,34 @@ _BACKEND_WRAPPED = (
     "filter_sorting_data",
     "implement_portfolio_sort",
     "download_data",
+    "download_data_constituents",
+    "download_data_damodaran",
+    "download_data_factors_ff",
+    "download_data_factors_q",
+    "download_data_fred",
+    "download_data_fred_md",
+    "download_data_huggingface",
+    "download_data_jkp",
+    "download_data_macro_predictors",
+    "download_data_osap",
+    "download_data_pastor_stambaugh",
+    "download_data_pseudo_ccm_links",
+    "download_data_pseudo_compustat",
+    "download_data_pseudo_crsp",
+    "download_data_risk_free",
+    "download_data_stambaugh_yuan",
+    "download_data_stock_prices",
+    "download_data_wrds",
+    "download_data_wrds_ccm_links",
+    "download_data_wrds_compustat",
+    "download_data_wrds_crsp",
+    "download_data_wrds_fisd",
+    "download_data_wrds_trace_enhanced",
+    "download_factor_library_grid",
+    "download_factor_library_ids",
+    "get_available_huggingface_files",
     "list_supported_datasets",
+    "list_supported_types",
     "list_supported_indexes",
     "list_supported_jkp_factors",
     "process_trace_data",

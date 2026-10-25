@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_wrds import _download_data_wrds_crsp  # noqa: E402
+from tidyfinance.download_wrds import download_data_wrds_crsp  # noqa: E402
 
 
 def test_crsp_dataset_validation_rejects_unsupported_values():
@@ -34,16 +34,16 @@ def test_crsp_argument_validation_covers_required_inputs():
         patch("tidyfinance.download_wrds.disconnect_connection"),
     ):
         with pytest.raises((ValueError, TypeError)):
-            _download_data_wrds_crsp()
+            download_data_wrds_crsp()
 
         with pytest.raises(ValueError, match="batch_size"):
-            _download_data_wrds_crsp("crsp_monthly", batch_size=0)
+            download_data_wrds_crsp("crsp_monthly", batch_size=0)
 
         with pytest.raises(ValueError, match="version"):
-            _download_data_wrds_crsp("crsp_monthly", version="bad")
+            download_data_wrds_crsp("crsp_monthly", version="bad")
 
         with pytest.raises(ValueError, match="Unsupported CRSP dataset"):
-            _download_data_wrds_crsp("bad")
+            download_data_wrds_crsp("bad")
 
 
 def test_deprecated_type_inputs_are_translated_to_dataset():
@@ -60,12 +60,12 @@ def test_deprecated_type_inputs_are_translated_to_dataset():
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             with pytest.raises(ValueError, match="stop after translation"):
-                _download_data_wrds_crsp(type="wrds_crsp_monthly")
+                download_data_wrds_crsp(type="wrds_crsp_monthly")
         assert seen["dataset"] == "crsp_monthly"
 
         with pytest.warns(DeprecationWarning, match="deprecated"):
             with pytest.raises(ValueError, match="stop after translation"):
-                _download_data_wrds_crsp(dataset="wrds_bad")
+                download_data_wrds_crsp(dataset="wrds_bad")
         assert seen["dataset"] == "bad"
 
 
@@ -153,11 +153,11 @@ def test_monthly_crsp_v2_is_processed():
         patch("tidyfinance.download_wrds.disconnect_connection"),
         patch("tidyfinance.download_wrds._read_sql", return_value=monthly),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_monthly",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -225,11 +225,11 @@ def test_crsp_v2_looks_up_the_delisting_month_and_day_on_the_last_trading_day():
             side_effect=capture([_mock_monthly_query_result()]),
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
-        _download_data_wrds_crsp(
+        download_data_wrds_crsp(
             dataset="crsp_monthly",
             start_date="2020-01-01",
             end_date="2020-12-31",
@@ -253,11 +253,11 @@ def test_crsp_v2_looks_up_the_delisting_month_and_day_on_the_last_trading_day():
             ),
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
-        _download_data_wrds_crsp(
+        download_data_wrds_crsp(
             dataset="crsp_daily",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -285,12 +285,12 @@ def test_daily_crsp_v2_validates_and_adjusts_volume():
             side_effect=[permnos, _mock_daily_query_result()],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
         with pytest.raises(ValueError, match="adjust_volume"):
-            _download_data_wrds_crsp(
+            download_data_wrds_crsp(
                 dataset="crsp_daily",
                 start_date="2001-01-01",
                 end_date="2020-12-31",
@@ -299,7 +299,7 @@ def test_daily_crsp_v2_validates_and_adjusts_volume():
                 additional_columns=["dlyprc"],
             )
 
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_daily",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -339,11 +339,11 @@ def test_daily_crsp_v2_handles_empty_batches():
             ],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_daily",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -374,15 +374,15 @@ def test_ccm_links_are_added_when_requested():
         patch("tidyfinance.download_wrds.disconnect_connection"),
         patch("tidyfinance.download_wrds._read_sql", return_value=monthly),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_wrds_ccm_links",
+            "tidyfinance.download_wrds.download_data_wrds_ccm_links",
             return_value=ccm_links,
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_monthly",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -449,11 +449,11 @@ def test_monthly_crsp_v1_is_processed():
             side_effect=[msf_data, msedelist, first_crsp_date],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_monthly",
             start_date="2020-01-01",
             end_date="2020-12-31",
@@ -527,15 +527,15 @@ def test_monthly_crsp_v1_ccm_links_with_float_permno():
             side_effect=[msf_data, msedelist, first_crsp_date],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_wrds_ccm_links",
+            "tidyfinance.download_wrds.download_data_wrds_ccm_links",
             return_value=ccm_links,
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_monthly",
             start_date="2020-01-01",
             end_date="2020-12-31",
@@ -598,13 +598,13 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
             side_effect=[permnos, dsf, msedelist],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
         # Wrong adjust_volume columns -> error
         with pytest.raises(ValueError, match="prc"):
-            _download_data_wrds_crsp(
+            download_data_wrds_crsp(
                 dataset="crsp_daily",
                 start_date="2001-01-01",
                 end_date="2020-12-31",
@@ -625,11 +625,11 @@ def test_daily_crsp_v1_validates_and_adjusts_volume():
             side_effect=[permnos, dsf, msedelist],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_daily(),
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_daily",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -657,7 +657,7 @@ def test_daily_crsp_v1_handles_empty_batches():
             return_value=pl.DataFrame(schema={"permno": pl.Int64}),
         ),
     ):
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_daily",
             start_date="2001-01-01",
             end_date="2020-12-31",
@@ -672,7 +672,7 @@ def test_daily_crsp_v1_handles_empty_batches():
 def test_crsp_v1_end_date_past_2024_raises():
     """v1 with end_date > 2024-12-31 must raise."""
     with pytest.raises(ValueError, match="end_date"):
-        _download_data_wrds_crsp(
+        download_data_wrds_crsp(
             dataset="crsp_monthly",
             end_date="2025-01-01",
             version="v1",
@@ -719,12 +719,12 @@ def test_crsp_v1_end_date_boundary_2024_12_31_is_allowed():
             side_effect=[msf, msedelist, first_crsp],
         ),
         patch(
-            "tidyfinance.download_wrds._download_data_risk_free",
+            "tidyfinance.download_wrds.download_data_risk_free",
             return_value=_mock_risk_free_monthly(),
         ),
     ):
         # Should not raise the boundary error
-        out = _download_data_wrds_crsp(
+        out = download_data_wrds_crsp(
             dataset="crsp_monthly",
             start_date="2020-01-01",
             end_date="2024-12-31",

@@ -13,7 +13,7 @@ sys.path.insert(
 )
 
 from tidyfinance._internal import _transfrom_to_snake_case  # noqa: E402
-from tidyfinance.download_open_source import _download_data_osap  # noqa: E402
+from tidyfinance.download_open_source import download_data_osap  # noqa: E402
 
 
 def test_downloads_and_processes_all_rows():
@@ -25,7 +25,7 @@ def test_downloads_and_processes_all_rows():
         }
     )
     with patch("tidyfinance.download_open_source._fetch_google_drive_csv", return_value=raw):
-        result = _download_data_osap(sheet_id="abc")
+        result = download_data_osap(sheet_id="abc")
 
     assert isinstance(result, pl.DataFrame)
     assert result.columns == ["date", "long_name"]
@@ -47,7 +47,7 @@ def test_filters_rows_when_both_dates_are_supplied():
         }
     )
     with patch("tidyfinance.download_open_source._fetch_google_drive_csv", return_value=raw):
-        result = _download_data_osap(
+        result = download_data_osap(
             start_date="2020-02-01", end_date="2020-02-28"
         )
 
@@ -63,7 +63,7 @@ def test_returns_empty_dataframe_after_download_failure():
         side_effect=Exception("download failure"),
     ):
         with pytest.warns(UserWarning) as record:
-            result = _download_data_osap()
+            result = download_data_osap()
 
     messages = [str(w.message) for w in record]
     assert any("download failure" in m for m in messages)
@@ -94,7 +94,7 @@ def test_reports_an_exceeded_google_drive_quota():
         return_value=response,
     ):
         with pytest.warns(UserWarning) as record:
-            result = _download_data_osap()
+            result = download_data_osap()
 
     messages = [str(w.message) for w in record]
     assert any("download quota of the file is exceeded" in m for m in messages)
@@ -112,7 +112,7 @@ def test_rejects_other_html_pages_instead_of_parsing_them():
         return_value=response,
     ):
         with pytest.warns(UserWarning) as record:
-            result = _download_data_osap()
+            result = download_data_osap()
 
     messages = [str(w.message) for w in record]
     assert any("HTML page instead of a CSV" in m for m in messages)

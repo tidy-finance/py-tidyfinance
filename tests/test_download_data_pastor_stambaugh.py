@@ -13,7 +13,7 @@ sys.path.insert(
 )
 
 from tidyfinance.download_open_source import (  # noqa: E402
-    _download_data_pastor_stambaugh,
+    download_data_pastor_stambaugh,
 )
 
 
@@ -30,7 +30,7 @@ def test_downloads_and_processes_liquidity_factors():
         "tidyfinance.download_open_source._fetch_whitespace_table",
         return_value=raw,
     ):
-        result = _download_data_pastor_stambaugh()
+        result = download_data_pastor_stambaugh()
 
     assert isinstance(result, pl.DataFrame)
     assert result.columns == [
@@ -64,7 +64,7 @@ def test_filters_rows_when_both_dates_are_supplied():
         "tidyfinance.download_open_source._fetch_whitespace_table",
         return_value=raw,
     ):
-        result = _download_data_pastor_stambaugh(
+        result = download_data_pastor_stambaugh(
             start_date="2020-02-01", end_date="2020-02-28"
         )
 
@@ -79,7 +79,7 @@ def test_returns_empty_dataframe_after_download_failure():
         side_effect=Exception("download failure"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            result = _download_data_pastor_stambaugh()
+            result = download_data_pastor_stambaugh()
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0

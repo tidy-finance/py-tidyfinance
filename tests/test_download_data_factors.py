@@ -15,8 +15,8 @@ sys.path.insert(
 )
 
 from tidyfinance.download_open_source import (
-    _download_data_factors_ff,
-    _download_data_factors_q,
+    download_data_factors_ff,
+    download_data_factors_q,
     _famafrench_downloader,
 )  # noqa: E402
 from tidyfinance.supported_datasets import (
@@ -100,7 +100,7 @@ def test_is_legacy_type_q_true_for_legacy_type_false_otherwise():
 def test_download_data_factors_ff_aborts_when_dataset_is_none():
     """Test download_data_factors_ff: aborts when dataset is NULL."""
     with pytest.raises((ValueError, TypeError)):
-        _download_data_factors_ff(None)
+        download_data_factors_ff(None)
 
 
 def test_download_data_factors_ff_deprecated_type_warns():
@@ -123,7 +123,7 @@ def test_download_data_factors_ff_deprecated_type_warns():
         ),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            _download_data_factors_ff(type="factors_ff3_monthly")
+            download_data_factors_ff(type="factors_ff3_monthly")
 
 
 def test_download_data_factors_ff_legacy_dataset_arg_warns():
@@ -146,7 +146,7 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
         ),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            _download_data_factors_ff("factors_ff3_monthly")
+            download_data_factors_ff("factors_ff3_monthly")
 
 
 def test_legacy_dataset_warning_names_the_replacement():
@@ -170,7 +170,7 @@ def test_legacy_dataset_warning_names_the_replacement():
         ),
     ):
         with pytest.warns(DeprecationWarning) as record:
-            _download_data_factors_ff("factors_ff_3_monthly")
+            download_data_factors_ff("factors_ff_3_monthly")
 
     messages = [str(w.message) for w in record]
     expected = (
@@ -222,7 +222,7 @@ def test_download_data_factors_ff_empty_dataframe_on_download_fail():
         side_effect=Exception("download fail"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            result = _download_data_factors_ff("Fama/French 3 Factors")
+            result = download_data_factors_ff("Fama/French 3 Factors")
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
 
@@ -240,7 +240,7 @@ def test_download_data_factors_ff_monthly_path_with_date_filter():
         "tidyfinance.download_open_source._famafrench_downloader",
         return_value=raw,
     ):
-        result = _download_data_factors_ff(
+        result = download_data_factors_ff(
             "Fama/French 3 Factors", "2020-01-01", "2020-01-31"
         )
     assert isinstance(result, pl.DataFrame)
@@ -267,7 +267,7 @@ def test_download_data_factors_ff_threads_registry_url_to_downloader():
         "tidyfinance.download_open_source._famafrench_downloader",
         side_effect=fake_downloader,
     ):
-        _download_data_factors_ff("Fama/French 3 Factors")
+        download_data_factors_ff("Fama/French 3 Factors")
     assert captured["dataset"] == "ftp/F-F_Research_Data_Factors_CSV.zip"
 
 
@@ -284,7 +284,7 @@ def test_download_data_factors_ff_daily_path_no_date_filter():
         "tidyfinance.download_open_source._famafrench_downloader",
         return_value=raw,
     ):
-        result = _download_data_factors_ff("Fama/French 3 Factors [Daily]")
+        result = download_data_factors_ff("Fama/French 3 Factors [Daily]")
     assert len(result) == 2
 
 
@@ -303,7 +303,7 @@ def test_download_data_factors_ff_aborts_on_unknown_frequency():
         with pytest.raises(
             ValueError, match="neither daily, weekly, nor monthly"
         ):
-            _download_data_factors_ff("some_dataset")
+            download_data_factors_ff("some_dataset")
 
 
 # %% download_data_factors_q
@@ -323,7 +323,7 @@ def test_download_data_factors_q_download_lambda_reads_csv():
         "tidyfinance.download_open_source._fetch_csv",
         return_value=mock_csv,
     ):
-        result = _download_data_factors_q("q5_factors_monthly_2024")
+        result = download_data_factors_q("q5_factors_monthly_2024")
     assert len(result) == 2
     assert "risk_free" in result.columns
 
@@ -331,7 +331,7 @@ def test_download_data_factors_q_download_lambda_reads_csv():
 def test_download_data_factors_q_aborts_when_dataset_is_none():
     """Test download_data_factors_q: aborts when dataset is NULL."""
     with pytest.raises((ValueError, TypeError, AttributeError)):
-        _download_data_factors_q(None)
+        download_data_factors_q(None)
 
 
 def test_download_data_factors_q_deprecated_type_warns():
@@ -342,7 +342,7 @@ def test_download_data_factors_q_deprecated_type_warns():
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             with pytest.raises(ValueError):
-                _download_data_factors_q(type="factors_q5_monthly")
+                download_data_factors_q(type="factors_q5_monthly")
 
 
 def test_download_data_factors_q_legacy_dataset_arg_warns():
@@ -353,7 +353,7 @@ def test_download_data_factors_q_legacy_dataset_arg_warns():
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             with pytest.raises(ValueError):
-                _download_data_factors_q("factors_q5_monthly")
+                download_data_factors_q("factors_q5_monthly")
 
 
 def test_download_data_factors_q_empty_dataframe_on_download_fail():
@@ -363,7 +363,7 @@ def test_download_data_factors_q_empty_dataframe_on_download_fail():
         side_effect=Exception("download fail"),
     ):
         with pytest.raises(ValueError):
-            _download_data_factors_q("q5_factors_monthly")
+            download_data_factors_q("q5_factors_monthly")
 
 
 def test_download_data_factors_q_monthly_path_with_date_filter():
@@ -377,7 +377,7 @@ def test_download_data_factors_q_monthly_path_with_date_filter():
         }
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        result = _download_data_factors_q(
+        result = download_data_factors_q(
             "q5_factors_monthly_2024", "2020-01-01", "2020-01-31"
         )
     assert len(result) == 1
@@ -396,7 +396,7 @@ def test_download_data_factors_q_daily_path_no_date_filter():
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         try:
-            result = _download_data_factors_q("q5_factors_daily_2024")
+            result = download_data_factors_q("q5_factors_daily_2024")
             assert len(result) >= 0
         except Exception:
             pytest.xfail("Python daily q-factors parser differs from R")
@@ -408,7 +408,7 @@ def test_download_data_factors_q_annual_path():
         {"year": [2020, 2021], "R_F": [0.1, 0.1], "R_MKT": [1.0, 2.0]}
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        result = _download_data_factors_q("q5_factors_annual_2024")
+        result = download_data_factors_q("q5_factors_annual_2024")
     assert len(result) == 2
 
 
@@ -425,7 +425,7 @@ def test_download_data_factors_q_weekly_path():
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         try:
-            result = _download_data_factors_q("q5_factors_weekly_2024")
+            result = download_data_factors_q("q5_factors_weekly_2024")
             assert len(result) >= 0
         except Exception:
             pytest.xfail("Python weekly q-factors parser differs from R")
@@ -458,7 +458,7 @@ def test_download_data_factors_ff_full_path_converts_integer_dates():
             return_value=raw,
         ),
     ):
-        result = _download_data_factors_ff("Fama/French 3 Factors")
+        result = download_data_factors_ff("Fama/French 3 Factors")
     assert "mkt_excess" in result.columns
     assert "risk_free" in result.columns
     # Values divided by 100 in the Python implementation
@@ -492,7 +492,7 @@ def test_download_data_factors_ff_does_not_rescale_breakpoints():
             return_value=raw,
         ),
     ):
-        result = _download_data_factors_ff("ME Breakpoints")
+        result = download_data_factors_ff("ME Breakpoints")
     assert list(result["v2"]) == [488, 492]
 
 

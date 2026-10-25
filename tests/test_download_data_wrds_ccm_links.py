@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_wrds import _download_data_wrds_ccm_links  # noqa: E402
+from tidyfinance.download_wrds import download_data_wrds_ccm_links  # noqa: E402
 
 
 def test_downloads_default_ccm_links_and_replaces_missing_end_dates():
@@ -39,7 +39,7 @@ def test_downloads_default_ccm_links_and_replaces_missing_end_dates():
         patch("tidyfinance.download_wrds._read_sql", return_value=sql_result),
         patch("tidyfinance.download_wrds.disconnect_connection") as mock_disc,
     ):
-        result = _download_data_wrds_ccm_links()
+        result = download_data_wrds_ccm_links()
 
     mock_disc.assert_called_once_with("conn")
     assert set(["permno", "gvkey", "linkdt", "linkenddt"]).issubset(
@@ -85,7 +85,7 @@ def test_passes_custom_link_filters_to_the_ccm_query():
         ),
         patch("tidyfinance.download_wrds.disconnect_connection"),
     ):
-        result = _download_data_wrds_ccm_links(linktype=["LU"], linkprim=["C"])
+        result = download_data_wrds_ccm_links(linktype=["LU"], linkprim=["C"])
 
     assert len(result) == 1
     assert result["permno"][0] == 3

@@ -13,7 +13,7 @@ sys.path.insert(
 )
 
 import tidyfinance as tf  # noqa: E402
-from tidyfinance.download_wrds import _download_data_wrds_fisd  # noqa: E402
+from tidyfinance.download_wrds import download_data_wrds_fisd  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -70,7 +70,7 @@ def test_downloads_filtered_fisd_data_for_usa_issuers():
             "tidyfinance.download_wrds._read_sql", side_effect=fake_read_sql
         ),
     ):
-        result = _download_data_wrds_fisd()
+        result = download_data_wrds_fisd()
 
     assert disconnected["value"]
     expected_cols = [
@@ -187,7 +187,7 @@ def test_returns_requested_additional_columns():
             "tidyfinance.download_wrds._read_sql", side_effect=fake_read_sql
         ),
     ):
-        result = _download_data_wrds_fisd(
+        result = download_data_wrds_fisd(
             additional_columns=["asset_backed", "defeased"]
         )
 

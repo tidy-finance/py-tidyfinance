@@ -17,7 +17,7 @@ sys.path.insert(
 from tidyfinance import download_data, list_supported_datasets  # noqa: E402
 from tidyfinance.download_open_source import (  # noqa: E402
     _apply_fred_md_tcode,
-    _download_data_fred_md,
+    download_data_fred_md,
 )
 
 # A tiny FRED-MD-shaped CSV: header, the Transform: tcode row, then M/D/YYYY levels.
@@ -82,7 +82,7 @@ def test_apply_tcode_transforms():
 def test_latest_is_wide_raw_levels():
     """vintage='latest' returns a wide [date, <series...>] frame of raw levels."""
     with _patch():
-        result = _download_data_fred_md("FRED-MD")
+        result = download_data_fred_md("FRED-MD")
     assert isinstance(result, pl.DataFrame)
     assert list(result.columns) == ["date", "LEVELSER", "LOGDIFFSER"]
     assert "vintage" not in result.columns
@@ -93,7 +93,7 @@ def test_latest_is_wide_raw_levels():
 def test_transform_applies_per_series_tcode():
     """transform=True applies each series' tcode; a tcode-1 series is unchanged."""
     with _patch():
-        result = _download_data_fred_md("FRED-MD", transform=True)
+        result = download_data_fred_md("FRED-MD", transform=True)
     assert result["LEVELSER"].to_list() == [100, 101, 102]  # unchanged
     logdiff = result["LOGDIFFSER"]  # tcode 5: dlog, leads with NaN
     assert logdiff[0] is None
@@ -103,7 +103,7 @@ def test_transform_applies_per_series_tcode():
 def test_specific_vintage_individual_adds_column():
     """A recent vintage (hosted individually) gets a 'vintage' column after 'date'."""
     with _patch():
-        result = _download_data_fred_md("FRED-MD", vintage="2026-01")
+        result = download_data_fred_md("FRED-MD", vintage="2026-01")
     assert result.columns[:2] == ["date", "vintage"]
     assert result["vintage"].unique().to_list() == ["2026-01"]
 
@@ -112,7 +112,7 @@ def test_vintage_extracted_from_archive():
     """An older vintage is extracted from the covering historical archive zip."""
     files = {"2020-03.csv": _CSV}
     with _patch(zip_files=files, fail_csv=True):
-        result = _download_data_fred_md("FRED-MD", vintage="2020-03")
+        result = download_data_fred_md("FRED-MD", vintage="2020-03")
     assert result["vintage"].unique().to_list() == ["2020-03"]
     assert "LEVELSER" in result.columns
 
@@ -123,19 +123,19 @@ def test_all_stacks_vintages_wide():
     with _patch(
         zip_files=files, fail_csv=True
     ):  # recent individual pulls all fail
-        result = _download_data_fred_md("FRED-MD", vintage="all")
+        result = download_data_fred_md("FRED-MD", vintage="all")
     assert result.columns[:2] == ["date", "vintage"]
     assert sorted(result["vintage"].unique()) == ["2020-01", "2020-02"]
 
 
 def test_invalid_vintage_raises():
     with pytest.raises(ValueError, match="vintage must be"):
-        _download_data_fred_md("FRED-MD", vintage="banana")
+        download_data_fred_md("FRED-MD", vintage="banana")
 
 
 def test_invalid_database_raises():
     with pytest.raises(ValueError, match="Unsupported database"):
-        _download_data_fred_md("not_a_database")
+        download_data_fred_md("not_a_database")
 
 
 def test_supported_datasets_registered():
