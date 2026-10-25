@@ -165,7 +165,7 @@ def assign_portfolio(
     Returns
     -------
     pl.Series
-        Portfolio assignments as a Float64 series aligned with the
+        Portfolio assignments as an Int64 series aligned with the
         input rows. Each entry is the 1-indexed portfolio number;
         values outside the breakpoint range fall into the boundary
         portfolios. Missing inputs are returned as null.
@@ -212,7 +212,7 @@ def assign_portfolio(
             UserWarning,
             stacklevel=2,
         )
-        return pl.Series("portfolio", [1.0] * n, dtype=pl.Float64)
+        return pl.Series("portfolio", [1] * n, dtype=pl.Int64)
 
     breakpoints = breakpoint_function(
         data, sorting_variable, breakpoint_options, data_options
@@ -225,20 +225,18 @@ def assign_portfolio(
             UserWarning,
             stacklevel=2,
         )
-        return pl.Series("portfolio", [None] * n, dtype=pl.Float64)
+        return pl.Series("portfolio", [None] * n, dtype=pl.Int64)
 
     # The outer breakpoint edges are treated as -/+ infinity so values
     # outside the original range still fall into a boundary portfolio.
     # Intervals are closed on the left and open on the right, so the
     # portfolio index is the count of interior breakpoints <= x plus 1.
     xa = x.to_numpy()
-    assignments = (
-        np.searchsorted(breakpoints[1:-1], xa, side="right") + 1.0
-    )
-    assignments = np.where(np.isnan(xa), np.nan, assignments)
-    result = pl.Series(
-        "portfolio", assignments, dtype=pl.Float64
-    ).fill_nan(None)
+    assignments = np.searchsorted(breakpoints[1:-1], xa, side="right") + 1
+    result = pl.Series("portfolio", assignments, dtype=pl.Int64)
+    result = pl.select(
+        pl.when(x.is_null()).then(None).otherwise(result).alias("portfolio")
+    ).to_series()
 
     # Cluster warning: number of populated portfolios differs from
     # the expected count (ties collapsed adjacent breakpoints).
@@ -1882,7 +1880,7 @@ def compute_portfolio_returns(
                 UserWarning,
                 stacklevel=2,
             )
-        schema = {"portfolio": pl.Float64, date_col: data.schema[date_col]}
+        schema = {"portfolio": pl.Int64, date_col: data.schema[date_col]}
         if mktcap_lag_missing:
             schema["ret_excess_ew"] = pl.Float64
         else:
@@ -1904,7 +1902,7 @@ def compute_portfolio_returns(
             if any(v is None for v in key_values):
                 parts.append(
                     part.with_columns(
-                        pl.lit(None, dtype=pl.Float64).alias(out_col)
+                        pl.lit(None, dtype=pl.Int64).alias(out_col)
                     )
                 )
                 continue

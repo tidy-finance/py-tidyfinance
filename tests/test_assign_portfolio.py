@@ -56,6 +56,29 @@ def test_assign_portfolio_returns_vector_same_length_as_data():
     assert len(result) == len(data)
 
 
+def test_assign_portfolio_returns_integer_portfolio_indices():
+    """Test assign_portfolio returns integer portfolio indices."""
+    rng = np.random.default_rng()
+    data = pl.DataFrame({"id": range(100), "value": rng.random(100)})
+    result = assign_portfolio(
+        data,
+        "value",
+        breakpoint_options={"n_portfolios": 5},
+        breakpoint_function=mock_breakpoint_function,
+    )
+    assert result.dtype == pl.Int64
+
+
+def test_missing_values_keep_the_integer_type():
+    """Test missing sorting values give null in an integer series."""
+    data = pl.DataFrame({"value": [1.0, None, 3.0, float("nan"), 5.0]})
+    result = assign_portfolio(
+        data, "value", breakpoint_options={"n_portfolios": 2}
+    )
+    assert result.dtype == pl.Int64
+    assert result.to_list() == [1, None, 2, None, 2]
+
+
 # %% portfolio range tests
 
 
@@ -475,7 +498,7 @@ def test_normal_assignment_returns_correct_portfolio_indices():
         return np.array([0, 50, 100])
 
     result = assign_portfolio(data, "x", breakpoint_function=bp_fn)
-    assert result.to_list() == [1.0, 2.0, 2.0]
+    assert result.to_list() == [1, 2, 2]
 
 
 def test_constant_sorting_variable_warns_and_returns_all_1():
@@ -483,7 +506,8 @@ def test_constant_sorting_variable_warns_and_returns_all_1():
     data = pl.DataFrame({"x": [5] * 6})
     with pytest.warns(UserWarning, match="constant"):
         result = assign_portfolio(data, "x")
-    assert result.to_list() == [1.0] * 6
+    assert result.to_list() == [1] * 6
+    assert result.dtype == pl.Int64
 
 
 def test_na_breakpoints_warns_and_returns_na_series():
@@ -497,6 +521,7 @@ def test_na_breakpoints_warns_and_returns_na_series():
         result = assign_portfolio(data, "x", breakpoint_function=bp_na)
     assert result.is_null().all()
     assert len(result) == 5
+    assert result.dtype == pl.Int64
 
 
 def test_cluster_warning_when_portfolios_collapse_due_to_ties():
