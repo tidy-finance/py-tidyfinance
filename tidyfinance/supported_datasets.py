@@ -2111,8 +2111,18 @@ _OTHER_DATASETS = [
         "domain": "Tidy Finance",
     },
     {
+        "type": "factor_library_costs",
+        "dataset_name": "Factor Library Costs",
+        "domain": "Tidy Finance",
+    },
+    {
         "type": "factor_library_grid",
         "dataset_name": "Factor Library Grid",
+        "domain": "Tidy Finance",
+    },
+    {
+        "type": "factor_library_persistence",
+        "dataset_name": "Factor Library Persistence",
         "domain": "Tidy Finance",
     },
 ]
