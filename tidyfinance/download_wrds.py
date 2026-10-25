@@ -1184,8 +1184,8 @@ def download_data_wrds_crsp(
 
 @_wrds_download_step("CRSP-Compustat links")
 def download_data_wrds_ccm_links(
-    linktype: list[str] = ["LU", "LC"],
-    linkprim: list[str] = ["P", "C"],
+    linktype: list[str] | tuple[str, ...] = ("LU", "LC"),
+    linkprim: list[str] | tuple[str, ...] = ("P", "C"),
     quiet: bool = False,
 ) -> pl.DataFrame:
     """
@@ -1193,12 +1193,10 @@ def download_data_wrds_ccm_links(
 
     Parameters
     ----------
-    linktype : list of str, optional
-        A list of strings indicating the types of links to download.
-        Defaults to ["LU", "LC"].
-    linkprim : list of str, optional
-        A list of strings indicating the primacy of the links.
-        Defaults to ["P", "C"].
+    linktype : list or tuple of str, optional
+        The types of links to download. Defaults to ("LU", "LC").
+    linkprim : list or tuple of str, optional
+        The primacy of the links. Defaults to ("P", "C").
     quiet : bool, optional
         If True, the messages about the WRDS connection and the download
         progress are suppressed. Defaults to False.

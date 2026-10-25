@@ -838,8 +838,8 @@ def _simulate_pseudo_compustat_quarterly(
 def download_data_pseudo_ccm_links(
     n_assets: int = 1000,
     seed: int = 1234,
-    linktype: Optional[list] = None,
-    linkprim: Optional[list] = None,
+    linktype: list[str] | tuple[str, ...] = ("LU", "LC"),
+    linkprim: list[str] | tuple[str, ...] = ("P", "C"),
 ) -> pl.DataFrame:
     """Generate a pseudo CRSP-Compustat linking table.
 
@@ -858,10 +858,10 @@ def download_data_pseudo_ccm_links(
         The draws come from numpy's random generator, so the
         simulated values differ from those of the R package for the
         same seed; the schema and the distributions are the same.
-    linktype : list of str, optional
+    linktype : list or tuple of str, optional
         Accepted for API compatibility with
         'download_data_wrds_ccm_links'; ignored for pseudo data.
-    linkprim : list of str, optional
+    linkprim : list or tuple of str, optional
         Accepted for API compatibility with
         'download_data_wrds_ccm_links'; ignored for pseudo data.
 
