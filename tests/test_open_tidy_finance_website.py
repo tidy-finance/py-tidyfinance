@@ -12,7 +12,7 @@ sys.path.insert(
 
 from tidyfinance.utilities import open_tidy_finance_website  # noqa: E402
 
-BASE_URL = "https://www.tidy-finance.org/python/"
+BASE_URL = "https://www.tidy-finance.org/chapters/"
 
 
 def test_opens_base_url_when_chapter_is_none():

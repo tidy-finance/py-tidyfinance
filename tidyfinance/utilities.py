@@ -402,7 +402,9 @@ def list_tidy_finance_chapters() -> list:
     -------
     list of str
         Chapter slugs in the order they appear in the book. Each slug
-        corresponds to a chapter page on https://www.tidy-finance.org.
+        corresponds to a chapter page at
+        https://www.tidy-finance.org/chapters/<slug>.html, which shows
+        the R and the Python code side by side.
 
     Examples
     --------
@@ -413,6 +415,7 @@ def list_tidy_finance_chapters() -> list:
     """
     return [
         "setting-up-your-environment",
+        "the-tidyfinance-package",
         "working-with-stock-returns",
         "modern-portfolio-theory",
         "capital-asset-pricing-model",
@@ -436,17 +439,17 @@ def list_tidy_finance_chapters() -> list:
         "constrained-optimization-and-backtesting",
         "wrds-dummy-data",
         "cover-and-logo-design",
-        "clean-enhanced-trace-with-r",
+        "clean-enhanced-trace",
         "proofs",
-        "changelog",
+        "colophon",
     ]
 
 
 def open_tidy_finance_website(chapter: str = None) -> None:
     """Open the Tidy Finance website or a specific chapter.
 
-    If 'chapter' is omitted, the main landing page of the Python
-    edition of Tidy Finance is opened. Otherwise the URL for the
+    If 'chapter' is omitted, the chapter overview of Tidy Finance is
+    opened. Otherwise the URL for the
     requested chapter is constructed and opened. An unknown chapter
     name falls back to the main page.
 
@@ -470,7 +473,7 @@ def open_tidy_finance_website(chapter: str = None) -> None:
     open_tidy_finance_website('beta-estimation')
     ```
     """
-    base_url = "https://www.tidy-finance.org/python/"
+    base_url = "https://www.tidy-finance.org/chapters/"
 
     if chapter:
         tidy_finance_chapters = list_tidy_finance_chapters()

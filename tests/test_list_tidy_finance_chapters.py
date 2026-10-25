@@ -26,5 +26,18 @@ def test_includes_known_chapter():
     assert "beta-estimation" in result
 
 
+def test_matches_the_chapters_of_the_website():
+    """Test the list matches the chapters of tidy-finance.org."""
+    result = list_tidy_finance_chapters()
+    assert len(result) == 28
+    assert len(set(result)) == len(result)
+    assert result[:2] == [
+        "setting-up-your-environment",
+        "the-tidyfinance-package",
+    ]
+    assert result[-1] == "colophon"
+    assert "changelog" not in result
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
