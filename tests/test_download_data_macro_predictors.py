@@ -5,6 +5,7 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import polars as pl
 import pytest
 
@@ -54,6 +55,17 @@ def test_monthly_data_is_downloaded_and_processed():
     # The middle row survives the diff()/dropna pipeline
     assert len(out) == 1
     assert out["date"][0] == dt.date(2020, 2, 1)
+
+
+def test_rp_div_is_the_future_log_excess_return():
+    """Test rp_div is next period's log return minus log(1 + Rfree)."""
+    raw = _macro_raw("yyyymm", ["202001", "202002", "202003"]).with_columns(
+        Rfree=pl.Series([0.01, 0.02, 0.03])
+    )
+    with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
+        out = download_data_macro_predictors("monthly")
+    expected = np.log(122 / 112) - np.log(1.03)
+    assert out["rp_div"].to_list() == pytest.approx([expected])
 
 
 def test_quarterly_data_is_downloaded_and_filtered():

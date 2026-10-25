@@ -638,7 +638,10 @@ def download_data_macro_predictors(
     -------
     pl.DataFrame
         A data frame with processed data, filtered by the specified
-        date range and including financial metrics.
+        date range and including financial metrics. 'rp_div' is the
+        future excess market return: the log return of the index with
+        dividends in the next period minus the log risk-free rate of
+        the next period, 'log(1 + Rfree)'.
 
     References
     ----------
@@ -736,7 +739,11 @@ def download_data_macro_predictors(
             pl.col("E12").log().alias("log_e12"),
         )
         .with_columns(
-            (pl.col("logret").shift(-1) - pl.col("Rfree")).alias("rp_div"),
+            # Future excess market return: next period's log return
+            # minus next period's log risk-free rate.
+            (pl.col("logret") - (pl.col("Rfree") + 1).log())
+            .shift(-1)
+            .alias("rp_div"),
             (pl.col("log_d12") - pl.col("Index").log()).alias("dp"),
             (pl.col("log_d12") - pl.col("Index").shift(1).log()).alias("dy"),
             (pl.col("log_e12") - pl.col("Index").log()).alias("ep"),
