@@ -1,4 +1,4 @@
-"""Tests for get_wrds_connection and load_wrds_credentials."""
+"""Tests for get_wrds_connection and _load_wrds_credentials."""
 
 import os
 import sys
@@ -10,7 +10,10 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_wrds import get_wrds_connection, load_wrds_credentials  # noqa: E402
+from tidyfinance.download_wrds import (  # noqa: E402
+    _load_wrds_credentials,
+    get_wrds_connection,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -22,20 +25,20 @@ def _no_dotenv(monkeypatch):
 
 
 def test_load_wrds_credentials_returns_tuple_when_set(monkeypatch):
-    """Test load_wrds_credentials returns the credentials when set."""
+    """Test _load_wrds_credentials returns the credentials when set."""
     monkeypatch.setenv("WRDS_USER", "user")
     monkeypatch.setenv("WRDS_PASSWORD", "pass")
 
-    assert load_wrds_credentials() == ("user", "pass")
+    assert _load_wrds_credentials() == ("user", "pass")
 
 
 def test_load_wrds_credentials_raises_when_missing(monkeypatch):
-    """Test load_wrds_credentials raises when credentials are missing."""
+    """Test _load_wrds_credentials raises when credentials are missing."""
     monkeypatch.delenv("WRDS_USER", raising=False)
     monkeypatch.delenv("WRDS_PASSWORD", raising=False)
 
     with pytest.raises(ValueError, match="WRDS credentials not found"):
-        load_wrds_credentials()
+        _load_wrds_credentials()
 
 
 def test_get_wrds_connection_raises_when_credentials_missing(monkeypatch):

@@ -14,7 +14,7 @@ sys.path.insert(
 
 import tidyfinance as tf  # noqa: E402
 from tidyfinance.download_wrds import download_data_wrds_trace_enhanced  # noqa: E402
-from tidyfinance.download_wrds import process_trace_data  # noqa: E402
+from tidyfinance.download_wrds import _process_trace_data  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -234,7 +234,7 @@ def test_process_trace_data_uses_2012_02_06_regime_cutoff():
         schema_overrides={"orig_msg_seq_nb": pl.Int64},
     )
 
-    out = process_trace_data(trace)
+    out = _process_trace_data(trace)
     vols = set(out["entrd_vol_qt"].to_list())
 
     # Post-2012 regime: the X cancels the trade -> 100 removed, 200 kept.

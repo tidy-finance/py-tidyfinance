@@ -114,7 +114,7 @@ def test_download_data_factors_ff_deprecated_type_warns():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -137,7 +137,7 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -161,7 +161,7 @@ def test_legacy_dataset_warning_names_the_replacement():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -197,7 +197,7 @@ def test_legacy_dataset_warning_is_attributed_to_the_caller():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -450,7 +450,7 @@ def test_download_data_factors_ff_full_path_converts_integer_dates():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -484,7 +484,7 @@ def test_download_data_factors_ff_does_not_rescale_breakpoints():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["ME Breakpoints"],
         ),
         patch(

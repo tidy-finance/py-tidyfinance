@@ -115,7 +115,6 @@ _BACKEND_WRAPPED = (
     "list_supported_types",
     "list_supported_indexes",
     "list_supported_jkp_factors",
-    "process_trace_data",
 )
 for _name in _BACKEND_WRAPPED:
     if _name not in globals():

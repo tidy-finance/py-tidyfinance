@@ -1748,7 +1748,7 @@ def download_data_wrds_trace_enhanced(
     trace_enhanced_raw = _read_sql(query, wrds_connection)
     disconnect_connection(wrds_connection)
 
-    trace_enhanced = process_trace_data(trace_enhanced_raw)
+    trace_enhanced = _process_trace_data(trace_enhanced_raw)
 
     return trace_enhanced
 
@@ -1782,8 +1782,7 @@ def get_wrds_connection(quiet: bool = False) -> object:
     ------
     ValueError
         If 'WRDS_USER' or 'WRDS_PASSWORD' is not set in the environment or
-        '.env' file. The 'load_wrds_credentials' helper performs this check
-        before the connection is opened.
+        '.env' file. This is checked before the connection is opened.
     ConnectionError
         If the connection fails, e.g. because the database host is
         unreachable or the credentials are rejected. The message lists the
@@ -1833,7 +1832,7 @@ def get_wrds_connection(quiet: bool = False) -> object:
     """
     _validate_flag(quiet, "quiet")
 
-    wrds_user, wrds_password = load_wrds_credentials()
+    wrds_user, wrds_password = _load_wrds_credentials()
     url = URL.create(
         drivername="postgresql+psycopg2",
         username=wrds_user,
@@ -1946,7 +1945,7 @@ def disconnect_connection(con: object) -> bool:
         return False
 
 
-def load_wrds_credentials() -> tuple:
+def _load_wrds_credentials() -> tuple:
     """Load WRDS credentials from environment variables or a '.env' file.
 
     Reads 'WRDS_USER' and 'WRDS_PASSWORD' from the process environment.
@@ -2010,7 +2009,7 @@ def _process_additional_columns(additional_columns):
     return ", " + ", ".join(additional_columns)
 
 
-def process_trace_data(trace_all: pl.DataFrame) -> pl.DataFrame:
+def _process_trace_data(trace_all: pl.DataFrame) -> pl.DataFrame:
     """Clean Enhanced TRACE trade reports.
 
     Applies the Dick-Nielsen cleaning protocol to the raw Enhanced
@@ -2376,7 +2375,7 @@ def set_wrds_credentials() -> None:
     '.env' to a sibling '.gitignore' (recommended).
 
     The resulting '.env' file is the credentials source consumed by
-    'get_wrds_connection' via 'load_wrds_credentials'.
+    'get_wrds_connection'.
 
     Storing credentials is not enough to connect to WRDS: you also need
     to enroll in two-factor authentication (Duo) and accept the WRDS

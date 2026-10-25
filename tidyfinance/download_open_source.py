@@ -143,7 +143,7 @@ def _fetch_whitespace_table(
     )
 
 
-def get_available_famafrench_datasets():
+def _get_available_famafrench_datasets():
     """
     Get the list of datasets available from the Fama/French data library.
 
@@ -159,7 +159,7 @@ def get_available_famafrench_datasets():
         from lxml.html import document_fromstring
     except Exception:
         raise ImportError(
-            "get_available_famafrench_datasets requires the optional "
+            "Listing the Fama-French datasets requires the optional "
             "'lxml' package. Install it via "
             "'pip install tidyfinance[scraping]' or 'pip install lxml'."
         )
