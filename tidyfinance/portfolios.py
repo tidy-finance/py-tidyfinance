@@ -1051,10 +1051,10 @@ def _summarise_portfolio_returns(
 ) -> pl.DataFrame:
     """Compute vw, ew, and vw_capped returns within groups.
 
-    Groups with fewer than min_portfolio_size observations get null
-    in all three return columns. Groups whose weight sum is zero get
-    null in the corresponding weighted return. Rows with a null value
-    in any group column are excluded.
+    Groups with fewer than min_portfolio_size observations or with a
+    missing return get null in all three return columns. Groups whose
+    weight sum is zero get null in the corresponding weighted return.
+    Rows with a null value in any group column are excluded.
 
     Parameters
     ----------
@@ -1084,6 +1084,7 @@ def _summarise_portfolio_returns(
 
     sums = work.group_by(group_cols, maintain_order=True).agg(
         _n=pl.len(),
+        _n_ret_null=pl.col(ret_col).is_null().sum(),
         _r_sum=pl.col(ret_col).sum(),
         _w_sum=pl.col(w_col).sum(),
         _wc_sum=pl.col(w_capped_col).sum(),
@@ -1101,10 +1102,14 @@ def _summarise_portfolio_returns(
         .otherwise(pl.col("_rwc_sum") / pl.col("_wc_sum")),
     )
 
-    too_small = pl.col("_n") < min_portfolio_size
+    # A missing return makes the portfolio return missing rather than
+    # being treated as zero
+    no_return = (pl.col("_n") < min_portfolio_size) | (
+        pl.col("_n_ret_null") > 0
+    )
     sums = sums.with_columns(
         [
-            pl.when(too_small).then(None).otherwise(pl.col(c)).alias(c)
+            pl.when(no_return).then(None).otherwise(pl.col(c)).alias(c)
             for c in (
                 "ret_excess_vw",
                 "ret_excess_ew",
@@ -2248,9 +2253,10 @@ def compute_portfolio_returns(
     if not quiet and n_missing > 0:
         warnings.warn(
             f"Returning a complete panel with {n_missing} missing "
-            "values in factor returns due to insufficient observations "
-            f"(fewer than {min_portfolio_size} firms per "
-            "(portfolio, date) cross-section).",
+            "portfolio returns. A portfolio return is missing on a date "
+            "when the portfolio has no assigned stocks, has fewer stocks "
+            f"than 'min_portfolio_size' ({min_portfolio_size}), or has a "
+            "stock with a missing return.",
             UserWarning,
             stacklevel=2,
         )

@@ -592,5 +592,48 @@ def test_dependent_min_mktcap_with_exchanges_requires_the_exchange_column():
         )
 
 
+def test_a_missing_return_names_the_missing_return_as_a_cause():
+    """Test a missing stock return makes the portfolio return missing."""
+    data = pl.DataFrame(
+        {
+            "permno": range(1, 7),
+            "date": [dt.date(2020, 1, 1)] * 6,
+            "s": [float(x) for x in range(1, 7)],
+            "ret_excess": [0.01, 0.02, 0.03, 0.04, 0.05, None],
+        }
+    )
+    with pytest.warns(UserWarning, match="missing return"):
+        result = compute_portfolio_returns(
+            data,
+            "s",
+            "univariate",
+            breakpoint_options_main=breakpoint_options(n_portfolios=2),
+        )
+    assert result["ret_excess_ew"].to_list() == pytest.approx([0.02, None])
+
+
+def test_a_missing_return_is_skipped_across_secondary_portfolios():
+    """Test a bivariate cell with a missing return drops out of the
+    average across secondary portfolios."""
+    data = pl.DataFrame(
+        {
+            "permno": range(1, 9),
+            "date": [dt.date(2020, 1, 1)] * 8,
+            "x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            "y": [1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0],
+            "ret_excess": [0.01, None, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08],
+        }
+    )
+    result = compute_portfolio_returns(
+        data,
+        ["x", "y"],
+        "bivariate-independent",
+        breakpoint_options_main=bp2,
+        breakpoint_options_secondary=bp2,
+        quiet=True,
+    )
+    assert result["ret_excess_ew"].to_list() == pytest.approx([0.02, 0.065])
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
