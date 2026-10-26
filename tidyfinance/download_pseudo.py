@@ -146,6 +146,7 @@ def _simulate_pseudo_data(
     dataset: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    quiet: bool = False,
     **kwargs,
 ) -> pl.DataFrame:
     """
@@ -153,9 +154,9 @@ def _simulate_pseudo_data(
 
     Validates 'dataset', emits a UserWarning that the returned panel
     is simulated and unsuitable for inference, and forwards the call
-    to '_download_data_pseudo_crsp',
-    '_download_data_pseudo_compustat', or
-    '_download_data_pseudo_ccm_links' based on the 'dataset' prefix.
+    to 'download_data_pseudo_crsp',
+    'download_data_pseudo_compustat', or
+    'download_data_pseudo_ccm_links' based on the 'dataset' prefix.
     Reached when callers use 'download_data(domain="Pseudo Data", ...)'.
 
     Parameters
@@ -171,6 +172,10 @@ def _simulate_pseudo_data(
     end_date : str, optional
         Upper date bound forwarded to the per-dataset generator.
         Ignored for 'ccm_links'.
+    quiet : bool, default False
+        If True, the pseudo-data notice is not shown. Accepted so that
+        'quiet' works the same for 'domain="WRDS"' and
+        'domain="Pseudo Data"'.
     **kwargs
         Additional generator-specific arguments (e.g., 'n_assets',
         'seed', 'version', 'additional_columns', 'adjust_volume').
@@ -191,36 +196,37 @@ def _simulate_pseudo_data(
 
     _check_supported_dataset_pseudo(dataset)
 
-    warnings.warn(
-        'Returning pseudo data from domain="Pseudo Data". Schema matches '
-        'domain="WRDS", but values are simulated and not suitable '
-        "for inference.",
-        UserWarning,
-        stacklevel=2,
-    )
+    if not quiet:
+        warnings.warn(
+            'Returning pseudo data from domain="Pseudo Data". Schema matches '
+            'domain="WRDS", but values are simulated and not suitable '
+            "for inference.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     if dataset.startswith("crsp"):
-        return _download_data_pseudo_crsp(
+        return download_data_pseudo_crsp(
             dataset=dataset,
             start_date=start_date,
             end_date=end_date,
             **kwargs,
         )
     elif dataset.startswith("compustat"):
-        return _download_data_pseudo_compustat(
+        return download_data_pseudo_compustat(
             dataset=dataset,
             start_date=start_date,
             end_date=end_date,
             **kwargs,
         )
     else:
-        return _download_data_pseudo_ccm_links(**kwargs)
+        return download_data_pseudo_ccm_links(**kwargs)
 
 
 # %% Pseudo CRSP
 
 
-def _download_data_pseudo_crsp(
+def download_data_pseudo_crsp(
     dataset: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -235,7 +241,7 @@ def _download_data_pseudo_crsp(
     """Generate pseudo CRSP data with the WRDS CRSP schema.
 
     Returns simulated panel data that mirrors the column layout of
-    '_download_data_wrds_crsp'. Useful for testing and for reproducing
+    'download_data_wrds_crsp'. Useful for testing and for reproducing
     the workflow of CRSP-based analyses without a WRDS subscription. The
     generated values are random draws and are not suitable for
     inference. Both 'crsp_monthly' and 'crsp_daily' are supported; the
@@ -254,7 +260,7 @@ def _download_data_pseudo_crsp(
         Inclusive upper bound of the simulated panel, in 'YYYY-MM-DD'
         format.
     version : str, default 'v2'
-        Accepted for API compatibility with '_download_data_wrds_crsp';
+        Accepted for API compatibility with 'download_data_wrds_crsp';
         the pseudo schema follows the v2 output.
     additional_columns : list of str, optional
         Extra column names appended to the panel. Filled with plausible
@@ -262,7 +268,7 @@ def _download_data_pseudo_crsp(
         are not economically meaningful.
     add_ccm_links : bool, default False
         When 'True', a 'gvkey' column derived from the same pseudo
-        identifier universe used by '_download_data_pseudo_ccm_links' is
+        identifier universe used by 'download_data_pseudo_ccm_links' is
         appended.
     adjust_volume : bool, default False
         Accepted for API compatibility; ignored for pseudo data.
@@ -274,30 +280,30 @@ def _download_data_pseudo_crsp(
         Random seed controlling the pseudo identifier universe and the
         simulated values. Identical '(seed, n_assets)' pairs produce
         identical output across calls and match the identifier universe
-        used by '_download_data_pseudo_compustat' and
-        '_download_data_pseudo_ccm_links'.
+        used by 'download_data_pseudo_compustat' and
+        'download_data_pseudo_ccm_links'.
 
     Returns
     -------
     pl.DataFrame
         For 'crsp_monthly', a DataFrame with columns 'permno', 'date',
         'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
-        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
-        'industry', and 'ret_excess'. For 'crsp_daily', a DataFrame
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'prc_lag',
+        'exchange', 'industry', and 'ret_excess'. For 'crsp_daily', a DataFrame
         with columns 'permno', 'date', 'ret', and 'ret_excess'. When
         'add_ccm_links=True', a 'gvkey' column is appended.
 
     Examples
     --------
     ```python
-    from tidyfinance.download_pseudo import _download_data_pseudo_crsp
-    monthly = _download_data_pseudo_crsp(
+    from tidyfinance import download_data_pseudo_crsp
+    monthly = download_data_pseudo_crsp(
         'crsp_monthly',
         start_date='2020-01-01',
         end_date='2024-12-31',
         n_assets=20,
     )
-    daily = _download_data_pseudo_crsp(
+    daily = download_data_pseudo_crsp(
         'crsp_daily',
         start_date='2020-01-01',
         end_date='2020-03-31',
@@ -353,8 +359,9 @@ def _simulate_pseudo_crsp_monthly(
     and 'end_date', then draws share counts, prices, and returns
     from i.i.d. distributions (shrout uniform in [1, 50]k;
     prc uniform in [1, 1000]; ret Normal(0.008, 0.10)). Derived
-    columns ('mktcap', 'mktcap_lag', 'listing_age', 'primaryexch',
-    'ret_excess') are computed deterministically from the draws.
+    columns ('mktcap', 'mktcap_lag', 'prc_lag', 'listing_age',
+    'primaryexch', 'ret_excess') are computed deterministically from
+    the draws.
 
     Parameters
     ----------
@@ -377,8 +384,8 @@ def _simulate_pseudo_crsp_monthly(
     pl.DataFrame
         Monthly panel with columns 'permno', 'date',
         'calculation_date', 'ret', 'shrout', 'prc', 'primaryexch',
-        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'exchange',
-        'industry', 'ret_excess', followed by any requested
+        'siccd', 'listing_age', 'mktcap', 'mktcap_lag', 'prc_lag',
+        'exchange', 'industry', 'ret_excess', followed by any requested
         'additional_columns'.
     """
     months = pl.date_range(
@@ -413,6 +420,7 @@ def _simulate_pseudo_crsp_monthly(
     panel = panel.with_columns(
         listing_age=pl.int_range(pl.len()).over("permno"),
         mktcap_lag=pl.col("mktcap").shift(1).over("permno"),
+        prc_lag=pl.col("prc").shift(1).over("permno"),
     )
     ret_excess = np.maximum(ret - rng.uniform(0, 0.004, size=n), -1)
     panel = panel.with_columns(ret_excess=pl.Series(ret_excess))
@@ -434,6 +442,7 @@ def _simulate_pseudo_crsp_monthly(
         "listing_age",
         "mktcap",
         "mktcap_lag",
+        "prc_lag",
         "exchange",
         "industry",
         "ret_excess",
@@ -508,7 +517,7 @@ def _simulate_pseudo_crsp_daily(
 # %% Pseudo Compustat
 
 
-def _download_data_pseudo_compustat(
+def download_data_pseudo_compustat(
     dataset: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
@@ -520,7 +529,7 @@ def _download_data_pseudo_compustat(
     """Generate pseudo Compustat data with the WRDS schema.
 
     Returns simulated panel data that mirrors the column layout of
-    '_download_data_wrds_compustat'. Useful for testing and for
+    'download_data_wrds_compustat'. Useful for testing and for
     reproducing the workflow of Compustat-based analyses without a WRDS
     subscription. The generated values are random draws and are not
     suitable for inference. Both 'compustat_annual' and
@@ -542,7 +551,7 @@ def _download_data_pseudo_compustat(
         random draws; values themselves are not economically meaningful.
     only_usd : bool, default False
         Accepted for API compatibility with
-        '_download_data_wrds_compustat'. The pseudo universe is treated
+        'download_data_wrds_compustat'. The pseudo universe is treated
         as USD-denominated, so this flag has no effect.
     n_assets : int, default 1000
         Number of pseudo firms in the universe.
@@ -550,8 +559,8 @@ def _download_data_pseudo_compustat(
         Random seed controlling the pseudo identifier universe and the
         simulated values. Identical '(seed, n_assets)' pairs produce
         identical output across calls and match the identifier universe
-        used by '_download_data_pseudo_crsp' and
-        '_download_data_pseudo_ccm_links'.
+        used by 'download_data_pseudo_crsp' and
+        'download_data_pseudo_ccm_links'.
 
     Returns
     -------
@@ -568,16 +577,14 @@ def _download_data_pseudo_compustat(
     Examples
     --------
     ```python
-    from tidyfinance.download_pseudo import (
-        _download_data_pseudo_compustat,
-    )
-    annual = _download_data_pseudo_compustat(
+    from tidyfinance import download_data_pseudo_compustat
+    annual = download_data_pseudo_compustat(
         'compustat_annual',
         start_date='2020-01-01',
         end_date='2024-12-31',
         n_assets=20,
     )
-    quarterly = _download_data_pseudo_compustat(
+    quarterly = download_data_pseudo_compustat(
         'compustat_quarterly',
         start_date='2020-01-01',
         end_date='2024-12-31',
@@ -820,16 +827,16 @@ def _simulate_pseudo_compustat_quarterly(
 # %% Pseudo CCM links
 
 
-def _download_data_pseudo_ccm_links(
+def download_data_pseudo_ccm_links(
     n_assets: int = 1000,
     seed: int = 1234,
-    linktype: Optional[list] = None,
-    linkprim: Optional[list] = None,
+    linktype: list[str] | tuple[str, ...] = ("LU", "LC"),
+    linkprim: list[str] | tuple[str, ...] = ("P", "C"),
 ) -> pl.DataFrame:
     """Generate a pseudo CRSP-Compustat linking table.
 
     Returns a simulated linking table with the same column layout as
-    '_download_data_wrds_ccm_links'. Every pseudo 'permno' is linked to
+    'download_data_wrds_ccm_links'. Every pseudo 'permno' is linked to
     its corresponding 'gvkey' for the full sample horizon (1925 through
     2099). The 'linktype' and 'linkprim' arguments are accepted for API
     compatibility and ignored.
@@ -840,12 +847,12 @@ def _download_data_pseudo_ccm_links(
         Number of pseudo firms in the universe.
     seed : int, default 1234
         Random seed controlling the pseudo identifier universe.
-    linktype : list of str, optional
+    linktype : list or tuple of str, optional
         Accepted for API compatibility with
-        '_download_data_wrds_ccm_links'; ignored for pseudo data.
-    linkprim : list of str, optional
+        'download_data_wrds_ccm_links'; ignored for pseudo data.
+    linkprim : list or tuple of str, optional
         Accepted for API compatibility with
-        '_download_data_wrds_ccm_links'; ignored for pseudo data.
+        'download_data_wrds_ccm_links'; ignored for pseudo data.
 
     Returns
     -------
@@ -856,10 +863,8 @@ def _download_data_pseudo_ccm_links(
     Examples
     --------
     ```python
-    from tidyfinance.download_pseudo import (
-        _download_data_pseudo_ccm_links,
-    )
-    links = _download_data_pseudo_ccm_links(n_assets=10)
+    from tidyfinance import download_data_pseudo_ccm_links
+    links = download_data_pseudo_ccm_links(n_assets=10)
     ```
     """
     _ = (linktype, linkprim)

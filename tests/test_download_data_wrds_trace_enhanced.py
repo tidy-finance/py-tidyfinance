@@ -13,8 +13,8 @@ sys.path.insert(
 )
 
 import tidyfinance as tf  # noqa: E402
-from tidyfinance.download_wrds import _download_data_wrds_trace_enhanced  # noqa: E402
-from tidyfinance.download_wrds import process_trace_data  # noqa: E402
+from tidyfinance.download_wrds import download_data_wrds_trace_enhanced  # noqa: E402
+from tidyfinance.download_wrds import _process_trace_data  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +28,7 @@ def _restore_backend():
 def test_download_data_wrds_trace_enhanced_validates_cusips():
     """Test download_data_wrds_trace_enhanced validates cusips."""
     with pytest.raises(ValueError, match="CUSIP"):
-        _download_data_wrds_trace_enhanced(["123", None])
+        download_data_wrds_trace_enhanced(["123", None])
 
 
 def test_download_data_wrds_trace_enhanced_cleans_trace_data():
@@ -121,7 +121,7 @@ def test_download_data_wrds_trace_enhanced_cleans_trace_data():
         patch("tidyfinance.download_wrds.disconnect_connection"),
         patch("tidyfinance.download_wrds._read_sql", return_value=trace),
     ):
-        out = _download_data_wrds_trace_enhanced(
+        out = download_data_wrds_trace_enhanced(
             ["00101JAH9"], "2010-01-01", "2014-01-01"
         )
 
@@ -234,7 +234,7 @@ def test_process_trace_data_uses_2012_02_06_regime_cutoff():
         schema_overrides={"orig_msg_seq_nb": pl.Int64},
     )
 
-    out = process_trace_data(trace)
+    out = _process_trace_data(trace)
     vols = set(out["entrd_vol_qt"].to_list())
 
     # Post-2012 regime: the X cancels the trade -> 100 removed, 200 kept.

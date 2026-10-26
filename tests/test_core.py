@@ -174,7 +174,9 @@ def test_invalid_date_column():
     """Test that invalid date column raises error"""
     data = create_test_data()
     with pytest.raises(ValueError):
-        add_lagged_columns(data, cols=["bm"], lag=1, date_col="invalid_date")
+        add_lagged_columns(
+            data, cols=["bm"], lag=1, data_options={"date": "invalid_date"}
+        )
 
 
 @pytest.fixture
@@ -287,16 +289,36 @@ def test_estimate_betas_match_per_window_ols(
     )
 
 
-def test_estimate_betas_custom_id_column(
+def test_estimate_betas_custom_data_options(
     sample_data: pl.DataFrame,
 ) -> None:
-    """A non-default stock identifier column is honored."""
-    renamed = sample_data.rename({"permno": "gvkey"})
+    """Non-default identifier and date columns are honored."""
+    renamed = sample_data.rename({"permno": "gvkey", "date": "day"})
     result = estimate_betas(
-        renamed, "ret_excess ~ mkt_excess", "30d", id_col="gvkey"
+        renamed,
+        "ret_excess ~ mkt_excess",
+        "30d",
+        data_options={"id": "gvkey", "date": "day"},
     )
-    assert "gvkey" in result.columns
-    assert "permno" not in result.columns
+    assert result.columns[:2] == ["gvkey", "day"]
+    expected = estimate_betas(sample_data, "ret_excess ~ mkt_excess", "30d")
+    assert result.rename({"gvkey": "permno", "day": "date"}).equals(expected)
+
+
+def test_estimate_betas_rejects_a_regressor_named_intercept(
+    sample_data: pl.DataFrame,
+) -> None:
+    data = sample_data.rename({"mkt_excess": "intercept"})
+    with pytest.raises(ValueError, match="may be called 'intercept'"):
+        estimate_betas(data, "ret_excess ~ intercept", "30d")
+
+
+def test_estimate_betas_warns_when_lookback_is_below_num_params(
+    sample_data: pl.DataFrame,
+) -> None:
+    data = sample_data.with_columns(smb=pl.col("mkt_excess") * 2)
+    with pytest.warns(UserWarning, match="too low"):
+        estimate_betas(data, "ret_excess ~ mkt_excess + smb", "1d", min_obs=1)
 
 
 def test_estimate_betas_invalid_formula_raises(
@@ -472,6 +494,61 @@ def test_default_min_obs_rounds_like_r() -> None:
     )
 
 
+def _monthly_panel_r(seed: int = 1234) -> pl.DataFrame:
+    """50 stocks over the 12 months of 2020, as in the R tests."""
+    rng = np.random.default_rng(seed)
+    return pl.DataFrame(
+        {
+            "date": [
+                d
+                for d in _month_starts(dt.date(2020, 1, 1), 12)
+                for _ in range(50)
+            ],
+            "permno": list(range(1, 51)) * 12,
+            "ret_excess": rng.normal(0, 0.1, 600),
+            "mkt_excess": rng.normal(0, 0.1, 600),
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("lookback", "step"),
+    [("5h", 3600), ("5m", 60), ("5s", 1)],
+)
+def test_subday_lookbacks_run_on_datetime_columns(lookback, step) -> None:
+    """Hour, minute, and second windows work on a datetime column.
+
+    As in R, each stock has a single observation per window here, so
+    the default min_obs drops every window.
+    """
+    data = _monthly_panel_r().with_columns(
+        pl.col("date").cast(pl.Datetime("us"))
+        + pl.duration(seconds=(pl.int_range(pl.len()) // 50) * step)
+    )
+    result = estimate_betas(data, "ret_excess ~ mkt_excess", lookback)
+    assert result.columns == ["permno", "date", "intercept", "beta_mkt_excess"]
+    assert result.height == 0
+
+
+def test_hour_lookback_pools_consecutive_hours() -> None:
+    data = _monthly_panel_r().with_columns(
+        date=pl.datetime(2020, 1, 1)
+        + pl.duration(hours=pl.int_range(pl.len()) // 50)
+    )
+    result = estimate_betas(data, "ret_excess ~ mkt_excess", "5h")
+    # Windows ending in hours 4 to 12 reach min_obs = 4: 9 per stock.
+    assert result.height == 50 * 9
+
+
+def test_windows_with_fewer_than_min_obs_observations_are_dropped() -> None:
+    result = estimate_betas(
+        _monthly_panel_r(), "ret_excess ~ mkt_excess", "3mo", min_obs=3
+    )
+    # The first two months of each permno cannot reach three observations.
+    assert result["date"].min() == dt.date(2020, 3, 1)
+    assert result.height == 50 * 10
+
+
 def sample_data_fmb() -> pl.DataFrame:
     np.random.seed(42)
     dates = _month_ends(2020, 1, 12)
@@ -507,6 +584,28 @@ def test_estimate_fama_macbeth_vcov(sample_data: pl.DataFrame) -> None:
     )
 
 
+def test_estimate_fama_macbeth_iid_t_statistic_is_mean_over_se() -> None:
+    """With vcov='iid', the standard error is sd / sqrt(T) of the
+    cross-sectional estimates and the t-statistic is risk_premium /
+    standard_error, without an extra sqrt(T) factor."""
+    data = sample_data_fmb()
+    result = estimate_fama_macbeth(data, "ret_excess ~ beta", vcov="iid")
+
+    slopes = []
+    for group in data.sort("date").partition_by("date", maintain_order=True):
+        x = np.column_stack([np.ones(group.height), group["beta"].to_numpy()])
+        y = group["ret_excess"].to_numpy()
+        coef, *_ = np.linalg.lstsq(x, y, rcond=None)
+        slopes.append(coef[1])
+    slopes = np.array(slopes)
+    expected_se = slopes.std(ddof=1) / np.sqrt(slopes.size)
+
+    row = result.filter(pl.col("factor") == "beta")
+    assert row["risk_premium"][0] == pytest.approx(slopes.mean())
+    assert row["standard_error"][0] == pytest.approx(expected_se)
+    assert row["t_statistic"][0] == pytest.approx(slopes.mean() / expected_se)
+
+
 def test_estimate_fama_macbeth_invalid_vcov_raises() -> None:
     """An unsupported vcov option raises a ValueError."""
     with pytest.raises(ValueError, match="vcov must be either"):
@@ -539,7 +638,7 @@ def test_estimate_fama_macbeth_small_cross_section_raises() -> None:
 
 
 def test_estimate_fama_macbeth_data_options_date_column() -> None:
-    """data_options={'date': ...} maps the date column like date_col."""
+    """data_options={'date': ...} maps the date column."""
     data = sample_data_fmb()
     expected = estimate_fama_macbeth(
         data, "ret_excess ~ beta + bm + log_mktcap"
@@ -586,6 +685,78 @@ def test_estimate_fama_macbeth_detail() -> None:
     ]
     assert len(summary_statistics) == 1
     assert 0 <= summary_statistics["r_squared"][0] <= 1
+
+
+def test_estimate_fama_macbeth_results_do_not_depend_on_row_order() -> None:
+    data = sample_data_fmb()
+    model = "ret_excess ~ beta + bm + log_mktcap"
+    ordered = estimate_fama_macbeth(data, model, detail=True)
+    for shuffled in (
+        data.sample(fraction=1.0, shuffle=True, seed=42),
+        data.reverse(),
+    ):
+        result = estimate_fama_macbeth(shuffled, model, detail=True)
+        assert_frame_equal(result["coefficients"], ordered["coefficients"])
+        assert_frame_equal(
+            result["summary_statistics"], ordered["summary_statistics"]
+        )
+
+
+def test_estimate_fama_macbeth_vcov_changes_only_standard_errors() -> None:
+    data = sample_data_fmb()
+    iid = estimate_fama_macbeth(data, "ret_excess ~ beta + bm", vcov="iid")
+    nw = estimate_fama_macbeth(data, "ret_excess ~ beta + bm")
+    np.testing.assert_allclose(iid["risk_premium"], nw["risk_premium"])
+    assert not (iid["standard_error"] == nw["standard_error"]).all()
+
+
+def test_estimate_fama_macbeth_detail_summary_statistics() -> None:
+    result = estimate_fama_macbeth(
+        sample_data_fmb(), "ret_excess ~ beta + bm", detail=True
+    )
+    coefficients = result["coefficients"]
+    assert coefficients.columns == [
+        "factor",
+        "risk_premium",
+        "n",
+        "standard_error",
+        "t_statistic",
+    ]
+    assert coefficients.height == 3
+    summary = result["summary_statistics"].row(0, named=True)
+    assert summary["adj_r_squared"] <= summary["r_squared"]
+    assert summary["n_obs"] == 50
+
+
+def _fmb_panel_with_aliased_months() -> pl.DataFrame:
+    """'k' is constant within every third month, so it is aliased with
+    the intercept in those cross-sections."""
+    rng = np.random.default_rng(5)
+    rows = []
+    for m in range(1, 13):
+        for _ in range(20):
+            k = 1.0 if m % 3 == 0 else rng.normal()
+            rows.append((dt.date(2020, m, 1), rng.normal(), rng.normal(), k))
+    return pl.DataFrame(rows, schema=["date", "y", "a", "k"], orient="row")
+
+
+def test_estimate_fama_macbeth_skips_aliased_estimates_like_r() -> None:
+    """Aliased cross-sectional estimates are skipped in the averages
+    while 'n' counts every period. Reference values from R."""
+    data = _fmb_panel_with_aliased_months()
+    iid = estimate_fama_macbeth(data, "y ~ a + k", vcov="iid")
+    nw = estimate_fama_macbeth(data, "y ~ a + k")
+    assert iid["factor"].to_list() == ["intercept", "a", "k"]
+    assert iid["n"].to_list() == [12, 12, 12]
+    np.testing.assert_allclose(
+        iid["risk_premium"], [0.0442682, -0.1135147, 0.2559981], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        iid["standard_error"], [0.08938236, 0.05740801, 0.06501215], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        nw["standard_error"], [0.06643991, 0.04089791, 0.03272616], rtol=1e-6
+    )
 
 
 # Fixed series with reference values computed in R via
@@ -722,6 +893,15 @@ def test_create_summary_statistics_basic(sample_data) -> None:
     assert "mean" in result.columns, "Output should include mean calculation"
 
 
+def test_create_summary_statistics_accepts_variables_as_arguments():
+    """Variables can be passed as separate arguments, like R's '...'."""
+    data = sample_data_summary()
+    expected = create_summary_statistics(data, ["x", "y"])
+    assert create_summary_statistics(data, "x", "y").equals(expected)
+    with pytest.raises(ValueError, match="at least one variable"):
+        create_summary_statistics(data)
+
+
 def test_create_summary_statistics_by_group(sample_data) -> None:
     result = create_summary_statistics(
         sample_data_summary(), ["x", "y"], by="group"
@@ -767,11 +947,43 @@ def test_create_summary_statistics_rejects_strings() -> None:
 
 
 def test_create_summary_statistics_handles_na() -> None:
-    """NA values are dropped before statistics are computed."""
-    df = pl.DataFrame({"x": [1.0, 2.0, None, 4.0]})
-    result = create_summary_statistics(df, ["x"])
-    assert result["n"][0] == 3
-    assert result["mean"][0] == pytest.approx((1.0 + 2.0 + 4.0) / 3)
+    """Missing values propagate unless drop_na is True."""
+    df = pl.DataFrame({"x": [1.0, 2.0, None, 4.0, 5.0]})
+    keep_na = create_summary_statistics(df, ["x"], detail=True)
+    drop_na = create_summary_statistics(df, ["x"], drop_na=True)
+    assert keep_na["n"][0] == drop_na["n"][0] == 4
+    for column in ["mean", "sd", "min", "q01", "q50", "q99", "max"]:
+        assert keep_na[column][0] is None
+    assert drop_na["mean"][0] == pytest.approx(3.0)
+    assert drop_na["q50"][0] == pytest.approx(3.0)
+
+
+def test_create_summary_statistics_drop_na_per_variable() -> None:
+    """drop_na removes missing values of each variable separately."""
+    df = pl.DataFrame(
+        {
+            "x": [1.0, 2.0, 3.0, 4.0],
+            "y": [10.0, None, 30.0, 40.0],
+            "g": ["a", "a", "b", None],
+        }
+    )
+    result = create_summary_statistics(df, ["x", "y"], by="g", drop_na=True)
+    assert result.columns[:3] == ["variable", "g", "n"]
+    assert result.select("variable", "g").rows() == [
+        ("x", "a"),
+        ("x", "b"),
+        ("y", "a"),
+        ("y", "b"),
+    ]
+    assert result["n"].to_list() == [2, 1, 1, 1]
+    assert result["mean"][0] == pytest.approx(1.5)
+
+
+def test_create_summary_statistics_keeps_missing_group() -> None:
+    """Without drop_na, a missing group is kept and sorted last."""
+    df = pl.DataFrame({"x": [1.0, 2.0, 3.0], "g": ["b", None, "a"]})
+    result = create_summary_statistics(df, ["x"], by="g")
+    assert result["g"].to_list() == ["a", "b", None]
 
 
 def sample_data_ls() -> pl.DataFrame:
@@ -798,10 +1010,10 @@ def test_breakpoint_options_custom():
     options = breakpoint_options(
         n_portfolios=5,
         percentiles=[0.2, 0.4, 0.6, 0.8],
-        breakpoint_exchanges="NYSE",
+        breakpoints_exchanges="NYSE",
     )
     assert options["n_portfolios"] == 5, "Custom n_portfolios should be 5"
-    assert options["breakpoint_exchanges"] == "NYSE", (
+    assert options["breakpoints_exchanges"] == "NYSE", (
         "Custom exchange should be 'NYSE'"
     )
 

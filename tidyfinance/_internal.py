@@ -2,10 +2,138 @@
 
 import calendar
 import datetime as dt
+import os
 import re
+import sys
+import warnings
 
 import numpy as np
 import polars as pl
+
+_PACKAGE_DIR = os.path.normcase(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _quantile(x, probs):
+    """Sample quantiles with linear interpolation between order statistics.
+
+    The quantile at probability p is interpolated at position
+    1 + (n - 1) * p of the sorted values as '(1 - h) * a + h * b'. This
+    is the definition of numpy's and polars' linear quantiles, but
+    their arithmetic, 'a + (b - a) * h', can differ in the last bit
+    when a quantile falls on an observation, which moves a stock across
+    a breakpoint or screen cutoff. All quantiles of the package are
+    computed here, so they are reproducible bit for bit. Missing values
+    (NaN) are ignored.
+
+    Parameters
+    ----------
+    x : array-like
+        Numeric values.
+    probs : float or array-like of float
+        Probabilities in [0, 1].
+
+    Returns
+    -------
+    float or numpy.ndarray
+        The quantiles, NaN if 'x' has no non-missing values. A float if
+        'probs' is a scalar.
+    """
+    values = np.asarray(x, dtype=float)
+    values = np.sort(values[~np.isnan(values)])
+    scalar = np.ndim(probs) == 0
+    p = np.atleast_1d(np.asarray(probs, dtype=float))
+    n = values.size
+
+    if n == 0:
+        quantiles = np.full(p.shape, np.nan)
+    else:
+        index = 1 + (n - 1) * p
+        lo = np.floor(index)
+        hi = np.ceil(index)
+        quantiles = values[lo.astype(int) - 1]
+        upper = values[hi.astype(int) - 1]
+        interpolate = (index > lo) & (upper != quantiles)
+        h = (index - lo)[interpolate]
+        quantiles[interpolate] = (1 - h) * quantiles[interpolate] + h * upper[
+            interpolate
+        ]
+
+    return float(quantiles[0]) if scalar else quantiles
+
+
+def _user_stacklevel() -> int:
+    """Return the 'stacklevel' that attributes a warning to the user.
+
+    Meant to be passed to 'warnings.warn' by the function that calls
+    this helper. The warning is attributed to the first caller outside
+    the tidyfinance package, however deep inside the package it is
+    raised (e.g. through 'download_data' and the backend wrapper).
+    Python shows 'DeprecationWarning' by default only when it is
+    attributed to code in '__main__', so attributing it to a package
+    frame would hide it.
+
+    Returns
+    -------
+    int
+        The 'stacklevel' for 'warnings.warn' in the calling function.
+    """
+    # Frame 0 is this helper, frame 1 the function that calls
+    # warnings.warn (stacklevel 1), frame 2 its caller (stacklevel 2).
+    frame = sys._getframe(2)
+    stacklevel = 2
+    while frame is not None:
+        filename = os.path.normcase(os.path.abspath(frame.f_code.co_filename))
+        if not filename.startswith(_PACKAGE_DIR + os.sep):
+            break
+        frame = frame.f_back
+        stacklevel += 1
+    return stacklevel
+
+
+def _inform(message: str, end: str = "\n") -> None:
+    """Show an informational message, such as download progress.
+
+    Messages go to standard error, so they appear in consoles and
+    notebooks but do not mix with printed results.
+
+    Parameters
+    ----------
+    message : str
+        The message.
+    end : str, default '\\n'
+        Appended to the message, e.g. '' to update a progress line in
+        place.
+    """
+    print(message, end=end, file=sys.stderr, flush=True)
+
+
+def _deprecate_legacy_dataset(legacy: str, dataset: str) -> None:
+    """Warn that a legacy identifier was passed as 'dataset'.
+
+    Legacy identifiers such as 'factors_ff_3_monthly' are still accepted
+    as values of 'dataset'. The warning names the value and the dataset
+    that replaces it, rather than the deprecated 'type' argument, which
+    the caller did not use.
+
+    Parameters
+    ----------
+    legacy : str
+        The legacy identifier passed as 'dataset'.
+    dataset : str
+        The dataset name that replaces it.
+
+    Warns
+    -----
+    DeprecationWarning
+        Always.
+    """
+    # Attribute the warning to the user's call, not to package code,
+    # so Python does not hide it.
+    warnings.warn(
+        f"dataset={legacy!r} is deprecated. Use dataset={dataset!r} instead.",
+        DeprecationWarning,
+        stacklevel=_user_stacklevel(),
+    )
 
 
 def _shift_years(d: dt.date, years: int) -> dt.date:
@@ -151,22 +279,26 @@ def _get_random_user_agent():
         requests that would otherwise be rejected by some endpoints.
     """
     user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/42.0.2311.135 Safari/537.36 Edge/12.246",
-        "Mozilla/5.0 (X11; CrOS x86_64 8172.45.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.64 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9",
-        "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/47.0.2526.111 Safari/537.36",
-        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Safari/605.1.15",
-        "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 14_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
-        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:117.0) Gecko/20100101 Firefox/117.0",
-        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:116.0) Gecko/20100101 Firefox/116.0",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.141 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_6_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 11_7_8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.5845.110 Safari/537.36 Edg/116.0.1938.69",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.111 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.6312.86 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.185 Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (iPad; CPU OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+        "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.6312.105 Mobile Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edg/123.0.2420.65 Chrome/123.0.6312.86 Safari/537.36",
+        "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:123.0) Gecko/20100101 Firefox/123.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_5_2) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.224 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 13; SM-S918U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.111 Mobile Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 16_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.6312.106 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.140 Mobile Safari/537.36",
+        "Mozilla/5.0 (iPad; CPU OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.128 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
     ]
     return str(np.random.choice(user_agents))
 
@@ -282,36 +414,47 @@ def _offset_end(start: dt.date, offset: str) -> dt.date:
     return pl.Series([start]).dt.offset_by(offset).item()
 
 
-def _check_new_col(data: pl.DataFrame, names) -> None:
+def _check_new_col(
+    data: pl.DataFrame, names, caller: str | None = None
+) -> pl.DataFrame:
     """
-    Guard against overwriting user columns with internal helpers.
+    Warn before overwriting existing columns.
 
-    Raises 'ValueError' if any of 'names' already exist in
-    'data.columns'. Used before adding temporary columns like
-    '_upper', '_lower', '_src_date' inside lagging functions, so
-    user data is never silently clobbered.
+    Emits one 'UserWarning' that names the columns of 'names' that
+    already exist in 'data' and drops them, so that the caller can
+    create them afresh. Used before adding portfolio columns or
+    temporary helpers like '_upper', '_lower', or '_year'.
 
     Parameters
     ----------
     data : pl.DataFrame
         Input frame whose columns are checked.
     names : str or iterable of str
-        Column name(s) the caller intends to introduce.
+        Column name(s) the caller intends to create.
+    caller : str, optional
+        Name of the public function that creates the columns, used in
+        the warning message.
 
-    Raises
-    ------
-    ValueError
-        If any name in 'names' is already a column of 'data'.
+    Returns
+    -------
+    pl.DataFrame
+        'data' without the columns in 'names'.
     """
     if isinstance(names, str):
         names = [names]
     existing = [n for n in names if n in data.columns]
-    if existing:
-        raise ValueError(
-            f"Cannot proceed: column(s) {existing} would be created by "
-            "this operation but already exist in the input. Rename or "
-            "drop them first."
-        )
+    if not existing:
+        return data
+    s = "" if len(existing) == 1 else "s"
+    listed = ", ".join(f"'{n}'" for n in existing)
+    lead = f"'{caller}' overwrites" if caller else "Overwriting"
+    warnings.warn(
+        f"{lead} {len(existing)} existing column{s}: {listed}. "
+        "Consider renaming or removing existing columns.",
+        UserWarning,
+        stacklevel=_user_stacklevel(),
+    )
+    return data.drop(existing)
 
 
 def _validate_column_name(value, arg: str, description: str) -> None:
@@ -414,3 +557,44 @@ def _validate_optional_number(
     upper_ok = (value < max) if max_strict else (value <= max)
     if not (lower_ok and upper_ok):
         raise ValueError(message)
+
+
+def _edit_distance(a: str, b: str) -> int:
+    """Return the Levenshtein distance between two strings."""
+    previous = list(range(len(b) + 1))
+    for i, ca in enumerate(a, start=1):
+        current = [i]
+        for j, cb in enumerate(b, start=1):
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (ca != cb),
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _warn_near_option_names(extra_names, known, fn: str) -> None:
+    """Warn about option names that look like typos of known options.
+
+    Used by the option constructors ('breakpoint_options',
+    'filter_options', 'data_options') to flag a name passed via
+    '**kwargs' that is within one edit of a known option, which usually
+    means a typo. The name is still kept, so that genuine custom
+    options (e.g. for a custom breakpoint function) keep working.
+    """
+    known = [k for k in known if len(k) >= 4]
+    for name in extra_names:
+        if not name:
+            continue
+        near = [k for k in known if _edit_distance(name, k) <= 1]
+        if near:
+            warnings.warn(
+                f"Unknown option '{name}' passed to '{fn}'. Did you mean "
+                f"{', '.join(repr(k) for k in near)}? '{name}' is kept "
+                "as given.",
+                UserWarning,
+                stacklevel=_user_stacklevel(),
+            )

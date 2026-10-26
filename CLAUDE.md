@@ -7,14 +7,14 @@ Guidance for working in this repository.
 - `tidyfinance/` — the package. **Internals are implemented in polars**:
   module-level functions take and return `polars.DataFrame` objects, and
   calendar-date columns are `polars.Date`. The public API additionally
-  accepts pandas input and returns pandas under the default backend (see
-  `backend.py`).
+  accepts pandas input and returns pandas under the `pandas` backend (see
+  `backend.py`; the default backend is `polars`).
   - `__init__.py` — builds the public API automatically by scanning the
     public submodules and re-exporting their functions/classes (see
     `__all__`). Data-bearing functions are wrapped at this boundary by
     `backend._use_backend` so they honor the active pandas/polars backend
-    (default `pandas`: pandas in → polars internals → pandas out; the
-    `polars` backend is a pass-through). Keep this file's namespace clean:
+    (default `polars`: a pass-through; the `pandas` backend converts
+    pandas in → polars internals → pandas out). Keep this file's namespace clean:
     discovery loop variables, imports (`importlib`, `pkgutil`, `types`),
     and internal toggles are deleted or underscore-prefixed at the end so
     they don't leak into `dir(tidyfinance)` or the docs.

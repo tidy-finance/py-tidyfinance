@@ -22,7 +22,6 @@ import tidyfinance as tf  # noqa: E402
 from tidyfinance.backend import (  # noqa: E402
     _convert_output,
     _to_polars_input,
-    get_backend,
 )
 
 
@@ -42,8 +41,14 @@ pythonpytestmark = pytest.mark.filterwarnings(
 # %% set_backend / get_backend
 
 
-def test_default_backend_is_pandas():
-    assert get_backend() == "pandas"
+def test_default_backend_is_polars():
+    import importlib
+
+    from tidyfinance import backend
+
+    # The autouse fixture sets the backend, so reload the module to read
+    # the value it starts with.
+    assert importlib.reload(backend).get_backend() == "polars"
 
 
 def test_set_and_get_backend():
@@ -550,43 +555,7 @@ def test_list_supported_indexes_returns_polars():
     assert isinstance(out, pl.DataFrame)
 
 
-def _trace_fixture():
-    days = [datetime.date(2015, 1, 5), datetime.date(2015, 1, 6)]
-    exctn = [datetime.date(2015, 1, 4), datetime.date(2015, 1, 5)]
-    stlmnt = [datetime.date(2015, 1, 6), datetime.date(2015, 1, 7)]
-    return pl.DataFrame(
-        {
-            "cusip_id": ["00077D1AA"] * 2,
-            "msg_seq_nb": [1, 2],
-            "orig_msg_seq_nb": [1, 2],
-            "trd_rpt_dt": days,
-            "trd_rpt_tm": ["09:31:00", "09:36:00"],
-            "trd_exctn_dt": exctn,
-            "trd_exctn_tm": ["09:30:00", "09:35:00"],
-            "rptd_pr": [100.0, 100.5],
-            "entrd_vol_qt": [1000, 1500],
-            "yld_pt": [5.0, 5.0],
-            "rpt_side_cd": ["B", "S"],
-            "cntra_mp_id": ["D", "D"],
-            "trc_st": ["T", "T"],
-            "asof_cd": [None, None],
-            "wis_fl": ["N", "N"],
-            "days_to_sttl_ct": [2, 2],
-            "stlmnt_dt": stlmnt,
-            "spcl_trd_fl": [None, None],
-        }
-    )
 
-
-def test_process_trace_data_round_trips_polars():
-    tf.set_backend("polars")
-    out = tf.process_trace_data(_trace_fixture())
-    assert isinstance(out, pl.DataFrame)
-
-
-def test_process_trace_data_returns_pandas_by_default():
-    out = tf.process_trace_data(_trace_fixture())
-    assert isinstance(out, pd.DataFrame)
 
 
 # %% run all tests

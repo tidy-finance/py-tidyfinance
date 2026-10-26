@@ -12,7 +12,12 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.portfolios import compute_long_short_returns  # noqa: E402
+from tidyfinance.portfolios import (  # noqa: E402
+    breakpoint_options,
+    compute_long_short_returns,
+    compute_portfolio_returns,
+    data_options,
+)
 
 
 def make_portfolio_panel(n_portfolios=5, n_months=12, seed=42):
@@ -80,3 +85,47 @@ def test_compute_long_short_returns_handles_a_single_per_date_long_leg():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_an_unknown_direction_is_an_error():
+    data = pl.DataFrame(
+        {
+            "date": [dt.date(2020, 1, 1)] * 2,
+            "portfolio": [1, 2],
+            "ret_excess_vw": [0.01, 0.02],
+        }
+    )
+    with pytest.raises(ValueError, match="'direction' must be one of"):
+        compute_long_short_returns(data, direction="top-bottom")
+
+
+def test_accepts_the_options_used_for_the_sort():
+    data = pl.DataFrame(
+        {
+            "id": list(range(1, 11)) * 2,
+            "date": [dt.date(2020, 1, 1)] * 10 + [dt.date(2020, 2, 1)] * 10,
+            "s": [float(i) for i in range(1, 11)] * 2,
+            "rx": [i / 100 for i in range(1, 11)] * 2,
+            "mktcap_lag": [1.0] * 20,
+        }
+    )
+    options = data_options(id="id", ret_excess="rx")
+    portfolio_returns = compute_portfolio_returns(
+        data,
+        "s",
+        "univariate",
+        data_options=options,
+        breakpoint_options_main=breakpoint_options(n_portfolios=2),
+        quiet=True,
+    )
+    out = compute_long_short_returns(portfolio_returns, data_options=options)
+    assert "ret_excess_ew" in out.columns
+    assert out["ret_excess_ew"].to_list() == pytest.approx([0.05, 0.05])
+
+
+def test_data_without_portfolio_return_columns_is_an_error():
+    data = pl.DataFrame(
+        {"date": [dt.date(2020, 1, 1)] * 2, "portfolio": [1, 2]}
+    )
+    with pytest.raises(ValueError, match="No portfolio return columns"):
+        compute_long_short_returns(data)

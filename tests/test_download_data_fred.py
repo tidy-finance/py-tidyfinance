@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_open_source import _download_data_fred  # noqa: E402
+from tidyfinance.download_open_source import download_data_fred  # noqa: E402
 
 
 def test_downloads_parses_and_filters_fred_data():
@@ -27,7 +27,7 @@ def test_downloads_parses_and_filters_fred_data():
         "tidyfinance.download_open_source.requests.get",
         return_value=response_mock,
     ):
-        result = _download_data_fred(
+        result = download_data_fred(
             "GDP", start_date="2020-02-01", end_date="2020-02-01"
         )
 
@@ -50,7 +50,7 @@ def test_returns_empty_data_when_fred_responds_with_non_200_status():
         with pytest.warns(
             UserWarning, match="Failed to retrieve data for series GDP"
         ):
-            result = _download_data_fred("GDP")
+            result = download_data_fred("GDP")
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
@@ -66,7 +66,7 @@ def test_returns_empty_data_when_download_handling_returns_none():
         with pytest.warns(
             UserWarning, match="Failed to retrieve data for series GDP"
         ):
-            result = _download_data_fred("GDP")
+            result = download_data_fred("GDP")
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0

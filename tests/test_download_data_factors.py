@@ -15,9 +15,11 @@ sys.path.insert(
 )
 
 from tidyfinance.download_open_source import (
-    _download_data_factors_ff,
-    _download_data_factors_q,
+    download_data_factors_ff,
+    download_data_factors_q,
+    _breakpoints_col_names_ff,
     _famafrench_downloader,
+    _parse_french_data_factors,
 )  # noqa: E402
 from tidyfinance.supported_datasets import (
     _check_supported_dataset_ff,
@@ -100,7 +102,7 @@ def test_is_legacy_type_q_true_for_legacy_type_false_otherwise():
 def test_download_data_factors_ff_aborts_when_dataset_is_none():
     """Test download_data_factors_ff: aborts when dataset is NULL."""
     with pytest.raises((ValueError, TypeError)):
-        _download_data_factors_ff(None)
+        download_data_factors_ff(None)
 
 
 def test_download_data_factors_ff_deprecated_type_warns():
@@ -114,7 +116,7 @@ def test_download_data_factors_ff_deprecated_type_warns():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -123,7 +125,7 @@ def test_download_data_factors_ff_deprecated_type_warns():
         ),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            _download_data_factors_ff(type="factors_ff3_monthly")
+            download_data_factors_ff(type="factors_ff3_monthly")
 
 
 def test_download_data_factors_ff_legacy_dataset_arg_warns():
@@ -137,7 +139,7 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -146,7 +148,73 @@ def test_download_data_factors_ff_legacy_dataset_arg_warns():
         ),
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            _download_data_factors_ff("factors_ff3_monthly")
+            download_data_factors_ff("factors_ff3_monthly")
+
+
+def test_legacy_dataset_warning_names_the_replacement():
+    """Test the warning names the legacy value and the dataset that
+    replaces it, not the 'type' argument the caller did not use."""
+    fake_raw = pl.DataFrame(
+        {
+            "date": [dt.date(2020, 1, 1)],
+            "Mkt-RF": [1.0],
+            "RF": [0.1],
+        }
+    )
+    with (
+        patch(
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
+            return_value=["Fama/French 3 Factors"],
+        ),
+        patch(
+            "tidyfinance.download_open_source._famafrench_downloader",
+            return_value=fake_raw,
+        ),
+    ):
+        with pytest.warns(DeprecationWarning) as record:
+            download_data_factors_ff("factors_ff_3_monthly")
+
+    messages = [str(w.message) for w in record]
+    expected = (
+        "dataset='factors_ff_3_monthly' is deprecated. "
+        "Use dataset='Fama/French 3 Factors' instead."
+    )
+    assert expected in messages
+    assert not any("'type'" in m for m in messages)
+
+
+def test_legacy_dataset_warning_is_attributed_to_the_caller():
+    """Test that, through the public download_data, the warning points
+    at the caller and not at package code. Python hides
+    DeprecationWarning by default unless it is attributed to '__main__',
+    so a warning attributed to package code would never be shown."""
+    import tidyfinance as tf
+
+    fake_raw = pl.DataFrame(
+        {
+            "date": [dt.date(2020, 1, 1)],
+            "Mkt-RF": [1.0],
+            "RF": [0.1],
+        }
+    )
+    with (
+        patch(
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
+            return_value=["Fama/French 3 Factors"],
+        ),
+        patch(
+            "tidyfinance.download_open_source._famafrench_downloader",
+            return_value=fake_raw,
+        ),
+    ):
+        with pytest.warns(DeprecationWarning, match="is deprecated") as record:
+            tf.download_data("Fama-French", "factors_ff_3_monthly")
+
+    legacy = [w for w in record if "factors_ff_3_monthly" in str(w.message)]
+    assert legacy
+    assert os.path.normcase(os.path.abspath(legacy[0].filename)) == (
+        os.path.normcase(os.path.abspath(__file__))
+    )
 
 
 def test_download_data_factors_ff_empty_dataframe_on_download_fail():
@@ -156,7 +224,7 @@ def test_download_data_factors_ff_empty_dataframe_on_download_fail():
         side_effect=Exception("download fail"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            result = _download_data_factors_ff("Fama/French 3 Factors")
+            result = download_data_factors_ff("Fama/French 3 Factors")
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
 
@@ -174,7 +242,7 @@ def test_download_data_factors_ff_monthly_path_with_date_filter():
         "tidyfinance.download_open_source._famafrench_downloader",
         return_value=raw,
     ):
-        result = _download_data_factors_ff(
+        result = download_data_factors_ff(
             "Fama/French 3 Factors", "2020-01-01", "2020-01-31"
         )
     assert isinstance(result, pl.DataFrame)
@@ -201,7 +269,7 @@ def test_download_data_factors_ff_threads_registry_url_to_downloader():
         "tidyfinance.download_open_source._famafrench_downloader",
         side_effect=fake_downloader,
     ):
-        _download_data_factors_ff("Fama/French 3 Factors")
+        download_data_factors_ff("Fama/French 3 Factors")
     assert captured["dataset"] == "ftp/F-F_Research_Data_Factors_CSV.zip"
 
 
@@ -218,7 +286,7 @@ def test_download_data_factors_ff_daily_path_no_date_filter():
         "tidyfinance.download_open_source._famafrench_downloader",
         return_value=raw,
     ):
-        result = _download_data_factors_ff("Fama/French 3 Factors [Daily]")
+        result = download_data_factors_ff("Fama/French 3 Factors [Daily]")
     assert len(result) == 2
 
 
@@ -237,7 +305,7 @@ def test_download_data_factors_ff_aborts_on_unknown_frequency():
         with pytest.raises(
             ValueError, match="neither daily, weekly, nor monthly"
         ):
-            _download_data_factors_ff("some_dataset")
+            download_data_factors_ff("some_dataset")
 
 
 # %% download_data_factors_q
@@ -257,7 +325,7 @@ def test_download_data_factors_q_download_lambda_reads_csv():
         "tidyfinance.download_open_source._fetch_csv",
         return_value=mock_csv,
     ):
-        result = _download_data_factors_q("q5_factors_monthly_2024")
+        result = download_data_factors_q("q5_factors_monthly_2024")
     assert len(result) == 2
     assert "risk_free" in result.columns
 
@@ -265,7 +333,7 @@ def test_download_data_factors_q_download_lambda_reads_csv():
 def test_download_data_factors_q_aborts_when_dataset_is_none():
     """Test download_data_factors_q: aborts when dataset is NULL."""
     with pytest.raises((ValueError, TypeError, AttributeError)):
-        _download_data_factors_q(None)
+        download_data_factors_q(None)
 
 
 def test_download_data_factors_q_deprecated_type_warns():
@@ -276,7 +344,7 @@ def test_download_data_factors_q_deprecated_type_warns():
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             with pytest.raises(ValueError):
-                _download_data_factors_q(type="factors_q5_monthly")
+                download_data_factors_q(type="factors_q5_monthly")
 
 
 def test_download_data_factors_q_legacy_dataset_arg_warns():
@@ -287,7 +355,7 @@ def test_download_data_factors_q_legacy_dataset_arg_warns():
     ):
         with pytest.warns(DeprecationWarning, match="deprecated"):
             with pytest.raises(ValueError):
-                _download_data_factors_q("factors_q5_monthly")
+                download_data_factors_q("factors_q5_monthly")
 
 
 def test_download_data_factors_q_empty_dataframe_on_download_fail():
@@ -297,7 +365,7 @@ def test_download_data_factors_q_empty_dataframe_on_download_fail():
         side_effect=Exception("download fail"),
     ):
         with pytest.raises(ValueError):
-            _download_data_factors_q("q5_factors_monthly")
+            download_data_factors_q("q5_factors_monthly")
 
 
 def test_download_data_factors_q_monthly_path_with_date_filter():
@@ -311,7 +379,7 @@ def test_download_data_factors_q_monthly_path_with_date_filter():
         }
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        result = _download_data_factors_q(
+        result = download_data_factors_q(
             "q5_factors_monthly_2024", "2020-01-01", "2020-01-31"
         )
     assert len(result) == 1
@@ -330,7 +398,7 @@ def test_download_data_factors_q_daily_path_no_date_filter():
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         try:
-            result = _download_data_factors_q("q5_factors_daily_2024")
+            result = download_data_factors_q("q5_factors_daily_2024")
             assert len(result) >= 0
         except Exception:
             pytest.xfail("Python daily q-factors parser differs from R")
@@ -342,7 +410,7 @@ def test_download_data_factors_q_annual_path():
         {"year": [2020, 2021], "R_F": [0.1, 0.1], "R_MKT": [1.0, 2.0]}
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        result = _download_data_factors_q("q5_factors_annual_2024")
+        result = download_data_factors_q("q5_factors_annual_2024")
     assert len(result) == 2
 
 
@@ -359,7 +427,7 @@ def test_download_data_factors_q_weekly_path():
     )
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         try:
-            result = _download_data_factors_q("q5_factors_weekly_2024")
+            result = download_data_factors_q("q5_factors_weekly_2024")
             assert len(result) >= 0
         except Exception:
             pytest.xfail("Python weekly q-factors parser differs from R")
@@ -384,7 +452,7 @@ def test_download_data_factors_ff_full_path_converts_integer_dates():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["Fama/French 3 Factors"],
         ),
         patch(
@@ -392,7 +460,7 @@ def test_download_data_factors_ff_full_path_converts_integer_dates():
             return_value=raw,
         ),
     ):
-        result = _download_data_factors_ff("Fama/French 3 Factors")
+        result = download_data_factors_ff("Fama/French 3 Factors")
     assert "mkt_excess" in result.columns
     assert "risk_free" in result.columns
     # Values divided by 100 in the Python implementation
@@ -418,7 +486,7 @@ def test_download_data_factors_ff_does_not_rescale_breakpoints():
     )
     with (
         patch(
-            "tidyfinance.download_open_source.get_available_famafrench_datasets",
+            "tidyfinance.download_open_source._get_available_famafrench_datasets",
             return_value=["ME Breakpoints"],
         ),
         patch(
@@ -426,7 +494,7 @@ def test_download_data_factors_ff_does_not_rescale_breakpoints():
             return_value=raw,
         ),
     ):
-        result = _download_data_factors_ff("ME Breakpoints")
+        result = download_data_factors_ff("ME Breakpoints")
     assert list(result["v2"]) == [488, 492]
 
 
@@ -490,6 +558,56 @@ def test_famafrench_downloader_applies_date_filter():
     assert result["date"].max() <= dt.date(2010, 12, 31)
 
 
+def _breakpoint_rows(first_month, n_lead):
+    """Rows of a breakpoint file: date, n_lead counts, 20 percentiles."""
+    pct = ",".join(f"{p:.2f}" for p in range(5, 105, 5))
+    lead = ",".join(["100"] * n_lead)
+    year, month = first_month
+    rows = []
+    for i in range(80):
+        y, m = year + (month - 1 + i) // 12, (month - 1 + i) % 12 + 1
+        rows.append(f"{y}{m:02d},{lead},{pct}")
+    return "\r\n".join(rows)
+
+
+@pytest.mark.parametrize(
+    "file_url",
+    ["ftp/ME_Breakpoints_CSV.zip", "ftp/Prior_2-12_Breakpoints_CSV.zip"],
+)
+def test_famafrench_downloader_keeps_first_row_of_headerless_breakpoints(
+    file_url,
+):
+    """Test headerless breakpoint files keep their first row and count."""
+    response = _make_french_zip(_breakpoint_rows((1925, 12), 1))
+
+    with patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    ):
+        result = _famafrench_downloader(file_url)
+
+    assert result.columns[:3] == ["date", "Count", "0-5"]
+    assert result.columns[-1] == "95-100"
+    assert result.height == 80
+    assert result["date"][0] == dt.date(1925, 12, 1)
+    assert result["Count"][0] == 100
+
+
+def test_famafrench_downloader_drops_header_of_ratio_breakpoints():
+    """Test ratio breakpoint files drop their header row."""
+    response = _make_french_zip(
+        "  ,<= 0,>0\r\n" + _breakpoint_rows((1926, 1), 2)
+    )
+
+    with patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    ):
+        result = _famafrench_downloader("ftp/BE-ME_Breakpoints_CSV.zip")
+
+    assert result.columns[:4] == ["date", "<=0", ">0", "0-5"]
+    assert result.height == 80
+    assert result["date"][0] == dt.date(1926, 1, 1)
+
+
 def test_famafrench_downloader_propagates_download_error():
     """Test _famafrench_downloader propagates HTTP download errors."""
     response = MagicMock()
@@ -500,6 +618,241 @@ def test_famafrench_downloader_propagates_download_error():
     ):
         with pytest.raises(Exception, match="404 error"):
             _famafrench_downloader("ftp/Missing_CSV.zip")
+
+
+# %% _parse_french_data_factors
+
+
+def test_parse_french_data_factors_keeps_first_table_names_date_column():
+    text = (
+        "This file was created by a test\n"
+        "\n"
+        ",Mkt-RF,SMB,RF\n"
+        "202001,  1.00, -0.50, 0.10\n"
+        "202002,  2.00,  0.50, 0.10\n"
+        "\n"
+        "  Annual Factors:\n"
+        ",Mkt-RF,SMB,RF\n"
+        "2020, 12.00, -1.00, 1.20"
+    )
+    result = _parse_french_data_factors(text)
+    assert result.columns == ["date", "Mkt-RF", "SMB", "RF"]
+    assert result.height == 2
+    assert result["date"].to_list() == ["202001", "202002"]
+    assert result["Mkt-RF"].to_list() == [1.0, 2.0]
+
+
+def test_parse_french_data_factors_aborts_when_no_table_present():
+    with pytest.raises(ValueError, match="Could not locate a data table"):
+        _parse_french_data_factors("Only header text\nno data here")
+
+
+def test_parse_french_data_factors_parses_positionally_without_header():
+    result = _parse_french_data_factors(
+        "202001,  1.00, -0.50\n202002,  2.00,  0.25"
+    )
+    assert result.height == 2
+    assert result.columns == ["date", "V2", "V3"]
+    assert result["date"].to_list() == ["202001", "202002"]
+
+
+def test_parse_french_data_factors_blank_line_above_data_is_headerless():
+    result = _parse_french_data_factors(
+        "Some title text\n\n202001,  1.00, -0.50"
+    )
+    assert result.height == 1
+    assert result.columns == ["date", "V2", "V3"]
+
+
+def test_parse_french_data_factors_prose_line_above_data_is_headerless():
+    result = _parse_french_data_factors(
+        "Average Value Weight Returns\n202001,1.0,0.1"
+    )
+    assert result.height == 1
+    assert result.columns == ["date", "V2", "V3"]
+
+
+def test_parse_french_data_factors_ignores_prose_starting_with_a_digit():
+    result = _parse_french_data_factors(
+        "1 month is skipped\n,Mom\n202001,1.0\n202002,2.0"
+    )
+    assert result.columns == ["date", "Mom"]
+    assert result.height == 2
+
+
+def test_parse_french_data_factors_accepts_named_first_column():
+    result = _parse_french_data_factors(
+        "Count,P5,P10\n202001,100,5.0\n202002,101,5.1"
+    )
+    assert result.height == 2
+    assert result.columns == ["date", "P5", "P10"]
+
+
+def test_parse_french_data_factors_parses_breakpoints_file_layout():
+    """A prose title, a blank line, then headerless data; the
+    integer-looking count column is read as a float."""
+    text = (
+        "This file was created using the CRSP database.\n"
+        "\n"
+        "192512,   488,        1.40,        2.38,     1319.00\n"
+        "192601,   492,        1.38,        2.54,     1331.71"
+    )
+    result = _parse_french_data_factors(text)
+    assert result.height == 2
+    assert result["date"].to_list() == ["192512", "192601"]
+    assert result.columns == ["date", "V2", "V3", "V4", "V5"]
+    assert result.schema["V2"] == pl.Float64
+
+
+def test_parse_french_data_factors_drops_merged_annual_rows():
+    text = ",Mkt-RF,RF\n202001,1.0,0.1\n202002,2.0,0.1\n2020,12.0,1.2"
+    with pytest.warns(UserWarning, match="different date-key width"):
+        result = _parse_french_data_factors(text)
+    assert result.height == 2
+    assert result["date"].to_list() == ["202001", "202002"]
+
+
+def test_parse_french_data_factors_aborts_on_column_count_mismatch():
+    with pytest.raises(ValueError, match="Expected 2 columns"):
+        _parse_french_data_factors("202001,1.0,0.1", col_names=["date", "a"])
+
+
+def test_famafrench_downloader_parses_a_small_first_table():
+    """Tables are found by their date keys, whatever their size."""
+    response = _make_french_zip(
+        ",Mkt-RF,RF\r\n202001,1.0,0.1\r\n202002,2.0,0.1"
+    )
+    with patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    ):
+        result = _famafrench_downloader("ftp/Some_File_CSV.zip")
+    assert result.columns == ["date", "Mkt-RF", "RF"]
+    assert result["date"].to_list() == [
+        dt.date(2020, 1, 1),
+        dt.date(2020, 2, 1),
+    ]
+
+
+def test_famafrench_downloader_aborts_when_archive_has_no_csv():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("readme.txt", "no table")
+    response = MagicMock()
+    response.content = buffer.getvalue()
+    with (
+        patch(
+            "tidyfinance.download_open_source.requests.get",
+            return_value=response,
+        ),
+        pytest.raises(ValueError, match="No CSV file found"),
+    ):
+        _famafrench_downloader("ftp/Empty_CSV.zip")
+
+
+# %% breakpoints files
+
+_PERCENTILE_BINS = [f"{lo}-{lo + 5}" for lo in range(0, 100, 5)]
+
+
+def _breakpoints_row(date, counts):
+    return ",   ".join([date, *counts, *(f"{p:.2f}" for p in range(1, 21))])
+
+
+def _mock_ff_file(lines):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("data.csv", "\n".join(lines))
+    response = MagicMock()
+    response.content = buffer.getvalue()
+    return patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    )
+
+
+def test_breakpoints_col_names_ff_names_count_and_ratio_layouts():
+    assert (
+        _breakpoints_col_names_ff("ftp/F-F_Research_Data_Factors_CSV.zip")
+        is None
+    )
+    assert _breakpoints_col_names_ff("ftp/ME_Breakpoints_CSV.zip") == [
+        "date",
+        "Count",
+        *_PERCENTILE_BINS,
+    ]
+    assert _breakpoints_col_names_ff("ftp/Prior_2-12_Breakpoints_CSV.zip") == [
+        "date",
+        "Count",
+        *_PERCENTILE_BINS,
+    ]
+    assert _breakpoints_col_names_ff("ftp/BE-ME_Breakpoints_CSV.zip") == [
+        "date",
+        "<=0",
+        ">0",
+        *_PERCENTILE_BINS,
+    ]
+
+
+def test_download_data_factors_ff_parses_count_breakpoints_unscaled():
+    lines = [
+        "This file was created using the CRSP database.",
+        "",
+        _breakpoints_row("202001", ["488"]),
+        _breakpoints_row("202002", ["492"]),
+    ]
+    with _mock_ff_file(lines):
+        result = download_data_factors_ff("ME Breakpoints")
+
+    assert result.columns == ["date", "count", *_PERCENTILE_BINS]
+    assert result["date"].to_list() == [
+        dt.date(2020, 1, 1),
+        dt.date(2020, 2, 1),
+    ]
+    # Dollar levels and share counts are returned unscaled.
+    assert result["count"].to_list() == [488, 492]
+    assert result["95-100"].to_list() == [20, 20]
+
+
+def test_download_data_factors_ff_parses_ratio_breakpoints_layout():
+    """The header names only 3 of the 23 columns."""
+    lines = [
+        "This file was created using the CRSP database.",
+        "",
+        "  ,<= 0,>0",
+        _breakpoints_row("2019", ["3", "428"]),
+        _breakpoints_row("2020", ["1", "464"]),
+    ]
+    with _mock_ff_file(lines):
+        result = download_data_factors_ff("BE/ME Breakpoints")
+
+    assert result.columns == ["date", "<=0", ">0", *_PERCENTILE_BINS]
+    assert result["date"].to_list() == [
+        dt.date(2019, 12, 31),
+        dt.date(2020, 12, 31),
+    ]
+    assert result["<=0"].to_list() == [3, 1]
+    assert result[">0"].to_list() == [428, 464]
+    assert result["0-5"].to_list() == [1, 1]
+
+
+def test_download_data_factors_ff_parses_prior_return_breakpoints():
+    """The preamble has three lines, one of which starts with a digit."""
+    lines = [
+        "This file was created using the CRSP database.",
+        " The prior returns are for 12 months. ",
+        "1 month is skipped at the end of the prior period.",
+        "",
+        _breakpoints_row("192612", ["472"]),
+        _breakpoints_row("192701", ["476"]),
+    ]
+    with _mock_ff_file(lines):
+        result = download_data_factors_ff("Prior (2-12) Return Breakpoints")
+
+    assert result.columns == ["date", "count", *_PERCENTILE_BINS]
+    assert result["date"].to_list() == [
+        dt.date(1926, 12, 1),
+        dt.date(1927, 1, 1),
+    ]
+    assert result["count"].to_list() == [472, 476]
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ import numpy as np
 import polars as pl
 from formulaic import model_matrix
 
+from ._internal import _user_stacklevel
+
 
 class _OLSFit:
     """Minimal OLS fit mirroring the parts of the pyfixest API used here.
@@ -29,6 +31,7 @@ class _OLSFit:
         r_squared=None,
         adj_r_squared=None,
         n_obs=None,
+        aliased=(),
     ):
         self._coef = dict(zip(names, (float(v) for v in coef)))
         self._se = dict(zip(names, (float(v) for v in se)))
@@ -37,6 +40,7 @@ class _OLSFit:
         self._r_squared = r_squared
         self._adj_r_squared = adj_r_squared
         self._n_obs = n_obs
+        self._aliased = tuple(aliased)
 
     def coef(self):
         return self._coef
@@ -58,6 +62,30 @@ class _OLSFit:
 
     def n_obs(self):
         return self._n_obs
+
+    def aliased(self):
+        return self._aliased
+
+
+def _non_aliased_columns(x_mat: np.ndarray, tol: float = 1e-7) -> list:
+    """Indices of the design-matrix columns that are not aliased.
+
+    Uses limited column pivoting as in the LINPACK QR decomposition
+    'dqrdc2' with 'tol = 1e-07': columns are visited in order and a
+    column is aliased when the part of it not explained by the kept
+    columns before it has a norm below 'tol' times its own norm.
+    """
+    kept = []
+    for j in range(x_mat.shape[1]):
+        col = x_mat[:, j]
+        norm = np.linalg.norm(col)
+        if kept:
+            basis = x_mat[:, kept]
+            coef = np.linalg.lstsq(basis, col, rcond=None)[0]
+            col = col - basis @ coef
+        if norm > 0 and np.linalg.norm(col) >= tol * norm:
+            kept.append(j)
+    return kept
 
 
 def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
@@ -89,16 +117,24 @@ def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
     y_vec = np.asarray(y, dtype=float).ravel()
 
     n, k = x_mat.shape
-    beta, _, _, _ = np.linalg.lstsq(x_mat, y_vec, rcond=None)
-    resid = y_vec - x_mat @ beta
-
-    dof = n - k
-    if dof > 0:
-        sigma2 = float(resid @ resid) / dof
-        xtx_inv = np.linalg.pinv(x_mat.T @ x_mat)
-        se = np.sqrt(np.maximum(sigma2 * np.diag(xtx_inv), 0.0))
+    # Drop aliased columns (linear combinations of earlier columns) and
+    # report NaN for their coefficients.
+    kept = _non_aliased_columns(x_mat)
+    x_kept = x_mat[:, kept]
+    rank = x_kept.shape[1]
+    beta = np.full(k, np.nan)
+    se = np.full(k, np.nan)
+    if rank > 0:
+        beta[kept] = np.linalg.lstsq(x_kept, y_vec, rcond=None)[0]
+        resid = y_vec - x_kept @ beta[kept]
     else:
-        se = np.full(k, np.nan)
+        resid = y_vec.copy()
+
+    dof = n - rank
+    if dof > 0 and rank > 0:
+        sigma2 = float(resid @ resid) / dof
+        xtx_inv = np.linalg.pinv(x_kept.T @ x_kept)
+        se[kept] = np.sqrt(np.maximum(sigma2 * np.diag(xtx_inv), 0.0))
 
     with np.errstate(divide="ignore", invalid="ignore"):
         tstat = np.where(se > 0, beta / se, np.nan)
@@ -116,7 +152,18 @@ def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
     else:
         adj_r_squared = np.nan
 
-    return _OLSFit(names, beta, se, tstat, resid, r_squared, adj_r_squared, n)
+    aliased = [name for j, name in enumerate(names) if j not in kept]
+    return _OLSFit(
+        names,
+        beta,
+        se,
+        tstat,
+        resid,
+        r_squared,
+        adj_r_squared,
+        n,
+        aliased,
+    )
 
 
 # Rolling-window units accepted by 'estimate_betas'
@@ -181,7 +228,7 @@ def _parse_lookback(lookback) -> tuple[int, str | None]:
             "Passing 'lookback' as an integer counts consecutive "
             "observations, which differs from the calendar window used "
             "with duration strings and is deprecated. Pass a duration string such as "
-            "'60mo' to roll over calendar periods as R does.",
+            "'60mo' to roll over calendar periods.",
             DeprecationWarning,
             stacklevel=3,
         )
@@ -304,7 +351,7 @@ def estimate_betas(
     model: str,
     lookback,
     min_obs: int = None,
-    id_col: str = "permno",
+    data_options: dict | None = None,
 ) -> pl.DataFrame:
     """Estimate rolling betas.
 
@@ -329,7 +376,8 @@ def estimate_betas(
     data : pl.DataFrame
         Data frame containing the data with a date identifier (defaults
         to 'date'), a stock identifier (defaults to 'permno'), and the
-        other variables used in the model.
+        other variables used in the model. No variable in 'model' may
+        be called 'intercept'.
     model : str
         Formula describing the model to be estimated (e.g.,
         'ret_excess ~ mkt_excess + hml + smb'). An intercept is
@@ -350,14 +398,17 @@ def estimate_betas(
     min_obs : int, optional
         Minimum number of observations required to estimate the model.
         Defaults to 'round(0.8 * lookback)'.
-    id_col : str, default 'permno'
-        Column name representing the stock identifier.
+    data_options : dict, optional
+        Column-name mapping (see 'data_options'). The 'id' element
+        specifies the stock identifier and the 'date' element the date
+        column. Uses the 'data_options' defaults when None: 'id' ->
+        'permno', 'date' -> 'date'.
 
     Returns
     -------
     pl.DataFrame
         Data frame with the estimated betas for each stock and time
-        period. Contains the stock identifier and the 'date' column,
+        period. Contains the stock identifier and the date column,
         followed by one column per model term: an 'intercept' column
         (when the model includes one) and one 'beta_<variable>' column
         per regressor.
@@ -392,6 +443,11 @@ def estimate_betas(
     estimate_betas(data_monthly, 'ret_excess ~ mkt_excess', lookback='3mo')
     ```
     """
+    if data_options is None:
+        data_options = {"id": "permno", "date": "date"}
+    id_col = data_options.get("id", "permno")
+    date_col = data_options.get("date", "date")
+
     length, period = _parse_lookback(lookback)
 
     if min_obs is None:
@@ -404,15 +460,30 @@ def estimate_betas(
 
     dep_var, regressors, has_intercept = _parse_linear_formula(model)
 
+    if "intercept" in [dep_var] + regressors:
+        raise ValueError(
+            "None of the columns in 'model' may be called 'intercept'. "
+            "Please rename the column and try again."
+        )
+
+    if length < len(regressors):
+        warnings.warn(
+            "'lookback' is too low to estimate all model parameters. "
+            "Consider increasing it.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+
     # Column names: a bare 'intercept' plus one
     # 'beta_<variable>' per regressor.
     coef_names = (["intercept"] if has_intercept else []) + [
         f"beta_{name}" for name in regressors
     ]
 
-    if period in _SUBDAY_PERIODS and data.schema["date"] == pl.Date:
+    if period in _SUBDAY_PERIODS and data.schema[date_col] == pl.Date:
         raise ValueError(
-            f"A '{period}' lookback requires a datetime 'date' column; "
+            f"A '{period}' lookback requires a datetime '{date_col}' "
+            "column; "
             "got a date column."
         )
 
@@ -420,7 +491,7 @@ def estimate_betas(
     n_coefs = len(coef_names)
 
     results = []
-    sorted_data = data.sort([id_col, "date"], maintain_order=True)
+    sorted_data = data.sort([id_col, date_col], maintain_order=True)
     for group in sorted_data.partition_by(id_col, maintain_order=True):
         values = group.select(
             [pl.col(c).cast(pl.Float64) for c in model_vars]
@@ -434,7 +505,7 @@ def estimate_betas(
                 results.append(
                     _betas_frame(
                         group.get_column(id_col),
-                        group.get_column("date"),
+                        group.get_column(date_col),
                         np.full((group.height, n_coefs), np.nan),
                         coef_names,
                     )
@@ -452,7 +523,7 @@ def estimate_betas(
             index = np.arange(pos.size)
         else:
             index = (
-                group.select(_period_index_expr("date", period).alias("_i"))
+                group.select(_period_index_expr(date_col, period).alias("_i"))
                 .get_column("_i")
                 .to_numpy()[pos]
             )
@@ -467,7 +538,7 @@ def estimate_betas(
             results.append(
                 _betas_frame(
                     group.get_column(id_col),
-                    group.get_column("date"),
+                    group.get_column(date_col),
                     full,
                     coef_names,
                 )
@@ -475,7 +546,7 @@ def estimate_betas(
         else:
             # One row per period, dated at the start of that period.
             period_dates = (
-                group.get_column("date")
+                group.get_column(date_col)
                 .dt.truncate(_LOOKBACK_TRUNCATE[period])
                 .gather(pos)
                 .gather(start)
@@ -493,12 +564,12 @@ def estimate_betas(
         return pl.DataFrame(
             schema={
                 id_col: data.schema[id_col],
-                "date": data.schema["date"],
+                date_col: data.schema[date_col],
                 **{name: pl.Float64 for name in coef_names},
             }
         )
 
-    out = pl.concat(results).select([id_col, "date"] + coef_names)
+    out = pl.concat(results).select([id_col, date_col] + coef_names)
     if period is not None:
         # Windows with fewer than 'min_obs' observations are dropped
         # rather than returned as null rows.
@@ -718,14 +789,13 @@ def estimate_fama_macbeth(
     model: str,
     vcov: str = "newey-west",
     vcov_options: dict | None = None,
-    date_col: str = "date",
     data_options: dict | None = None,
     detail: bool = False,
 ) -> pl.DataFrame | dict:
     """Estimate Fama-MacBeth regressions.
 
     Runs one cross-sectional ordinary least squares regression per period
-    of 'date_col', then averages the per-period coefficients to obtain
+    of the date column, then averages the per-period coefficients to obtain
     risk premia and aggregates them into a single tidy frame.
 
     Parameters
@@ -759,12 +829,9 @@ def estimate_fama_macbeth(
         - 'maxlags' : int, optional
             Deprecated alias for 'lag' (with 'prewhite' defaulting
             to 0). Emits a DeprecationWarning.
-    date_col : str, default 'date'
-        Column in 'data' identifying the time index for cross-sectional
-        regressions.
     data_options : dict, optional
         Column-name mapping (see 'data_options'). The 'date' element is
-        used to specify the date column, overriding 'date_col'. Uses
+        used to specify the date column of the cross-sections. Uses
         the 'data_options' default when None: 'date' -> 'date'.
     detail : bool, default False
         If 'False' (default), return only the coefficient estimates. If
@@ -798,8 +865,8 @@ def estimate_fama_macbeth(
     ------
     ValueError
         If 'vcov' is not 'iid' or 'newey-west', if 'vcov_options'
-        contains an unrecognized key, if 'date_col' is missing from
-        'data', or if any date grouping has too few rows to estimate
+        contains an unrecognized key, if the date column is missing
+        from 'data', or if any date grouping has too few rows to estimate
         the cross-sectional coefficients (each grouping needs more
         rows than the number of variables in 'model').
 
@@ -852,8 +919,7 @@ def estimate_fama_macbeth(
     )
     ```
     """
-    if data_options is not None:
-        date_col = data_options.get("date", date_col)
+    date_col = (data_options or {}).get("date", "date")
 
     if vcov not in ["iid", "newey-west"]:
         raise ValueError("vcov must be either 'iid' or 'newey-west'.")
@@ -861,7 +927,7 @@ def estimate_fama_macbeth(
     if date_col not in data.columns:
         raise ValueError(f"The data must contain a {date_col} column.")
 
-    # Parse Newey-West options (mirroring R's sandwich::NeweyWest interface).
+    # Parse the Newey-West options.
     options = dict(vcov_options or {})
     if "maxlags" in options:
         warnings.warn(
@@ -930,6 +996,9 @@ def estimate_fama_macbeth(
             [coefs.get(factor, np.nan) for coefs in cross_section_coefs],
             dtype=float,
         )
+        # 'n' counts every period, including those in which the factor
+        # was aliased; the estimates themselves skip them.
+        n_periods = int(estimates.size)
         estimates = estimates[~np.isnan(estimates)]
         n = int(estimates.size)
         risk_premium = float(estimates.mean()) if n > 0 else np.nan
@@ -959,7 +1028,7 @@ def estimate_fama_macbeth(
         premium_col.append(risk_premium)
         se_col.append(float(se) if se is not None else np.nan)
         t_col.append(t_stat)
-        n_col.append(n)
+        n_col.append(n_periods)
 
     # Column order: factor, risk_premium, n,
     # standard_error, t_statistic.
@@ -1031,9 +1100,11 @@ def estimate_model(
         the requested elements. Coefficients and t-statistics are
         returned as one-row data frames with column names corresponding
         to the model terms (all-null when there are not enough
-        observations). Residuals are returned as a numeric vector of
-        length 'len(data)' with NaN for rows with missing data or
-        insufficient observations.
+        observations). A term that is a linear combination of
+        earlier terms is aliased: its coefficient is
+        null and it has no t-statistic column. Residuals are returned
+        as a numeric vector of length 'len(data)' with NaN for rows
+        with missing data or insufficient observations.
 
     Examples
     --------
@@ -1162,7 +1233,14 @@ def estimate_model(
         if insufficient:
             result["tstats"] = na_df()
         else:
-            result["tstats"] = to_df(fit.tstat())
+            # Aliased terms have no t-statistic.
+            result["tstats"] = to_df(
+                {
+                    name: value
+                    for name, value in fit.tstat().items()
+                    if name not in fit.aliased()
+                }
+            )
 
     if "residuals" in output_list:
         if insufficient:

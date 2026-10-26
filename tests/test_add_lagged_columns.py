@@ -99,34 +99,91 @@ def test_ff_adjustment_without_by_uses_year_grouping_only():
                 dt.date(2022, 6, 1),
                 dt.date(2022, 12, 1),
                 dt.date(2023, 6, 1),
+                dt.date(2023, 7, 1),
             ],
-            "size": [10.0, 20.0, 30.0],
+            "size": [10.0, 20.0, 30.0, 40.0],
         }
     )
-    result = add_lagged_columns(
-        data, cols="size", lag="6mo", ff_adjustment=True
+    # 2022: Dec kept (20), used Jul-2023 to Jun-2024.
+    result = add_lagged_columns(data, cols="size", ff_adjustment=True)
+    assert result["size_lag"].to_list() == [None, None, None, 20]
+
+
+def test_ff_adjustment_with_by_updates_in_july_for_every_fiscal_year_end():
+    """Test ff_adjustment with by updates in July for every fiscal
+    year-end."""
+    dates = pl.date_range(
+        dt.date(2020, 1, 1), dt.date(2022, 12, 1), "1mo", eager=True
     )
-    # ff: 2022 -> Dec kept (20); 2023 -> Jun kept (30).
-    # Shifted +6m: Jun-2023 (20), Dec-2023 (30).
-    jun23 = result.filter(pl.col("date") == dt.date(2023, 6, 1))
-    assert jun23["size_lag"][0] == 20
-
-
-def test_non_default_date_col_is_respected():
-    """Test non-default date_col uses the specified column name."""
     data = pl.DataFrame(
         {
-            "my_date": pl.date_range(
-                dt.date(2023, 1, 1), dt.date(2023, 3, 1), "1mo", eager=True
-            ),
-            "size": [1.0, 2.0, 3.0],
+            "permno": [1] * len(dates) + [2] * len(dates),
+            "date": dates.to_list() * 2,
+        }
+    )
+    fye = ((pl.col("permno") == 1) & (pl.col("date").dt.month() == 12)) | (
+        (pl.col("permno") == 2) & (pl.col("date").dt.month() == 6)
+    )
+    data = data.with_columns(
+        be=pl.when(fye).then(
+            pl.col("date").dt.year().cast(pl.Float64) * 10 + pl.col("permno")
+        )
+    )
+
+    result = add_lagged_columns(
+        data,
+        cols="be",
+        by="permno",
+        drop_na=True,
+        ff_adjustment=True,
+    )
+
+    assert result.columns == ["permno", "date", "be", "be_lag"]
+    assert result.height == data.height
+    jul21_jun22 = result.filter(
+        pl.col("date").is_between(dt.date(2021, 7, 1), dt.date(2022, 6, 1))
+    )
+    assert jul21_jun22.filter(pl.col("permno") == 1)[
+        "be_lag"
+    ].to_list() == [20201] * 12
+    assert jul21_jun22.filter(pl.col("permno") == 2)[
+        "be_lag"
+    ].to_list() == [20202] * 12
+    assert result.filter(pl.col("date") == dt.date(2022, 7, 1))[
+        "be_lag"
+    ].to_list() == [20211, 20212]
+
+
+def test_ff_adjustment_ignores_lags_with_a_message(capsys):
+    """Test ff_adjustment ignores lags with a message."""
+    data = pl.DataFrame(
+        {
+            "date": [dt.date(2020, 12, 1), dt.date(2021, 7, 1)],
+            "size": [1.0, 2.0],
         }
     )
     result = add_lagged_columns(
-        data, cols="size", lag="1mo", date_col="my_date"
+        data, cols="size", lag="1mo", ff_adjustment=True
     )
-    assert result["size_lag"][0] is None
-    assert result["size_lag"][1] == 1
+    assert "'lag' is ignored" in capsys.readouterr().err
+    assert result["size_lag"].to_list() == [None, 1]
+
+    add_lagged_columns(
+        data, cols="size", lag="1mo", max_lag="2mo", ff_adjustment=True
+    )
+    assert "'lag' and 'max_lag' are ignored" in capsys.readouterr().err
+
+    add_lagged_columns(data, cols="size", ff_adjustment=True)
+    assert capsys.readouterr().err == ""
+
+
+def test_lag_is_required_without_ff_adjustment():
+    """Test lag is required without ff_adjustment."""
+    data = pl.DataFrame({"date": [dt.date(2023, 1, 1)], "size": [1.0]})
+    with pytest.raises(ValueError, match="required"):
+        add_lagged_columns(data, cols="size")
+
+
 
 
 def test_error_when_date_column_is_absent_from_data():
@@ -175,8 +232,9 @@ def test_error_when_join_key_is_not_unique():
         add_lagged_columns(data, cols="size", lag="1mo")
 
 
-def test_error_when_upper_helper_column_already_exists():
-    """Test error when '_upper' helper column already exists in data."""
+def test_warns_when_upper_helper_column_already_exists():
+    """Test add_lagged_columns warns when '_upper' already exists and
+    max_lag is used."""
     data = pl.DataFrame(
         {
             "date": pl.date_range(
@@ -186,8 +244,12 @@ def test_error_when_upper_helper_column_already_exists():
             "_upper": [0, 0, 0],
         }
     )
-    with pytest.raises(ValueError, match="_upper"):
-        add_lagged_columns(data, cols="size", lag="1mo", max_lag="2mo")
+    with pytest.warns(UserWarning, match="overwrites.*'_upper'"):
+        result = add_lagged_columns(
+            data, cols="size", lag="1mo", max_lag="2mo"
+        )
+    assert result["size_lag"].to_list() == [None, 1.0, 2.0]
+    assert "_upper" not in result.columns
 
 
 def test_data_options_specifies_date_column_name():
@@ -206,6 +268,27 @@ def test_data_options_specifies_date_column_name():
     result = add_lagged_columns(data, cols="size", lag="1mo", data_options=opts)
     assert result["size_lag"][0] is None
     assert result["size_lag"][1] == 1
+
+
+def _daily_values():
+    return pl.DataFrame(
+        {
+            "date": [
+                dt.date(2023, 1, 1) + dt.timedelta(days=i) for i in range(10)
+            ],
+            "value": list(range(1, 11)),
+        }
+    )
+
+
+def test_integer_lag_counts_days():
+    result = add_lagged_columns(_daily_values(), cols="value", lag=1)
+    assert result["value_lag"].to_list() == [None, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+
+def test_window_lag_works_with_integer_lags():
+    result = add_lagged_columns(_daily_values(), cols="value", lag=1, max_lag=3)
+    assert result["value_lag"].to_list() == [None, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 if __name__ == "__main__":

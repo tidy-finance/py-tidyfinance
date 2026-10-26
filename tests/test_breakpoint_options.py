@@ -107,3 +107,15 @@ def test_n_portfolios_rejects_fractional_floats():
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])
+
+
+def test_an_option_name_close_to_a_known_one_warns_about_the_likely_typo():
+    with pytest.warns(UserWarning, match="Did you mean 'n_portfolios'"):
+        options = breakpoint_options(n_portfolio=True)
+    assert options["n_portfolio"] is True
+
+
+def test_distant_custom_options_do_not_warn(recwarn):
+    options = breakpoint_options(my_custom_option=1)
+    assert options["my_custom_option"] == 1
+    assert not [w for w in recwarn if "Did you mean" in str(w.message)]

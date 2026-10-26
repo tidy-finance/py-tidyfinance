@@ -5,24 +5,25 @@ import warnings
 import polars as pl
 
 from .download_open_source import (
-    _download_data_constituents,
-    _download_data_factors_ff,
-    _download_data_factors_q,
-    _download_data_fred,
-    _download_data_fred_md,
-    _download_data_jkp,
-    _download_data_macro_predictors,
-    _download_data_osap,
-    _download_data_pastor_stambaugh,
-    _download_data_stambaugh_yuan,
-    _download_data_stock_prices,
+    download_data_constituents,
+    download_data_damodaran,
+    download_data_factors_ff,
+    download_data_factors_q,
+    download_data_fred,
+    download_data_fred_md,
+    download_data_jkp,
+    download_data_macro_predictors,
+    download_data_osap,
+    download_data_pastor_stambaugh,
+    download_data_stambaugh_yuan,
+    download_data_stock_prices,
 )
 from .download_pseudo import _simulate_pseudo_data
 from .download_tidy_finance import (
-    _download_data_huggingface,
-    _download_data_risk_free,
+    download_data_huggingface,
+    download_data_risk_free,
 )
-from .download_wrds import _download_data_wrds
+from .download_wrds import download_data_wrds
 from .supported_datasets import (
     _check_supported_domain,
     _is_legacy_type,
@@ -56,7 +57,8 @@ def download_data(
         'Fama-French', 'Global Q', 'Goyal-Welch', 'WRDS', 'Pseudo Data',
         'Index Constituents', 'FRED', 'Stock Prices',
         'Open Source Asset Pricing', 'Global Factor Data',
-        'Pastor-Stambaugh', 'Stambaugh-Yuan', 'Tidy Finance'. The
+        'Pastor-Stambaugh', 'Stambaugh-Yuan', 'Damodaran',
+        'Tidy Finance'. The
         previous short names (e.g. 'famafrench', 'wrds', 'pseudo') are
         still accepted but deprecated and will be removed in a future
         release.
@@ -79,17 +81,23 @@ def download_data(
         Additional arguments passed to specific download functions
         depending on 'domain'. For instance, if 'domain' is
         'Index Constituents', arguments are passed to
-        '_download_data_constituents'. If 'domain' is
+        'download_data_constituents'. If 'domain' is
         'Global Factor Data', the 'dataset' argument and arguments
         such as 'region', 'factors', 'classification', 'frequency',
-        and 'weighting' are passed to '_download_data_jkp'. If
+        and 'weighting' are passed to 'download_data_jkp'. If
         'domain' is 'Tidy Finance' and
         'dataset' is 'factor_library', arguments are either filter
         inputs (e.g., 'sorting_variable', 'rebalancing', 'fill_all') or
         an explicit 'ids' vector that bypasses the grid filter and
         downloads the specified portfolios directly via
-        '_download_factor_library_ids'; see
-        '_download_data_huggingface' for details.
+        'download_factor_library_ids'; see
+        'download_data_huggingface' for details. If 'domain' is
+        'Damodaran', arguments such as 'region' and 'year' are passed to
+        'download_data_damodaran', which selects years via 'year'
+        instead of 'start_date' and 'end_date'. If 'domain' is 'WRDS'
+        or 'Pseudo Data', 'quiet=True' suppresses the messages about the
+        WRDS connection and the download progress, or the pseudo-data
+        notice.
 
     Returns
     -------
@@ -128,6 +136,9 @@ def download_data(
     )
     download_data(
         'Stambaugh-Yuan', 'monthly', '2015-01-01', '2016-12-31'
+    )
+    download_data(
+        'Damodaran', 'wacc', region='europe', year=range(2020, 2025)
     )
     download_data(
         'Tidy Finance', 'risk_free', '2020-01-01', '2020-12-31'
@@ -174,64 +185,69 @@ def download_data(
     _check_supported_domain(domain)
 
     if domain == "Fama-French":
-        processed_data = _download_data_factors_ff(
+        processed_data = download_data_factors_ff(
             dataset=dataset, start_date=start_date, end_date=end_date
         )
     elif domain == "Global Q":
-        processed_data = _download_data_factors_q(
+        processed_data = download_data_factors_q(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "Goyal-Welch":
-        processed_data = _download_data_macro_predictors(
+        processed_data = download_data_macro_predictors(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "WRDS":
-        processed_data = _download_data_wrds(
+        processed_data = download_data_wrds(
             dataset=dataset, start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "Index Constituents":
-        processed_data = _download_data_constituents(dataset=dataset, **kwargs)
+        processed_data = download_data_constituents(**kwargs)
     elif domain == "FRED":
         if dataset in ("FRED-MD", "FRED-QD"):
             # Curated McCracken-Ng databases (selected by 'vintage', not date-sliced).
-            processed_data = _download_data_fred_md(database=dataset, **kwargs)
+            processed_data = download_data_fred_md(database=dataset, **kwargs)
         else:
-            processed_data = _download_data_fred(
+            processed_data = download_data_fred(
                 start_date=start_date, end_date=end_date, **kwargs
             )
     elif domain == "Stock Prices":
-        processed_data = _download_data_stock_prices(
+        processed_data = download_data_stock_prices(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "Open Source Asset Pricing":
-        processed_data = _download_data_osap(
+        processed_data = download_data_osap(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "Global Factor Data":
-        processed_data = _download_data_jkp(
+        processed_data = download_data_jkp(
             dataset=dataset if dataset is not None else "factors",
             start_date=start_date,
             end_date=end_date,
             **kwargs,
         )
     elif domain == "Pastor-Stambaugh":
-        processed_data = _download_data_pastor_stambaugh(
+        processed_data = download_data_pastor_stambaugh(
             start_date=start_date, end_date=end_date, **kwargs
         )
     elif domain == "Stambaugh-Yuan":
-        processed_data = _download_data_stambaugh_yuan(
+        processed_data = download_data_stambaugh_yuan(
             dataset=dataset if dataset is not None else "monthly",
             start_date=start_date,
             end_date=end_date,
             **kwargs,
         )
+    elif domain == "Damodaran":
+        processed_data = download_data_damodaran(
+            dataset=dataset if dataset is not None else "wacc",
+            **kwargs,
+        )
     elif domain == "Tidy Finance":
         if dataset == "risk_free":
-            processed_data = _download_data_risk_free(
+            processed_data = download_data_risk_free(
                 start_date=start_date, end_date=end_date, **kwargs
             )
         else:
-            processed_data = _download_data_huggingface(
+            processed_data = download_data_huggingface(
                 dataset=dataset,
                 start_date=start_date,
                 end_date=end_date,

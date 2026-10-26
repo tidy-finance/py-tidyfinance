@@ -28,6 +28,17 @@ def test_filter_options_has_correct_defaults():
     assert opts["min_listing_age"] is None
     assert opts["exclude_negative_book_equity"] is False
     assert opts["exclude_negative_earnings"] is False
+    assert opts["timing"] == "formation"
+
+
+def test_filter_options_validates_timing():
+    """Test filter_options validates timing."""
+    assert filter_options()["timing"] == "formation"
+    assert filter_options(timing="every_period")["timing"] == "every_period"
+    with pytest.raises(ValueError, match="timing"):
+        filter_options(timing="monthly")
+    with pytest.raises(ValueError, match="timing"):
+        filter_options(timing=["formation", "every_period"])
 
 
 def test_filter_options_accepts_non_default_logical_flags():
@@ -142,3 +153,15 @@ def test_filter_options_errors_for_non_logical_exclude_negative_earnings():
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_an_option_name_close_to_a_known_one_warns_about_the_likely_typo():
+    with pytest.warns(UserWarning, match="Did you mean 'exclude_financials'"):
+        options = filter_options(exclude_finacials=True)
+    assert options["exclude_finacials"] is True
+
+
+def test_distant_custom_options_do_not_warn(recwarn):
+    options = filter_options(my_custom_option=1)
+    assert options["my_custom_option"] == 1
+    assert not [w for w in recwarn if "Did you mean" in str(w.message)]

@@ -2091,6 +2091,11 @@ _OTHER_DATASETS = [
         "domain": "Stambaugh-Yuan",
     },
     {
+        "type": "wacc",
+        "dataset_name": "Cost of Capital by Industry",
+        "domain": "Damodaran",
+    },
+    {
         "type": "risk_free",
         "dataset_name": "Risk-Free Rate",
         "domain": "Tidy Finance",
@@ -2106,8 +2111,18 @@ _OTHER_DATASETS = [
         "domain": "Tidy Finance",
     },
     {
+        "type": "factor_library_costs",
+        "dataset_name": "Factor Library Costs",
+        "domain": "Tidy Finance",
+    },
+    {
         "type": "factor_library_grid",
         "dataset_name": "Factor Library Grid",
+        "domain": "Tidy Finance",
+    },
+    {
+        "type": "factor_library_persistence",
+        "dataset_name": "Factor Library Persistence",
         "domain": "Tidy Finance",
     },
 ]
@@ -2174,6 +2189,44 @@ def list_supported_datasets(
     return df
 
 
+def list_supported_types(
+    domain: Optional[str | list[str]] = None,
+    as_vector: bool = False,
+) -> "pl.DataFrame | list[str]":
+    """List supported datasets (deprecated alias).
+
+    Deprecated alias for 'list_supported_datasets', kept for code
+    written against earlier versions. Emits a 'DeprecationWarning' and
+    forwards its arguments.
+
+    Parameters
+    ----------
+    domain : str or list of str, optional
+        Domain(s) to keep, as in 'list_supported_datasets'.
+    as_vector : bool, default False
+        If True, return the dataset identifiers as a list.
+
+    Returns
+    -------
+    pl.DataFrame or list of str
+        The result of 'list_supported_datasets'.
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import list_supported_datasets
+    list_supported_datasets(domain='WRDS')
+    ```
+    """
+    warnings.warn(
+        "'list_supported_types()' is deprecated; use "
+        "'list_supported_datasets()' instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return list_supported_datasets(domain=domain, as_vector=as_vector)
+
+
 # %% Legacy-type translation helpers
 
 # Domains that are valid both as a top-level domain name and as a "legacy"
@@ -2203,6 +2256,7 @@ _SUPPORTED_DOMAINS: tuple[str, ...] = (
     "Global Factor Data",
     "Pastor-Stambaugh",
     "Stambaugh-Yuan",
+    "Damodaran",
     "Tidy Finance",
 )
 
@@ -2363,9 +2417,9 @@ def _is_legacy_type(x: str) -> bool:
     listed in '_SIMPLE_DOMAINS' (those are already valid domains in
     their own right). 'Tidy Finance' domain 'other' datasets such as
     'risk_free' or 'factor_library' are not treated as legacy either,
-    nor are the 'liquidity' and 'mispricing' 'other' rows (the
-    'Pastor-Stambaugh' and 'Stambaugh-Yuan' domains have no short
-    legacy alias).
+    nor are the 'liquidity', 'mispricing', and 'wacc' 'other' rows
+    (the 'Pastor-Stambaugh', 'Stambaugh-Yuan', and 'Damodaran' domains
+    have no short legacy alias).
 
     Parameters
     ----------
@@ -2388,8 +2442,8 @@ def _is_legacy_type(x: str) -> bool:
     known_types.update(row["type"] for row in _WRDS_DATASETS)
     # "other" rows that are NOT in the tidyfinance domain and are not
     # one of the domains with their own simple-domain alias/"other" row
-    # ("osap", "jkp", "liquidity", "mispricing")
-    excluded_other_types = {"osap", "jkp", "liquidity", "mispricing"}
+    # ("osap", "jkp", "liquidity", "mispricing", "wacc")
+    excluded_other_types = {"osap", "jkp", "liquidity", "mispricing", "wacc"}
     known_types.update(
         row["type"]
         for row in _OTHER_DATASETS

@@ -15,17 +15,17 @@ sys.path.insert(
 
 import tidyfinance as tf  # noqa: E402
 from tidyfinance.download_open_source import (  # noqa: E402
-    _download_data_stock_prices,
+    download_data_stock_prices,
 )
 
 
 def test_symbols_must_be_a_character_vector_without_missing_values():
     """Test symbols must be a character vector without missing values."""
     with pytest.raises((ValueError, TypeError)):
-        _download_data_stock_prices(1)
+        download_data_stock_prices(1)
 
     with pytest.raises((ValueError, TypeError)):
-        _download_data_stock_prices(["AAPL", None])
+        download_data_stock_prices(["AAPL", None])
 
 
 def test_downloads_data_replaces_null_and_warns_on_failures():
@@ -76,7 +76,7 @@ def test_downloads_data_replaces_null_and_warns_on_failures():
         with pytest.warns(
             UserWarning, match="Failed to retrieve data for symbol FAIL"
         ):
-            out = _download_data_stock_prices(
+            out = download_data_stock_prices(
                 ["AAPL", "FAIL"], "2020-01-01", "2020-01-03"
             )
 
@@ -143,7 +143,7 @@ def test_dates_use_exchange_timezone_with_utc_fallback(meta, expected_day):
     with patch("tidyfinance.download_open_source.requests.get") as get:
         get.return_value.status_code = 200
         get.return_value.json.return_value = body
-        out = _download_data_stock_prices("^AXJO", "2020-03-01", "2020-03-31")
+        out = download_data_stock_prices("^AXJO", "2020-03-01", "2020-03-31")
 
     assert out["date"].to_list() == [dt.date(2020, 3, expected_day)]
     assert out.schema["date"] == pl.Date
@@ -186,7 +186,7 @@ def test_inclusive_local_range_and_buffered_request(
     with patch("tidyfinance.download_open_source.requests.get") as get:
         get.return_value.status_code = 200
         get.return_value.json.return_value = body
-        out = _download_data_stock_prices("TEST", start_date, end_date)
+        out = download_data_stock_prices("TEST", start_date, end_date)
 
     assert out["date"].to_list() == [
         dt.date(2020, 3, day) for day in expected_days
@@ -211,7 +211,7 @@ def test_exchange_timezone_observes_daylight_saving_changes():
     with patch("tidyfinance.download_open_source.requests.get") as get:
         get.return_value.status_code = 200
         get.return_value.json.return_value = body
-        out = _download_data_stock_prices("^AXJO", "2020-03-01", "2020-07-31")
+        out = download_data_stock_prices("^AXJO", "2020-03-01", "2020-07-31")
 
     assert out["date"].to_list() == [dt.date(2020, 3, 16), dt.date(2020, 7, 15)]
 

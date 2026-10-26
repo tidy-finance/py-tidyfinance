@@ -102,6 +102,26 @@ def test_errors_when_portfolio_sort_options_has_wrong_shape():
         )
 
 
+def test_errors_when_portfolio_sort_options_is_missing():
+    """Test portfolio_sort_options is required although it has a default
+    so that it can follow skip, as in R."""
+    with pytest.raises(ValueError, match="portfolio_sort_options"):
+        implement_portfolio_sort(make_data(), "size", "univariate")
+
+
+def test_portfolio_sort_options_follows_skip_as_in_r():
+    """Test the arguments are in the order of the R function."""
+    import inspect
+
+    params = list(inspect.signature(implement_portfolio_sort).parameters)
+    assert params[3:7] == [
+        "rebalancing_month",
+        "holding_period",
+        "skip",
+        "portfolio_sort_options",
+    ]
+
+
 def test_delegates_to_filter_and_compute_on_valid_inputs():
     """Test delegates to filter and compute on valid inputs."""
     data = make_data()
@@ -120,6 +140,74 @@ def test_delegates_to_filter_and_compute_on_valid_inputs():
     assert len(result) > 0
     assert "portfolio" in result.columns
     assert "date" in result.columns
+
+
+def test_implement_portfolio_sort_screens_at_formation_when_annual():
+    """Test implement_portfolio_sort screens at formation when annual."""
+    # July 2020 to June 2021
+    dates = [
+        dt.date(2020 + (6 + i) // 12, (6 + i) % 12 + 1, 1) for i in range(12)
+    ]
+    permnos = [p for p in range(1, 21) for _ in dates]
+    data = pl.DataFrame(
+        {
+            "permno": permnos,
+            "date": dates * 20,
+            "ret_excess": [0.01] * len(permnos),
+            "mktcap_lag": [100.0] * len(permnos),
+            "size": [float(p) for p in permnos],
+            "prc_lag": [10.0] * len(permnos),
+        }
+    )
+    # Stock 1 falls below the price screen after formation and loses 50%
+    # in August 2020.
+    is_stock1 = pl.col("permno") == 1
+    data = data.with_columns(
+        prc_lag=pl.when(is_stock1 & (pl.col("date") > dt.date(2020, 7, 1)))
+        .then(1.0)
+        .otherwise(pl.col("prc_lag")),
+        ret_excess=pl.when(is_stock1 & (pl.col("date") == dt.date(2020, 8, 1)))
+        .then(-0.5)
+        .otherwise(pl.col("ret_excess")),
+    )
+
+    options = portfolio_sort_options(
+        filter_options=filter_options(min_stock_price=5),
+        breakpoint_options_main=breakpoint_options(n_portfolios=2),
+    )
+    formation = implement_portfolio_sort(
+        data,
+        sorting_variables="size",
+        sorting_method="univariate",
+        rebalancing_month=7,
+        portfolio_sort_options=options,
+        quiet=True,
+    )
+    aug_formation = formation.filter(
+        (pl.col("portfolio") == 1) & (pl.col("date") == dt.date(2020, 8, 1))
+    )["ret_excess_ew"][0]
+    assert aug_formation == pytest.approx((9 * 0.01 - 0.5) / 10)
+
+    options_ex_post = portfolio_sort_options(
+        filter_options=filter_options(
+            min_stock_price=5,
+            timing="every_period",
+        ),
+        breakpoint_options_main=breakpoint_options(n_portfolios=2),
+    )
+    with pytest.warns(UserWarning, match="look-ahead"):
+        ex_post = implement_portfolio_sort(
+            data,
+            sorting_variables="size",
+            sorting_method="univariate",
+            rebalancing_month=7,
+            portfolio_sort_options=options_ex_post,
+            quiet=True,
+        )
+    aug_ex_post = ex_post.filter(
+        (pl.col("portfolio") == 1) & (pl.col("date") == dt.date(2020, 8, 1))
+    )["ret_excess_ew"][0]
+    assert aug_ex_post == pytest.approx(0.01)
 
 
 if __name__ == "__main__":

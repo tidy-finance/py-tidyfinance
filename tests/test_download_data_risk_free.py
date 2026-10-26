@@ -14,14 +14,14 @@ sys.path.insert(
 )
 
 from tidyfinance.download_tidy_finance import (  # noqa: E402
-    _download_data_risk_free,
+    download_data_risk_free,
 )
 
 
 def test_invalid_frequency_aborts_with_informative_message():
     """Test invalid frequency aborts with informative message."""
     with pytest.raises(ValueError, match="monthly.*daily"):
-        _download_data_risk_free(frequency="weekly")
+        download_data_risk_free(frequency="weekly")
 
 
 def test_download_failure_is_caught_and_re_thrown():
@@ -33,7 +33,7 @@ def test_download_failure_is_caught_and_re_thrown():
         with pytest.raises(
             RuntimeError, match="Failed to download risk-free rate data"
         ):
-            _download_data_risk_free()
+            download_data_risk_free()
 
 
 def test_full_dataset_returned_when_no_dates_are_supplied():
@@ -48,7 +48,7 @@ def test_full_dataset_returned_when_no_dates_are_supplied():
         "tidyfinance.download_tidy_finance._read_parquet_url",
         return_value=mock_data,
     ):
-        result = _download_data_risk_free()
+        result = download_data_risk_free()
     assert_frame_equal(result, mock_data)
 
 
@@ -68,7 +68,7 @@ def test_data_is_filtered_when_start_and_end_dates_are_supplied():
         "tidyfinance.download_tidy_finance._read_parquet_url",
         return_value=mock_data,
     ):
-        result = _download_data_risk_free("2020-01-01", "2020-02-01")
+        result = download_data_risk_free("2020-01-01", "2020-02-01")
 
     assert result.height == 2
     assert result["date"].to_list() == [
@@ -94,8 +94,8 @@ def test_data_is_filtered_with_open_ended_date_ranges():
         "tidyfinance.download_tidy_finance._read_parquet_url",
         return_value=mock_data,
     ):
-        from_feb = _download_data_risk_free(start_date="2020-02-01")
-        until_feb = _download_data_risk_free(end_date="2020-02-01")
+        from_feb = download_data_risk_free(start_date="2020-02-01")
+        until_feb = download_data_risk_free(end_date="2020-02-01")
 
     assert from_feb["date"].to_list() == [
         dt.date(2020, 2, 1),
@@ -122,7 +122,7 @@ def test_datetime_date_column_is_cast_to_date():
         "tidyfinance.download_tidy_finance._read_parquet_url",
         return_value=mock_data,
     ):
-        result = _download_data_risk_free()
+        result = download_data_risk_free()
     assert result.schema["date"] == pl.Date
 
 

@@ -11,7 +11,8 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_open_source import _download_data_constituents  # noqa: E402
+from tidyfinance.download import download_data
+from tidyfinance.download_open_source import download_data_constituents  # noqa: E402
 
 
 def _supported_indexes_df(index="DAX"):
@@ -25,7 +26,7 @@ def test_unsupported_indexes_fail():
         return_value=_supported_indexes_df(),
     ):
         with pytest.raises(ValueError, match="not supported"):
-            _download_data_constituents("UNKNOWN")
+            download_data_constituents("UNKNOWN")
 
 
 def test_download_errors_can_return_none():
@@ -47,7 +48,7 @@ def test_download_errors_can_return_none():
         ),
     ):
         with pytest.raises(Exception):
-            _download_data_constituents("DAX")
+            download_data_constituents("DAX")
 
 
 def test_non_200_responses_fail():
@@ -69,7 +70,7 @@ def test_non_200_responses_fail():
         ),
     ):
         with pytest.raises(ValueError, match="Failed to download data"):
-            _download_data_constituents("DAX")
+            download_data_constituents("DAX")
 
 
 def test_german_csv_layout_is_parsed_and_cleaned():
@@ -102,7 +103,7 @@ def test_german_csv_layout_is_parsed_and_cleaned():
             return_value=response_mock,
         ),
     ):
-        out = _download_data_constituents("DAX")
+        out = download_data_constituents("DAX")
 
     assert isinstance(out, pl.DataFrame)
     assert list(out["symbol"]) == ["ABC.DE"]
@@ -172,7 +173,7 @@ def test_asset_class_layout_covers_exchanges_and_symbol_rules():
             return_value=response_mock,
         ),
     ):
-        out = _download_data_constituents("MSCI World")
+        out = download_data_constituents("MSCI World")
 
     assert isinstance(out, pl.DataFrame)
     # 25 exchange rows survive; symbol uniqueness mirrors R assertions
@@ -233,7 +234,7 @@ def test_download_request_pipeline_is_executed():
             return_value=response_mock,
         ) as mock_get,
     ):
-        out = _download_data_constituents("S&P 500")
+        out = download_data_constituents("S&P 500")
 
     assert "AAPL" in out["symbol"].to_list()
     mock_get.assert_called()
@@ -267,7 +268,7 @@ def test_header_row_is_detected_after_preamble():
             return_value=response_mock,
         ),
     ):
-        out = _download_data_constituents("DAX")
+        out = download_data_constituents("DAX")
 
     assert out["symbol"].to_list() == ["ABC.DE"]
 
@@ -283,7 +284,7 @@ def test_path_reads_ishares_file_without_network(tmp_path):
         encoding="utf-8",
     )
     with patch("tidyfinance.download_open_source.requests.get") as mock_get:
-        out = _download_data_constituents(index="DAX", path=file)
+        out = download_data_constituents(index="DAX", path=file)
 
     mock_get.assert_not_called()
     assert out["symbol"].to_list() == ["ABC.DE"]
@@ -299,7 +300,7 @@ def test_path_without_index_skips_index_name_filter(tmp_path):
         "Aktien,DAX,DAX INDEX,Germany,Xetra\n",
         encoding="utf-8",
     )
-    out = _download_data_constituents(path=file)
+    out = download_data_constituents(path=file)
 
     assert out["symbol"].to_list() == ["ABC.DE", "DAX.DE"]
 
@@ -313,9 +314,36 @@ def test_path_reads_latin1_file(tmp_path):
             "Aktien,ABC,Alpha AG,Germany,Xetra\n"
         ).encode("latin-1")
     )
-    out = _download_data_constituents(path=file)
+    out = download_data_constituents(path=file)
 
     assert out["symbol"].to_list() == ["ABC.DE"]
+
+
+def test_path_reads_utf8_file_with_byte_order_mark(tmp_path):
+    """Test a UTF-8 holdings file with a byte order mark is decoded."""
+    file = tmp_path / "holdings.csv"
+    file.write_bytes(
+        b"\xef\xbb\xbf"
+        + (
+            "Anlageklasse,Emittententicker,Name,Standort,Börse\n"
+            "Aktien,ABC,Alpha AG,Germany,Xetra\n"
+        ).encode()
+    )
+    out = download_data_constituents(path=file)
+
+    assert out["symbol"].to_list() == ["ABC.DE"]
+
+
+def test_download_data_passes_path_to_the_constituents_reader(tmp_path):
+    """Test download_data forwards 'path' to the constituents reader."""
+    file = tmp_path / "holdings.csv"
+    file.write_text(
+        "Asset Class,Ticker,Name,Location,Exchange\n"
+        "Equity,AAPL,Apple Inc,United States,Nasdaq\n"
+    )
+    out = download_data("Index Constituents", path=file)
+
+    assert out["symbol"].to_list() == ["AAPL"]
 
 
 def test_unknown_file_layout_fails(tmp_path):
@@ -323,13 +351,13 @@ def test_unknown_file_layout_fails(tmp_path):
     file = tmp_path / "other.csv"
     file.write_text("a,b,c\n1,2,3\n")
     with pytest.raises(ValueError, match="Unknown column format"):
-        _download_data_constituents(path=file)
+        download_data_constituents(path=file)
 
 
 def test_index_or_path_is_required():
     """Test calling without 'index' and 'path' fails."""
     with pytest.raises(ValueError, match="'index'.*'path'"):
-        _download_data_constituents()
+        download_data_constituents()
 
 
 def test_failed_download_points_to_path_fallback():
@@ -351,7 +379,7 @@ def test_failed_download_points_to_path_fallback():
         ),
     ):
         with pytest.raises(ValueError, match="path="):
-            _download_data_constituents("DAX")
+            download_data_constituents("DAX")
 
 
 if __name__ == "__main__":

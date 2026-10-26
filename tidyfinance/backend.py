@@ -2,10 +2,10 @@
 
 The package is implemented in polars. The backend controls the type of
 data frame returned by the public tidyfinance API. The default is
-'pandas' for backward compatibility; after 'set_backend("polars")' the
-functions return the internal 'polars.DataFrame' objects directly with
-zero conversion overhead. Pandas data frames are accepted as input
-regardless of the active backend (they are converted to polars
+'polars': the functions return the internal 'polars.DataFrame' objects
+directly with zero conversion overhead. After 'set_backend("pandas")'
+they return pandas data frames instead. Pandas data frames are accepted
+as input regardless of the active backend (they are converted to polars
 internally), so results from one call can be fed straight into the
 next.
 
@@ -13,10 +13,10 @@ Examples
 --------
 ```python
 import tidyfinance as tf
-tf.set_backend("polars")
-data = tf.download_data("Fama-French", "factors_ff_3_monthly")
+tf.set_backend("pandas")
+data = tf.download_data("Fama-French", "Fama/French 3 Factors")
 tf.estimate_model(data, "mkt_excess ~ smb + hml")
-tf.set_backend("pandas")  # back to the default
+tf.set_backend("polars")  # back to the default
 ```
 """
 
@@ -26,13 +26,13 @@ import polars as pl
 
 _VALID_BACKENDS = ("pandas", "polars")
 
-_BACKEND = "pandas"
+_BACKEND = "polars"
 
 # Calendar-date columns handled by the download functions. Internally
 # polars stores them as 'polars.Date'. Pandas inputs carry them as
 # datetime64 (pandas has no plain date dtype), so '_to_polars_input'
 # casts tz-naive datetime columns with these names to 'polars.Date' on
-# entry so they match the internal representation and the R package.
+# entry so they match the internal representation.
 _DATE_COLUMNS = frozenset(
     {
         # all download functions
@@ -64,7 +64,7 @@ def set_backend(backend: str) -> None:
     Parameters
     ----------
     backend : str
-        Either 'pandas' (the default) or 'polars'.
+        Either 'polars' (the default) or 'pandas'.
 
     Raises
     ------
@@ -100,13 +100,14 @@ def set_backend(backend: str) -> None:
             import pandas  # noqa: F401
         except ImportError as e:
             raise ImportError(
-                "The 'pandas' backend requires the 'pandas' package."
+                "The 'pandas' backend requires the 'pandas' package. "
+                "Install it with 'pip install tidyfinance[pandas]'."
             ) from e
     _BACKEND = backend
 
 
 def get_backend() -> str:
-    """Return the active data frame backend ('"pandas"' or '"polars"')."""
+    """Return the active data frame backend ('"polars"' or '"pandas"')."""
     return _BACKEND
 
 

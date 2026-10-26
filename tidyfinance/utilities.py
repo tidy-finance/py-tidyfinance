@@ -6,6 +6,8 @@ import webbrowser
 import numpy as np
 import polars as pl
 
+from ._internal import _quantile
+
 _SUMMARY_QUANTILES_BASIC = (0.50,)
 _SUMMARY_QUANTILES_DETAIL = (
     0.01,
@@ -21,13 +23,13 @@ _SUMMARY_QUANTILES_DETAIL = (
 
 
 def _quantile_label(p: float) -> str:
-    """Return the R-style quantile column label, e.g. 0.05 -> 'q05'."""
+    """Return the quantile column label, e.g. 0.05 -> 'q05'."""
     return f"q{round(p * 100):02d}"
 
 
 def create_summary_statistics(
     data: pl.DataFrame,
-    variables: list,
+    *variables: str,
     by: str = None,
     detail: bool = False,
     drop_na: bool = False,
@@ -54,13 +56,21 @@ def create_summary_statistics(
     for the whole dataset, or separately for each group when 'by' is
     supplied.
 
+    Missing values (null or NaN) propagate: unless 'drop_na' is True, a
+    variable with missing values gets missing statistics, while 'n'
+    still counts its non-missing values. With 'drop_na=True', missing
+    values are dropped separately for each variable, together with
+    observations whose 'by' group is missing.
+
     Parameters
     ----------
     data : pl.DataFrame
         Data frame containing the variables to be summarized.
-    variables : list of str
-        List of column names in the data frame to summarize. These
-        variables must be of a numeric dtype (int, float, or bool).
+    *variables : str
+        Names of the columns in the data frame to summarize, e.g.
+        'create_summary_statistics(data, "ret", "size")'. A single list
+        of names is accepted as well. These variables must be of a
+        numeric dtype (int, float, or bool).
     by : str, optional
         Column name to group the data before summarizing. If None (the
         default), summary statistics are computed across all
@@ -72,15 +82,17 @@ def create_summary_statistics(
         (q01, q05, q10, q25, q75, q90, q95, q99) are computed.
     drop_na : bool, default False
         Whether to drop missing values for each variable before
-        summarizing.
+        summarizing. If False, statistics of a variable with missing
+        values are missing.
 
     Returns
     -------
     pl.DataFrame
-        Data frame with summary statistics for each selected variable.
-        If 'by' is specified, the output includes the grouping variable
-        as well. Each row represents a variable (and a group if 'by' is
-        used), and each column contains the computed statistics.
+        Data frame with summary statistics for each selected variable,
+        sorted by 'variable'. If 'by' is specified, the grouping column
+        follows 'variable' and the rows are sorted by both. Each row
+        represents a variable (and a group if 'by' is used), and each
+        column contains the computed statistics.
 
     Examples
     --------
@@ -93,19 +105,23 @@ def create_summary_statistics(
         'group': ['A', 'A', 'B', 'B', 'A'],
     })
     # Basic summary across all observations
-    create_summary_statistics(data, ['ret', 'size'])
+    create_summary_statistics(data, 'ret', 'size')
     # Grouped summary
-    create_summary_statistics(data, ['ret', 'size'], by='group')
+    create_summary_statistics(data, 'ret', 'size', by='group')
     # Detailed quantiles
-    create_summary_statistics(data, ['ret'], detail=True)
+    create_summary_statistics(data, 'ret', detail=True)
     ```
     """
+    if len(variables) == 1 and isinstance(variables[0], (list, tuple)):
+        variables = variables[0]
+    variables = list(variables)
+    if not variables:
+        raise ValueError("Pass at least one variable to summarize.")
+
     non_numeric_vars = [
         var
         for var in variables
-        if not (
-            data.schema[var].is_numeric() or data.schema[var] == pl.Boolean
-        )
+        if not (data.schema[var].is_numeric() or data.schema[var] == pl.Boolean)
     ]
     if non_numeric_vars:
         raise ValueError(
@@ -121,9 +137,6 @@ def create_summary_statistics(
             [pl.col(c).cast(pl.Float64) for c in bool_cols]
         )
 
-    if drop_na:
-        data = data.drop_nulls(subset=variables)
-
     quantiles = (
         _SUMMARY_QUANTILES_DETAIL if detail else _SUMMARY_QUANTILES_BASIC
     )
@@ -132,35 +145,49 @@ def create_summary_statistics(
     long = data.select(id_cols + list(variables)).unpivot(
         index=id_cols, variable_name="variable", value_name="_value"
     )
-    if long.schema["_value"].is_float():
-        # Treat float NaN like missing so statistics ignore it, matching
-        # the pandas/R behavior for NA values.
-        long = long.with_columns(pl.col("_value").fill_nan(None))
+    long = long.with_columns(pl.col("_value").cast(pl.Float64).fill_nan(None))
 
-    aggs = [
-        pl.col("_value").count().alias("n"),
-        pl.col("_value").mean().alias("mean"),
-        pl.col("_value").std().alias("sd"),
-        pl.col("_value").min().alias("min"),
-        *[
-            pl.col("_value")
-            .quantile(p, interpolation="linear")
-            .alias(_quantile_label(p))
-            for p in quantiles
-        ],
-        pl.col("_value").max().alias("max"),
-    ]
+    if drop_na:
+        # Drop missing values per variable (and missing groups), so one
+        # variable's gaps do not remove observations of another.
+        long = long.drop_nulls()
 
-    group_cols = id_cols + ["variable"]
-    result = long.group_by(group_cols, maintain_order=True).agg(aggs)
+    group_cols = ["variable"] + id_cols
+    labels = [_quantile_label(p) for p in quantiles]
+    any_null = pl.col("_value").null_count() > 0
 
-    # Order quantile columns around the median as documented.
-    ordered_stats = (
-        ["n", "mean", "sd", "min"]
-        + [_quantile_label(p) for p in quantiles]
-        + ["max"]
+    def _na_if_missing(expr: pl.Expr) -> pl.Expr:
+        # A variable with missing values gets missing statistics unless
+        # 'drop_na' is True; only 'n' counts the non-missing values.
+        return pl.when(any_null).then(None).otherwise(expr)
+
+    result = long.group_by(group_cols).agg(
+        pl.col("_value").count().cast(pl.Int32).alias("n"),
+        _na_if_missing(pl.col("_value").mean()).alias("mean"),
+        _na_if_missing(pl.col("_value").std()).alias("sd"),
+        _na_if_missing(pl.col("_value").min()).alias("min"),
+        pl.col("_value").alias("_values"),
+        any_null.alias("_any_null"),
+        _na_if_missing(pl.col("_value").max()).alias("max"),
     )
-    return result.select(group_cols + ordered_stats).sort(group_cols)
+
+    quantile_values = [
+        [None] * len(quantiles)
+        if any_null or not values.len()
+        else _quantile(values.to_numpy(), quantiles).tolist()
+        for values, any_null in zip(result["_values"], result["_any_null"])
+    ]
+    result = result.with_columns(
+        [
+            pl.Series(label, [q[i] for q in quantile_values], pl.Float64)
+            for i, label in enumerate(labels)
+        ]
+    )
+
+    ordered_stats = ["n", "mean", "sd", "min"] + labels + ["max"]
+    return result.select(group_cols + ordered_stats).sort(
+        group_cols, nulls_last=True
+    )
 
 
 def list_supported_indexes() -> pl.DataFrame:
@@ -232,17 +259,17 @@ def list_supported_indexes() -> pl.DataFrame:
         ),
         (
             "Nasdaq 100",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251896/ishares-nasdaq100-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXXT_holdings&dataType=fund",
             2,
         ),
         (
             "FTSE 100",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1495092304805.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251795/ishares-ftse-100-ucits-etf-inc-fund/1495092304805.ajax?fileType=csv&fileName=IUSZ_holdings&dataType=fund",
             2,
         ),
         (
             "MSCI World",
-            "https://www.ishares.com/de/privatanleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1495092304805.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251882/ishares-msci-world-ucits-etf-acc-fund/1495092304805.ajax?fileType=csv&fileName=EUNL_holdings&dataType=fund",
             2,
         ),
         (
@@ -255,10 +282,43 @@ def list_supported_indexes() -> pl.DataFrame:
             "https://www.blackrock.com/jp/individual-en/en/products/279438/fund/1480664184455.ajax?fileType=csv&fileName=1475_holdings&dataType=fund",
             2,
         ),
+        (
+            "STOXX Europe 600",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251931/ishares-stoxx-europe-600-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXSA_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "MDAX",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251845/ishares-mdax-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXS3_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "TecDAX",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251948/ishares-tecdax-ucits-etf-de-fund/1495092304805.ajax?fileType=csv&fileName=EXS2_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "MSCI Emerging Markets",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251857/ishares-msci-emerging-markets-ucits-etf-inc-fund/1495092304805.ajax?fileType=csv&fileName=IQQE_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "MSCI Europe",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/251860/ishares-msci-europe-ucits-etf-inc-fund/1495092304805.ajax?fileType=csv&fileName=IQQY_holdings&dataType=fund",
+            2,
+        ),
+        (
+            "MSCI ACWI",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239600/ishares-msci-acwi-etf/1495092304805.ajax?fileType=csv&fileName=ACWI_holdings&dataType=fund",
+            9,
+        ),
+        (
+            "S&P SmallCap 600",
+            "https://www.ishares.com/ch/professionelle-anleger/de/produkte/239774/ishares-sp-smallcap-600-etf/1495092304805.ajax?fileType=csv&fileName=IJR_holdings&dataType=fund",
+            9,
+        ),
     ]
-    return pl.DataFrame(
-        data, schema=["index", "url", "skip"], orient="row"
-    )
+    return pl.DataFrame(data, schema=["index", "url", "skip"], orient="row")
 
 
 def list_supported_jkp_factors(
@@ -351,7 +411,8 @@ def list_tidy_finance_chapters() -> list:
     -------
     list of str
         Chapter slugs in the order they appear in the book. Each slug
-        corresponds to a chapter page on https://www.tidy-finance.org.
+        corresponds to a chapter page at
+        https://www.tidy-finance.org/chapters/<slug>.html.
 
     Examples
     --------
@@ -362,6 +423,7 @@ def list_tidy_finance_chapters() -> list:
     """
     return [
         "setting-up-your-environment",
+        "the-tidyfinance-package",
         "working-with-stock-returns",
         "modern-portfolio-theory",
         "capital-asset-pricing-model",
@@ -385,17 +447,17 @@ def list_tidy_finance_chapters() -> list:
         "constrained-optimization-and-backtesting",
         "wrds-dummy-data",
         "cover-and-logo-design",
-        "clean-enhanced-trace-with-r",
+        "clean-enhanced-trace",
         "proofs",
-        "changelog",
+        "colophon",
     ]
 
 
 def open_tidy_finance_website(chapter: str = None) -> None:
     """Open the Tidy Finance website or a specific chapter.
 
-    If 'chapter' is omitted, the main landing page of the Python
-    edition of Tidy Finance is opened. Otherwise the URL for the
+    If 'chapter' is omitted, the chapter overview of Tidy Finance is
+    opened. Otherwise the URL for the
     requested chapter is constructed and opened. An unknown chapter
     name falls back to the main page.
 
@@ -419,7 +481,7 @@ def open_tidy_finance_website(chapter: str = None) -> None:
     open_tidy_finance_website('beta-estimation')
     ```
     """
-    base_url = "https://www.tidy-finance.org/python/"
+    base_url = "https://www.tidy-finance.org/chapters/"
 
     if chapter:
         tidy_finance_chapters = list_tidy_finance_chapters()
@@ -478,30 +540,31 @@ def winsorize(x, cut: float) -> np.ndarray:
         return x
 
     x = np.asarray(x, dtype=float)
-    lb, ub = np.nanquantile(x, [cut, 1 - cut])
+    lb, ub = _quantile(x, [cut, 1 - cut])
     return np.clip(x, lb, ub)
 
 
 def trim(x, cut: float) -> np.ndarray:
-    """Trim a numeric vector by removing extreme observations.
+    """Trim a numeric vector by setting extreme observations to NaN.
 
-    Drops values below the lower 'cut' quantile and above the upper
-    '1 - cut' quantile. The returned vector is therefore shorter than
-    the input.
+    Sets values below the lower 'cut' quantile and above the upper
+    '1 - cut' quantile to NaN. The returned vector has the same length
+    as the input, so it can be assigned back to a column.
 
     Parameters
     ----------
     x : numpy.ndarray or polars.Series
         A numeric vector to trim.
     cut : float
-        Proportion of observations removed at each tail. For example,
-        'cut=0.05' removes the lowest and highest five percent. Must
-        lie in '[0, 0.5]'.
+        Proportion of observations set to NaN at each tail. For
+        example, 'cut=0.05' sets the lowest and highest five percent to
+        NaN. Must lie in '[0, 0.5]'.
 
     Returns
     -------
     numpy.ndarray
-        Vector with the extreme observations removed.
+        Float vector with the same length as 'x' in which the extreme
+        observations are NaN. Missing values in 'x' stay missing.
 
     Examples
     --------
@@ -521,7 +584,9 @@ def trim(x, cut: float) -> np.ndarray:
     if not (0 <= cut <= 0.5):
         raise ValueError("'cut' must be inside [0, 0.5].")
 
-    lb = np.nanquantile(x, cut)
-    ub = np.nanquantile(x, 1 - cut)
+    x = np.asarray(x, dtype=float)
+    if x.size == 0:
+        return x
 
-    return x[(x >= lb) & (x <= ub)]
+    lb, ub = _quantile(x, [cut, 1 - cut])
+    return np.where((x < lb) | (x > ub), np.nan, x)

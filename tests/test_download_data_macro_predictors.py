@@ -5,6 +5,7 @@ import os
 import sys
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import polars as pl
 import pytest
 
@@ -12,7 +13,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.download_open_source import _download_data_macro_predictors  # noqa: E402
+from tidyfinance.download_open_source import download_data_macro_predictors  # noqa: E402
 
 
 def _macro_raw(date_col, values):
@@ -39,28 +40,39 @@ def _macro_raw(date_col, values):
 def test_dataset_is_required_and_must_be_supported():
     """Test dataset is required and must be supported."""
     with pytest.raises(ValueError):
-        _download_data_macro_predictors()
+        download_data_macro_predictors()
 
     with pytest.raises(ValueError, match="Unsupported dataset"):
-        _download_data_macro_predictors("daily")
+        download_data_macro_predictors("daily")
 
 
 def test_monthly_data_is_downloaded_and_processed():
     """Test monthly data is downloaded and processed."""
     raw = _macro_raw("yyyymm", ["202001", "202002", "202003"])
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        out = _download_data_macro_predictors("monthly")
+        out = download_data_macro_predictors("monthly")
     assert isinstance(out, pl.DataFrame)
     # The middle row survives the diff()/dropna pipeline
     assert len(out) == 1
     assert out["date"][0] == dt.date(2020, 2, 1)
 
 
+def test_rp_div_is_the_future_log_excess_return():
+    """Test rp_div is next period's log return minus log(1 + Rfree)."""
+    raw = _macro_raw("yyyymm", ["202001", "202002", "202003"]).with_columns(
+        Rfree=pl.Series([0.01, 0.02, 0.03])
+    )
+    with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
+        out = download_data_macro_predictors("monthly")
+    expected = np.log(122 / 112) - np.log(1.03)
+    assert out["rp_div"].to_list() == pytest.approx([expected])
+
+
 def test_quarterly_data_is_downloaded_and_filtered():
     """Test quarterly data is downloaded and filtered."""
     raw = _macro_raw("yyyyq", ["20201", "20202", "20203"])
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        out = _download_data_macro_predictors(
+        out = download_data_macro_predictors(
             "quarterly",
             start_date="2020-04-01",
             end_date="2020-04-01",
@@ -73,7 +85,7 @@ def test_annual_data_is_downloaded_and_processed():
     """Test annual data is downloaded and processed."""
     raw = _macro_raw("yyyy", ["2019", "2020", "2021"])
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
-        out = _download_data_macro_predictors("annual")
+        out = download_data_macro_predictors("annual")
     assert len(out) == 1
     assert out["date"][0] == dt.date(2020, 1, 1)
 
@@ -85,7 +97,7 @@ def test_empty_downloads_return_an_empty_dataframe():
         side_effect=Exception("download failed"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            out = _download_data_macro_predictors("monthly")
+            out = download_data_macro_predictors("monthly")
     assert isinstance(out, pl.DataFrame)
     assert len(out) == 0
 
@@ -95,7 +107,7 @@ def test_explicit_deprecated_type_is_still_handled():
     raw = _macro_raw("yyyymm", ["202001", "202002", "202003"])
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            out = _download_data_macro_predictors(
+            out = download_data_macro_predictors(
                 type="macro_predictors_monthly"
             )
         assert out["date"][0] == dt.date(2020, 2, 1)
@@ -106,7 +118,7 @@ def test_legacy_dataset_names_are_still_handled():
     raw = _macro_raw("yyyymm", ["202001", "202002", "202003"])
     with patch("tidyfinance.download_open_source._fetch_csv", return_value=raw):
         with pytest.warns(DeprecationWarning, match="deprecated"):
-            out = _download_data_macro_predictors("macro_predictors_monthly")
+            out = download_data_macro_predictors("macro_predictors_monthly")
         assert out["date"][0] == dt.date(2020, 2, 1)
 
 
@@ -122,9 +134,7 @@ def test_correct_google_sheets_url_is_constructed():
         "tidyfinance.download_open_source._fetch_csv",
         side_effect=fake_fetch_csv,
     ):
-        _download_data_macro_predictors(
-            dataset="monthly", sheet_id="test_sheet"
-        )
+        download_data_macro_predictors(dataset="monthly", sheet_id="test_sheet")
 
     expected = (
         "https://docs.google.com/spreadsheets/d/"
@@ -141,17 +151,17 @@ def test_empty_download_informs_and_returns_empty_dataframe():
         side_effect=Exception("download failed"),
     ):
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            out = _download_data_macro_predictors("monthly")
+            out = download_data_macro_predictors("monthly")
         assert isinstance(out, pl.DataFrame)
         assert len(out) == 0
 
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            out = _download_data_macro_predictors("quarterly")
+            out = download_data_macro_predictors("quarterly")
         assert isinstance(out, pl.DataFrame)
         assert len(out) == 0
 
         with pytest.warns(UserWarning, match="Returning an empty dataset"):
-            out = _download_data_macro_predictors("annual")
+            out = download_data_macro_predictors("annual")
         assert isinstance(out, pl.DataFrame)
         assert len(out) == 0
 
@@ -184,7 +194,7 @@ def test_monthly_index_with_thousands_separators_parses():
         "tidyfinance.download_open_source.requests.get",
         return_value=response,
     ):
-        out = _download_data_macro_predictors("monthly")
+        out = download_data_macro_predictors("monthly")
 
     assert len(out) > 0
     assert dt.date(1998, 2, 1) in out["date"].to_list()

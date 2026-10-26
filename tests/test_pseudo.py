@@ -15,9 +15,9 @@ sys.path.insert(
 
 from tidyfinance.download import download_data  # noqa: E402
 from tidyfinance.download_pseudo import (  # noqa: E402
-    _download_data_pseudo_ccm_links,
-    _download_data_pseudo_compustat,
-    _download_data_pseudo_crsp,
+    download_data_pseudo_ccm_links,
+    download_data_pseudo_compustat,
+    download_data_pseudo_crsp,
     _simulate_pseudo_data,
     _simulate_pseudo_identifiers,
 )
@@ -49,10 +49,10 @@ def test_simulate_pseudo_data_emits_notice():
 
 
 def test_simulate_pseudo_data_dispatches_to_crsp():
-    """Route crsp_* datasets through _download_data_pseudo_crsp."""
+    """Route crsp_* datasets through download_data_pseudo_crsp."""
     with (
         patch(
-            "tidyfinance.download_pseudo._download_data_pseudo_crsp",
+            "tidyfinance.download_pseudo.download_data_pseudo_crsp",
             return_value=pl.DataFrame({"kind": ["crsp"]}),
         ),
         pytest.warns(UserWarning),
@@ -62,10 +62,10 @@ def test_simulate_pseudo_data_dispatches_to_crsp():
 
 
 def test_simulate_pseudo_data_dispatches_to_compustat():
-    """Route compustat_* datasets through _download_data_pseudo_compustat."""
+    """Route compustat_* datasets through download_data_pseudo_compustat."""
     with (
         patch(
-            "tidyfinance.download_pseudo._download_data_pseudo_compustat",
+            "tidyfinance.download_pseudo.download_data_pseudo_compustat",
             return_value=pl.DataFrame({"kind": ["compustat"]}),
         ),
         pytest.warns(UserWarning),
@@ -75,10 +75,10 @@ def test_simulate_pseudo_data_dispatches_to_compustat():
 
 
 def test_simulate_pseudo_data_dispatches_to_ccm():
-    """Route ccm_links through _download_data_pseudo_ccm_links."""
+    """Route ccm_links through download_data_pseudo_ccm_links."""
     with (
         patch(
-            "tidyfinance.download_pseudo._download_data_pseudo_ccm_links",
+            "tidyfinance.download_pseudo.download_data_pseudo_ccm_links",
             return_value=pl.DataFrame({"kind": ["ccm"]}),
         ),
         pytest.warns(UserWarning),
@@ -107,7 +107,7 @@ def test_download_data_routes_pseudo():
 
 def test_pseudo_crsp_monthly_schema():
     """Monthly CRSP returns expected columns and row count."""
-    crsp = _download_data_pseudo_crsp(
+    crsp = download_data_pseudo_crsp(
         dataset="crsp_monthly",
         start_date="2020-01-01",
         end_date="2020-06-30",
@@ -126,6 +126,7 @@ def test_pseudo_crsp_monthly_schema():
         "listing_age",
         "mktcap",
         "mktcap_lag",
+        "prc_lag",
         "exchange",
         "industry",
         "ret_excess",
@@ -133,11 +134,14 @@ def test_pseudo_crsp_monthly_schema():
     assert expected.issubset(set(crsp.columns))
     assert "gvkey" not in crsp.columns
     assert crsp.height == 5 * 6
+    # prc_lag is the previous month's prc of the same permno
+    expected_lag = crsp.select(pl.col("prc").shift(1).over("permno"))
+    assert crsp["prc_lag"].equals(expected_lag["prc"])
 
 
 def test_pseudo_crsp_add_ccm_links_appends_gvkey():
     """add_ccm_links=True appends gvkey from the shared universe."""
-    crsp = _download_data_pseudo_crsp(
+    crsp = download_data_pseudo_crsp(
         dataset="crsp_monthly",
         start_date="2020-01-01",
         end_date="2020-06-30",
@@ -145,14 +149,14 @@ def test_pseudo_crsp_add_ccm_links_appends_gvkey():
         n_assets=5,
         seed=1234,
     )
-    ccm = _download_data_pseudo_ccm_links(n_assets=5, seed=1234)
+    ccm = download_data_pseudo_ccm_links(n_assets=5, seed=1234)
     assert "gvkey" in crsp.columns
     assert set(crsp["gvkey"].unique()) == set(ccm["gvkey"])
 
 
 def test_pseudo_crsp_daily_schema_weekdays_only():
     """Daily CRSP returns weekday-only rows and the right schema."""
-    crsp_daily = _download_data_pseudo_crsp(
+    crsp_daily = download_data_pseudo_crsp(
         dataset="crsp_daily",
         start_date="2020-01-01",
         end_date="2020-01-31",
@@ -167,14 +171,14 @@ def test_pseudo_crsp_daily_schema_weekdays_only():
 def test_pseudo_crsp_validates_dataset():
     """Per-dataset CRSP generator validates its dataset argument."""
     with pytest.raises(ValueError, match="'dataset' is required"):
-        _download_data_pseudo_crsp()
+        download_data_pseudo_crsp()
     with pytest.raises(ValueError, match="Unsupported CRSP dataset"):
-        _download_data_pseudo_crsp("compustat_annual")
+        download_data_pseudo_crsp("compustat_annual")
 
 
 def test_pseudo_crsp_additional_columns_monthly():
     """additional_columns are honored on monthly CRSP."""
-    crsp = _download_data_pseudo_crsp(
+    crsp = download_data_pseudo_crsp(
         "crsp_monthly",
         "2020-01-01",
         "2020-03-31",
@@ -187,7 +191,7 @@ def test_pseudo_crsp_additional_columns_monthly():
 
 def test_pseudo_crsp_additional_columns_and_ccm_links_daily():
     """additional_columns and add_ccm_links work on daily CRSP."""
-    crsp_daily = _download_data_pseudo_crsp(
+    crsp_daily = download_data_pseudo_crsp(
         "crsp_daily",
         "2020-01-01",
         "2020-01-15",
@@ -204,7 +208,7 @@ def test_pseudo_crsp_additional_columns_and_ccm_links_daily():
 
 def test_pseudo_compustat_annual_schema():
     """Annual Compustat returns expected columns and row count."""
-    comp = _download_data_pseudo_compustat(
+    comp = download_data_pseudo_compustat(
         dataset="compustat_annual",
         start_date="2020-01-01",
         end_date="2024-12-31",
@@ -228,7 +232,7 @@ def test_pseudo_compustat_annual_schema():
 
 def test_pseudo_compustat_quarterly_schema():
     """Quarterly Compustat returns quarter-end datadates."""
-    compq = _download_data_pseudo_compustat(
+    compq = download_data_pseudo_compustat(
         dataset="compustat_quarterly",
         start_date="2020-01-01",
         end_date="2020-12-31",
@@ -244,14 +248,14 @@ def test_pseudo_compustat_quarterly_schema():
 def test_pseudo_compustat_validates_dataset():
     """Per-dataset Compustat generator validates its dataset argument."""
     with pytest.raises(ValueError, match="'dataset' is required"):
-        _download_data_pseudo_compustat()
+        download_data_pseudo_compustat()
     with pytest.raises(ValueError, match="Unsupported Compustat dataset"):
-        _download_data_pseudo_compustat("crsp_monthly")
+        download_data_pseudo_compustat("crsp_monthly")
 
 
 def test_pseudo_compustat_additional_columns_annual():
     """additional_columns are honored on annual Compustat."""
-    comp = _download_data_pseudo_compustat(
+    comp = download_data_pseudo_compustat(
         dataset="compustat_annual",
         start_date="2020-01-01",
         end_date="2022-12-31",
@@ -264,7 +268,7 @@ def test_pseudo_compustat_additional_columns_annual():
 
 def test_pseudo_compustat_additional_columns_quarterly():
     """additional_columns are honored on quarterly Compustat."""
-    compq = _download_data_pseudo_compustat(
+    compq = download_data_pseudo_compustat(
         "compustat_quarterly",
         "2020-01-01",
         "2020-06-30",
@@ -280,7 +284,7 @@ def test_pseudo_compustat_additional_columns_quarterly():
 
 def test_pseudo_ccm_links_full_universe():
     """CCM links cover the full identifier universe."""
-    ccm = _download_data_pseudo_ccm_links(n_assets=10, seed=1234)
+    ccm = download_data_pseudo_ccm_links(n_assets=10, seed=1234)
     assert ccm.height == 10
     assert ccm.columns == ["permno", "gvkey", "linkdt", "linkenddt"]
 
@@ -290,14 +294,14 @@ def test_pseudo_ccm_links_full_universe():
 
 def test_pseudo_output_is_deterministic_in_seed():
     """Same (seed, n_assets) yields identical output across calls."""
-    a1 = _download_data_pseudo_crsp(
+    a1 = download_data_pseudo_crsp(
         "crsp_monthly",
         "2020-01-01",
         "2020-03-31",
         n_assets=5,
         seed=1234,
     )
-    a2 = _download_data_pseudo_crsp(
+    a2 = download_data_pseudo_crsp(
         "crsp_monthly",
         "2020-01-01",
         "2020-03-31",
@@ -306,7 +310,7 @@ def test_pseudo_output_is_deterministic_in_seed():
     )
     assert_frame_equal(a1, a2)
 
-    b1 = _download_data_pseudo_crsp(
+    b1 = download_data_pseudo_crsp(
         "crsp_monthly",
         "2020-01-01",
         "2020-03-31",
@@ -318,7 +322,7 @@ def test_pseudo_output_is_deterministic_in_seed():
 
 def test_pseudo_identifier_universe_matches_across_datasets():
     """CRSP, Compustat, and CCM share the same identifier universe."""
-    crsp = _download_data_pseudo_crsp(
+    crsp = download_data_pseudo_crsp(
         "crsp_monthly",
         "2020-01-01",
         "2020-06-30",
@@ -326,14 +330,14 @@ def test_pseudo_identifier_universe_matches_across_datasets():
         n_assets=7,
         seed=1234,
     )
-    comp = _download_data_pseudo_compustat(
+    comp = download_data_pseudo_compustat(
         "compustat_annual",
         "2020-01-01",
         "2024-12-31",
         n_assets=7,
         seed=1234,
     )
-    ccm = _download_data_pseudo_ccm_links(n_assets=7, seed=1234)
+    ccm = download_data_pseudo_ccm_links(n_assets=7, seed=1234)
 
     assert set(crsp["gvkey"].unique()) == set(ccm["gvkey"])
     assert set(crsp["gvkey"].unique()) == set(comp["gvkey"].unique())

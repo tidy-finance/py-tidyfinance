@@ -28,7 +28,7 @@ def test_data_options_has_correct_default_values():
     assert opts["ret_excess"] == "ret_excess"
     assert opts["portfolio"] == "portfolio"
     assert opts["siccd"] == "siccd"
-    assert opts["price"] == "prc_adj"
+    assert opts["price"] == "prc_lag"
     assert opts["listing_age"] == "listing_age"
     assert opts["be"] == "be"
     assert opts["earnings"] == "ib"
@@ -151,3 +151,15 @@ def test_data_options_errors_for_non_string_earnings():
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])
+
+
+def test_an_option_name_close_to_a_known_one_warns_about_the_likely_typo():
+    with pytest.warns(UserWarning, match="Did you mean 'exchange'"):
+        options = data_options(exchang=True)
+    assert options["exchang"] is True
+
+
+def test_distant_custom_options_do_not_warn(recwarn):
+    options = data_options(my_custom_option=1)
+    assert options["my_custom_option"] == 1
+    assert not [w for w in recwarn if "Did you mean" in str(w.message)]

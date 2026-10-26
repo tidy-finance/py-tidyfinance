@@ -7,12 +7,17 @@ import sys
 import numpy as np
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.portfolios import breakpoint_options, compute_portfolio_returns  # noqa: E402
+from tidyfinance.portfolios import (  # noqa: E402
+    breakpoint_options,
+    compute_breakpoints,
+    compute_portfolio_returns,
+)
 
 # %% test data helper
 
@@ -42,6 +47,7 @@ def make_data(
         "ret_excess": rng.standard_normal(n),
         "size": rng.uniform(50, 150, n),
         "bm": rng.uniform(0.5, 2, n),
+        "exchange": rng.choice(["NYSE", "NASDAQ"], n),
     }
     if with_mktcap:
         columns["mktcap_lag"] = rng.uniform(100, 1000, n)
@@ -114,6 +120,12 @@ def test_cap_weight_outside_0_1_raises_error():
             breakpoint_options_main=bp3,
             cap_weight=2,
         )
+
+
+def test_errors_when_breakpoint_options_main_is_missing():
+    """Test errors when breakpoint_options_main is missing."""
+    with pytest.raises(ValueError, match="breakpoint_options_main"):
+        compute_portfolio_returns(make_data(), "size", "univariate")
 
 
 def test_missing_column_raises_error():
@@ -373,6 +385,307 @@ def test_bivariate_independent_annual_produces_valid_output():
     )
     assert isinstance(result, pl.DataFrame)
     assert len(result) > 0
+
+
+# %% capped value weights
+
+
+def cap_panel():
+    """One date, two portfolios. NYSE stocks are small, NASDAQ stocks
+    are large, so the NYSE and the all-stock percentiles differ."""
+    return pl.DataFrame(
+        {
+            "permno": list(range(1, 11)),
+            "date": [dt.date(2020, 1, 1)] * 10,
+            "size": [float(i) for i in range(1, 11)],
+            "exchange": ["NYSE"] * 5 + ["NASDAQ"] * 5,
+            "mktcap_lag": [1.0, 2, 3, 4, 5, 60, 70, 80, 90, 100],
+            "ret_excess": [0.01] * 5 + [0.02, 0.03, 0.04, 0.05, 0.06],
+        }
+    )
+
+
+def expected_capped(data, cap):
+    """Capped value-weighted returns of the two size portfolios."""
+    w = np.minimum(data["mktcap_lag"].to_numpy(), cap)
+    ret = data["ret_excess"].to_numpy()
+    top = data["size"].to_numpy() > 5
+    return [
+        np.average(ret[~top], weights=w[~top]),
+        np.average(ret[top], weights=w[top]),
+    ]
+
+
+def test_capped_weights_use_the_nyse_percentile_by_default():
+    """Test capped weights use the NYSE percentile by default."""
+    data = cap_panel()
+    out = compute_portfolio_returns(
+        data,
+        "size",
+        "univariate",
+        breakpoint_options_main=bp2,
+        quiet=True,
+    )
+    nyse_cap = np.quantile([1, 2, 3, 4, 5], 0.8)
+    np.testing.assert_allclose(
+        out["ret_excess_vw_capped"].to_list(),
+        expected_capped(data, nyse_cap),
+    )
+
+
+def test_cap_weight_exchanges_none_caps_at_the_percentile_of_all_stocks():
+    """Test cap_weight_exchanges=None caps at the percentile of all
+    stocks."""
+    data = cap_panel()
+    out = compute_portfolio_returns(
+        data,
+        "size",
+        "univariate",
+        breakpoint_options_main=bp2,
+        cap_weight_exchanges=None,
+        quiet=True,
+    )
+    all_cap = np.quantile(data["mktcap_lag"].to_numpy(), 0.8)
+    np.testing.assert_allclose(
+        out["ret_excess_vw_capped"].to_list(),
+        expected_capped(data, all_cap),
+    )
+
+
+def test_capping_falls_back_to_all_stocks_without_an_exchange_column():
+    """Test capping falls back to all stocks without an exchange
+    column."""
+    data = cap_panel().drop("exchange")
+    with pytest.warns(UserWarning, match="not found"):
+        out = compute_portfolio_returns(
+            data,
+            "size",
+            "univariate",
+            breakpoint_options_main=bp2,
+        )
+    all_cap = np.quantile(data["mktcap_lag"].to_numpy(), 0.8)
+    np.testing.assert_allclose(
+        out["ret_excess_vw_capped"].to_list(),
+        expected_capped(data, all_cap),
+    )
+
+
+def test_capping_falls_back_to_all_stocks_on_dates_without_nyse_stocks():
+    """Test capping falls back to all stocks on dates without NYSE
+    stocks."""
+    data = cap_panel().with_columns(exchange=pl.lit("NASDAQ"))
+    with pytest.warns(UserWarning, match="on 1 date"):
+        out = compute_portfolio_returns(
+            data,
+            "size",
+            "univariate",
+            breakpoint_options_main=bp2,
+        )
+    all_cap = np.quantile(data["mktcap_lag"].to_numpy(), 0.8)
+    np.testing.assert_allclose(
+        out["ret_excess_vw_capped"].to_list(),
+        expected_capped(data, all_cap),
+    )
+
+
+def test_cap_weight_exchanges_is_validated():
+    """Test cap_weight_exchanges is validated."""
+    with pytest.raises(ValueError, match="cap_weight_exchanges"):
+        compute_portfolio_returns(
+            cap_panel(),
+            "size",
+            "univariate",
+            breakpoint_options_main=bp2,
+            cap_weight_exchanges=1,
+        )
+
+
+# %% dependent sorts with a minimum size threshold
+
+
+def dependent_min_mktcap_panel():
+    """Secondary sort splits at the median size. The main breakpoints
+    exclude stocks below the 25th size percentile of the whole date
+    (min_mktcap 25.75), not of each size half. In the small half, the
+    main median is then 38 (stocks 26 to 50), so stock 35 is in the low
+    portfolio. A minimum within the small half (13.25) would set the
+    median at 32 and put stock 35 in the high one. Only stock 35 has a
+    non-zero return, so its portfolio is the only one with a non-zero
+    return."""
+    return pl.DataFrame(
+        {
+            "permno": list(range(1, 101)),
+            "date": [dt.date(2020, 7, 1)] * 100,
+            "mktcap_lag": [float(i) for i in range(1, 101)],
+            "x": [float(i) for i in range(1, 101)],
+            "ret_excess": [1.0 if i == 35 else 0.0 for i in range(1, 101)],
+        }
+    )
+
+
+def dependent_min_mktcap_sort(data, **kwargs):
+    """Dependent sort with a minimum size threshold on the main
+    breakpoints."""
+    return compute_portfolio_returns(
+        data,
+        ["x", "mktcap_lag"],
+        "bivariate-dependent",
+        breakpoint_options_main=breakpoint_options(
+            n_portfolios=2,
+            breakpoints_min_size_threshold=0.25,
+        ),
+        breakpoint_options_secondary=bp2,
+        cap_weight_exchanges=None,
+        quiet=True,
+        **kwargs,
+    )
+
+
+def test_dependent_sorts_compute_the_minimum_market_cap_once_per_date():
+    """Test dependent sorts compute the minimum market cap once per
+    date."""
+    out = dependent_min_mktcap_sort(dependent_min_mktcap_panel())
+    assert out.filter(pl.col("portfolio") == 1)["ret_excess_ew"][0] > 0
+    assert out.filter(pl.col("portfolio") == 2)["ret_excess_ew"][0] == 0
+    assert "_min_mktcap_main" not in out.columns
+
+
+def test_dependent_sorts_with_annual_rebalancing_use_per_date_min_mktcap():
+    """Test dependent sorts with annual rebalancing use per-date
+    min_mktcap."""
+    out = dependent_min_mktcap_sort(
+        dependent_min_mktcap_panel(),
+        rebalancing_month=7,
+    )
+    assert out.filter(pl.col("portfolio") == 1)["ret_excess_ew"][0] > 0
+    assert out.filter(pl.col("portfolio") == 2)["ret_excess_ew"][0] == 0
+
+
+def test_dependent_sorts_pass_options_unchanged_to_custom_breakpoints():
+    """Test dependent sorts pass options unchanged to custom
+    breakpoints."""
+    received = []
+
+    def custom_breakpoints(
+        data, sorting_variable, breakpoint_options, data_options=None
+    ):
+        received.append(breakpoint_options)
+        return compute_breakpoints(data, sorting_variable, breakpoint_options)
+
+    dependent_min_mktcap_sort(
+        dependent_min_mktcap_panel(),
+        breakpoint_function_main=custom_breakpoints,
+    )
+    assert received
+    assert all("breakpoints_min_mktcap" not in x for x in received)
+
+
+def test_dependent_min_mktcap_with_exchanges_requires_the_exchange_column():
+    """Test dependent min_mktcap with exchanges requires the exchange
+    column."""
+    with pytest.raises(ValueError, match="exchange"):
+        compute_portfolio_returns(
+            dependent_min_mktcap_panel(),
+            ["x", "mktcap_lag"],
+            "bivariate-dependent",
+            breakpoint_options_main=breakpoint_options(
+                n_portfolios=2,
+                breakpoints_exchanges="NYSE",
+                breakpoints_min_size_threshold=0.25,
+            ),
+            breakpoint_options_secondary=bp2,
+            cap_weight_exchanges=None,
+            quiet=True,
+        )
+
+
+def test_a_missing_return_names_the_missing_return_as_a_cause():
+    """Test a missing stock return makes the portfolio return missing."""
+    data = pl.DataFrame(
+        {
+            "permno": range(1, 7),
+            "date": [dt.date(2020, 1, 1)] * 6,
+            "s": [float(x) for x in range(1, 7)],
+            "ret_excess": [0.01, 0.02, 0.03, 0.04, 0.05, None],
+        }
+    )
+    with pytest.warns(UserWarning, match="missing return"):
+        result = compute_portfolio_returns(
+            data,
+            "s",
+            "univariate",
+            breakpoint_options_main=breakpoint_options(n_portfolios=2),
+        )
+    assert result["ret_excess_ew"].to_list() == pytest.approx([0.02, None])
+
+
+def test_a_missing_return_is_skipped_across_secondary_portfolios():
+    """Test a bivariate cell with a missing return drops out of the
+    average across secondary portfolios."""
+    data = pl.DataFrame(
+        {
+            "permno": range(1, 9),
+            "date": [dt.date(2020, 1, 1)] * 8,
+            "x": [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            "y": [1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0],
+            "ret_excess": [0.01, None, 0.03, 0.04, 0.05, 0.06, 0.07, 0.08],
+        }
+    )
+    result = compute_portfolio_returns(
+        data,
+        ["x", "y"],
+        "bivariate-independent",
+        breakpoint_options_main=bp2,
+        breakpoint_options_secondary=bp2,
+        quiet=True,
+    )
+    assert result["ret_excess_ew"].to_list() == pytest.approx([0.02, 0.065])
+
+
+def test_the_complete_panel_is_ordered_by_portfolio_and_date():
+    """Test the output is sorted by portfolio and date, whatever the
+    input order, and missing portfolio-dates are kept as nulls."""
+    d = pl.DataFrame(
+        {
+            "permno": [1, 2, 2, 1, 2],
+            "date": [
+                dt.date(2020, 2, 1),
+                dt.date(2020, 1, 1),
+                dt.date(2020, 2, 1),
+                dt.date(2020, 3, 1),
+                dt.date(2020, 3, 1),
+            ],
+            "size": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "ret_excess": [0.01, 0.02, 0.03, 0.04, 0.05],
+        }
+    )
+    options = breakpoint_options(n_portfolios=2)
+    # 2020-01-01 has a single stock, which triggers a one-portfolio warning
+    with pytest.warns(UserWarning):
+        result = compute_portfolio_returns(
+            d, "size", "univariate", breakpoint_options_main=options, quiet=True
+        )
+    dates = [dt.date(2020, 1, 1), dt.date(2020, 2, 1), dt.date(2020, 3, 1)]
+    assert result["portfolio"].to_list() == [1, 1, 1, 2, 2, 2]
+    assert result["date"].to_list() == dates * 2
+    assert result["ret_excess_ew"].to_list() == [
+        0.02,
+        0.01,
+        0.04,
+        None,
+        0.03,
+        0.05,
+    ]
+
+    with pytest.warns(UserWarning):
+        shuffled = compute_portfolio_returns(
+            d[[4, 2, 0, 3, 1]],
+            "size",
+            "univariate",
+            breakpoint_options_main=options,
+            quiet=True,
+        )
+    assert_frame_equal(shuffled, result)
 
 
 if __name__ == "__main__":

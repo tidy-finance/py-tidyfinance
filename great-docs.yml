@@ -45,6 +45,9 @@ reference:
     - title: WRDS
       contents:
         - download_wrds
+    - title: Pseudo Data
+      contents:
+        - download_pseudo
     - title: Portfolio analysis
       contents:
         - portfolios

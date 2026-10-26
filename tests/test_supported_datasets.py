@@ -18,6 +18,7 @@ from tidyfinance.supported_datasets import (
     _parse_type_to_domain_dataset,
     _resolve_domain_alias,
     list_supported_datasets,
+    list_supported_types,
 )
 
 # %% Module-level table structure
@@ -295,3 +296,9 @@ def test_resolve_domain_alias_passes_canonical_through():
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])
+
+
+def test_list_supported_types_warns_about_deprecation_and_delegates():
+    with pytest.warns(DeprecationWarning, match="list_supported_datasets"):
+        result = list_supported_types(domain="WRDS")
+    assert result.equals(list_supported_datasets(domain="WRDS"))
