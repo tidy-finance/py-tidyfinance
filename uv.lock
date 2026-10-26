@@ -2747,14 +2747,13 @@ wheels = [
 
 [[package]]
 name = "tidyfinance"
-version = "0.6.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "curl-cffi" },
     { name = "formulaic" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "pandas" },
     { name = "polars" },
     { name = "psycopg2-binary" },
     { name = "pyarrow" },
@@ -2766,6 +2765,9 @@ dependencies = [
 excel = [
     { name = "fastexcel" },
 ]
+pandas = [
+    { name = "pandas" },
+]
 polars = [
     { name = "polars" },
 ]
@@ -2776,6 +2778,7 @@ scraping = [
 [package.dev-dependencies]
 dev = [
     { name = "fastexcel" },
+    { name = "pandas" },
     { name = "polars" },
     { name = "pytest" },
     { name = "pytest-cov" },
@@ -2792,7 +2795,7 @@ requires-dist = [
     { name = "formulaic", specifier = ">=1.0.0" },
     { name = "lxml", marker = "extra == 'scraping'", specifier = ">=5.3.1" },
     { name = "numpy", specifier = ">=1.26.0" },
-    { name = "pandas", specifier = ">=2.2.0" },
+    { name = "pandas", marker = "extra == 'pandas'", specifier = ">=2.2.0" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
@@ -2800,11 +2803,12 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "sqlalchemy", specifier = ">=2.0.21" },
 ]
-provides-extras = ["polars", "scraping", "excel"]
+provides-extras = ["polars", "pandas", "scraping", "excel"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "fastexcel", specifier = ">=0.11.0" },
+    { name = "pandas", specifier = ">=2.2.0" },
     { name = "polars", specifier = ">=1.0.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-cov", specifier = ">=6.0.0" },

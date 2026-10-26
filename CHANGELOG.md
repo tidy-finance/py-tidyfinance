@@ -95,7 +95,10 @@
 - **Fixed (index constituents):** `download_data("Index Constituents", ...)` works again for DAX, EURO STOXX 50, Dow Jones Industrial Average, S&P 500, Nasdaq 100, FTSE 100, and MSCI World. iShares removed the German retail pages the holdings files were downloaded from; they are now read from the Swiss professional pages. The header row of a holdings file is detected automatically instead of skipping a fixed number of rows (#80).
 - **Added (index constituents fallback):** a new `path` argument reads an iShares or BlackRock holdings CSV saved from the fund's web page instead of downloading it, e.g. `download_data("Index Constituents", path="holdings.csv")`. `index` is optional with `path`. When a download fails, the error message now names the URL and points to `path` (#80).
 
-## Unreleased
+## v1.0.0 (unreleased)
+
+- **Breaking (default backend is polars):** the public API now returns polars data frames by default, as announced and as used throughout the book. Call `tf.set_backend("pandas")` once after importing the package to keep receiving pandas data frames. Pandas input is still accepted under either backend.
+- **Breaking (pandas is optional):** `pandas` is no longer a direct dependency. Install the `pandas` extra (`pip install "tidyfinance[pandas]"`) to use the pandas backend; without pandas, `set_backend("pandas")` raises an `ImportError` that says so.
 
 - **Changed (quantiles as in R):** breakpoints (`compute_breakpoints()`), the `min_size_quantile` cutoff of `filter_sorting_data()`, the minimum market cap of `breakpoints_min_size_threshold`, the cap of `ret_excess_vw_capped`, `winsorize()`, and `trim()` now compute quantiles exactly as R's `quantile()`. numpy and polars use the same definition but interpolate with different floating-point arithmetic, so when a quantile fell on an observation, the two packages could differ in the last bit and place that stock on different sides of a breakpoint or cutoff. A comparison of both packages on the same data found such a stock on 4 of 120 formation dates of a momentum sort.
 

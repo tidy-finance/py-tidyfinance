@@ -630,8 +630,8 @@ def compute_rolling_value(
     f : callable
         Function applied to each window. Receives the window slice
         (complete cases only) as a data frame of the active backend
-        type ('pd.DataFrame' under the default 'pandas' backend,
-        'pl.DataFrame' under the 'polars' backend) and must return
+        type ('pl.DataFrame' under the default 'polars' backend,
+        'pd.DataFrame' under the 'pandas' backend) and must return
         a single scalar value.
     period : str, default 'month'
         Calendar period unit for the rolling windows. One of 'month',

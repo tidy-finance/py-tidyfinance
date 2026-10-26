@@ -25,18 +25,22 @@ pip install "git+https://github.com/tidy-finance/py-tidyfinance"
 
 ## Choosing a Data Frame Backend
 
-The package is implemented in [polars](https://pola.rs/) internally. By
-default, the public `tidyfinance` API still returns
-[pandas](https://pandas.pydata.org/) data frames for backward
-compatibility. If you prefer polars — as used throughout the book —
-switch the global backend with `set_backend()`:
+The package is implemented in [polars](https://pola.rs/), and since
+version 1.0.0 the public `tidyfinance` API returns polars data frames by
+default, as used throughout the book. If you prefer
+[pandas](https://pandas.pydata.org/), switch the global backend with
+`set_backend()`. The pandas backend needs the optional `pandas` extra:
+
+```
+pip install "tidyfinance[pandas]"
+```
 
 ```python
 import tidyfinance as tf
 
-tf.set_backend("polars")
+tf.set_backend("pandas")
 
-# Returns a polars DataFrame
+# Returns a pandas DataFrame
 data = tf.download_data(
     domain="Fama-French",
     dataset="Fama/French 3 Factors",
@@ -44,14 +48,14 @@ data = tf.download_data(
     end_date="2020-12-31",
 )
 
-# Subsequent calls also return polars
+# Subsequent calls also return pandas
 tf.estimate_model(data, "mkt_excess ~ smb + hml")
-tf.set_backend("pandas")  # back to the default
+tf.set_backend("polars")  # back to the default
 ```
 
-The setting applies to the whole public API, so any data-bearing function honors it. Pandas data frames are also accepted as input regardless of the active backend (they are converted to polars internally), so results from one call can be fed straight into the next. Under the `polars` backend there is no conversion overhead at all, since polars is the native representation. You can check the current setting with `tf.get_backend()`.
+The setting applies to the whole public API, so any data-bearing function honors it. Pandas data frames are also accepted as input regardless of the active backend (they are converted to polars internally), so results from one call can be fed straight into the next. Under the default `polars` backend there is no conversion overhead at all, since polars is the native representation. You can check the current setting with `tf.get_backend()`.
 
-> **Note:** The default backend is currently `pandas`, but we expect to switch the default to `polars` from version 1.0.0 onwards. To keep your code working across that change, set the backend explicitly via `tf.set_backend(...)`.
+> **Note:** Before version 1.0.0, the default backend was `pandas`. If your code expects pandas data frames, call `tf.set_backend("pandas")` once after importing the package.
 
 ## Download Open Source Data
 

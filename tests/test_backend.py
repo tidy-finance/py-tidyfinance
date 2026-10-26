@@ -22,7 +22,6 @@ import tidyfinance as tf  # noqa: E402
 from tidyfinance.backend import (  # noqa: E402
     _convert_output,
     _to_polars_input,
-    get_backend,
 )
 
 
@@ -42,8 +41,14 @@ pythonpytestmark = pytest.mark.filterwarnings(
 # %% set_backend / get_backend
 
 
-def test_default_backend_is_pandas():
-    assert get_backend() == "pandas"
+def test_default_backend_is_polars():
+    import importlib
+
+    from tidyfinance import backend
+
+    # The autouse fixture sets the backend, so reload the module to read
+    # the value it starts with.
+    assert importlib.reload(backend).get_backend() == "polars"
 
 
 def test_set_and_get_backend():
