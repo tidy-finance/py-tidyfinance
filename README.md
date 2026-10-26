@@ -38,10 +38,10 @@ tf.set_backend("polars")
 
 # Returns a polars DataFrame
 data = tf.download_data(
-  domain="Fama-French",
-  dataset="factors_ff_3_monthly",
-  start_date="2000-01-01",
-  end_date="2020-12-31"
+    domain="Fama-French",
+    dataset="Fama/French 3 Factors",
+    start_date="2000-01-01",
+    end_date="2020-12-31",
 )
 
 # Subsequent calls also return polars
@@ -65,10 +65,10 @@ The function always requires a `domain` argument and depending on the domain typ
 
 ```python
 tf.download_data(
-  domain="Fama-French",
-  dataset="Fama/French 5 Factors (2x3) [Daily]",
-  start_date="2000-01-01",
-  end_date="2020-12-31"
+    domain="Fama-French",
+    dataset="Fama/French 5 Factors (2x3) [Daily]",
+    start_date="2000-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -76,10 +76,10 @@ For q factors, you provide the relevant file name:
 
 ```python
 tf.download_data(
-  domain="Global Q",
-  dataset="q5_factors_monthly",
-  start_date="2000-01-01",
-  end_date="2020-12-31"
+    domain="Global Q",
+    dataset="q5_factors_monthly",
+    start_date="2000-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -87,10 +87,10 @@ To download the Welch and Goyal (2008) macroeconomic predictors for monthly, qua
 
 ```python
 tf.download_data(
-  domain="Goyal-Welch",
-  dataset="monthly",
-  start_date="2000-01-01",
-  end_date="2020-12-31"
+    domain="Goyal-Welch",
+    dataset="monthly",
+    start_date="2000-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -98,9 +98,9 @@ To download data from Open Source Asset Pricing (OSAP):
 
 ```python
 tf.download_data(
-  domain="Open Source Asset Pricing",
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="Open Source Asset Pricing",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -108,13 +108,13 @@ To download characteristic-managed portfolio (factor) returns from [Global Facto
 
 ```python
 tf.download_data(
-  domain="Global Factor Data",
-  region="usa",
-  factors="all_factors",
-  frequency="monthly",
-  weighting="vw_cap",
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="Global Factor Data",
+    region="usa",
+    factors="all_factors",
+    frequency="monthly",
+    weighting="vw_cap",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -122,12 +122,12 @@ The `dataset` argument also gives access to the underlying long-short portfolios
 
 ```python
 tf.download_data(
-  domain="Global Factor Data",
-  dataset="industry",
-  region="usa",
-  classification="gics",
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="Global Factor Data",
+    dataset="industry",
+    region="usa",
+    classification="gics",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -137,9 +137,7 @@ To download the liquidity factors of Pastor and Stambaugh (2003) from [Lubos Pas
 
 ```python
 tf.download_data(
-  domain="Pastor-Stambaugh",
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="Pastor-Stambaugh", start_date="2020-01-01", end_date="2020-12-31"
 )
 ```
 
@@ -147,10 +145,10 @@ To download the mispricing factors of Stambaugh and Yuan (2017) from [Robert Sta
 
 ```python
 tf.download_data(
-  domain="Stambaugh-Yuan",
-  dataset="monthly",
-  start_date="2015-01-01",
-  end_date="2016-12-31"
+    domain="Stambaugh-Yuan",
+    dataset="monthly",
+    start_date="2015-01-01",
+    end_date="2016-12-31",
 )
 ```
 
@@ -158,56 +156,42 @@ To download multiple series from the Federal Reserve Economic Data (FRED):
 
 ```python
 tf.download_data(
-  domain="FRED",
-  series=["GDP", "CPIAUCNS"],
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="FRED",
+    series=["GDP", "CPIAUCNS"],
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
 To download the FRED-MD / FRED-QD (McCracken-Ng) macroeconomic databases, a curated, balanced panel of monthly or quarterly macro series with McCracken-Ng stationarity transform codes. Set `transform=True` to apply the transforms, and `vintage` to a `"YYYY-MM"` label or `"all"` to access historical (real-time) releases:
 
 ```python
-tf.download_data(
-  domain="FRED",
-  dataset="FRED-MD",
-  transform=True
-)
+tf.download_data(domain="FRED", dataset="FRED-MD", transform=True)
 
-tf.download_data(
-  domain="FRED",
-  dataset="FRED-QD",
-  vintage="2020-03"
-)
+tf.download_data(domain="FRED", dataset="FRED-QD", vintage="2020-03")
 ```
 
 To download stock prices from Yahoo Finance:
 
 ```python
 tf.download_data(
-  domain="Stock Prices",
-  symbols=["AAPL", "MSFT"],
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="Stock Prices",
+    symbols=["AAPL", "MSFT"],
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
 To download index constituents from selected ETF holdings:
 
 ```python
-tf.download_data(
-  domain="Index Constituents",
-  index="S&P 500"
-)
+tf.download_data(domain="Index Constituents", index="S&P 500")
 ```
 
 If the download fails, save the holdings CSV from the ETF's web page and read it from disk instead:
 
 ```python
-tf.download_data(
-  domain="Index Constituents",
-  path="holdings.csv"
-)
+tf.download_data(domain="Index Constituents", path="holdings.csv")
 ```
 
 ## Download WRDS Data
@@ -226,10 +210,10 @@ To download monthly CRSP data:
 
 ```python
 tf.download_data(
-  domain="WRDS",
-  dataset="crsp_monthly",
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="WRDS",
+    dataset="crsp_monthly",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
@@ -237,40 +221,34 @@ To download annual (or quaterly) Compustat data:
 
 ```python
 tf.download_data(
-  domain="WRDS",
-  dataset="compustat_annual",
-  start_date="2020-01-01",
-  end_date="2020-12-31"
+    domain="WRDS",
+    dataset="compustat_annual",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
 )
 ```
 
 To download the CRSP-Compustat linking table:
 
 ```python
-tf.download_data(
-  domain="WRDS",
-  dataset="ccm_links"
-)
+tf.download_data(domain="WRDS", dataset="ccm_links")
 ```
 
 To download bond characteristics from Mergent FISD:
 
 ```python
-tf.download_data(
-  domain="WRDS",
-  dataset="fisd"
-)
+tf.download_data(domain="WRDS", dataset="fisd")
 ```
 
 To download Enhanced TRACE data for selected bonds:
 
 ```python
 tf.download_data(
-  domain="WRDS",
-  dataset="trace_enhanced",
-  cusips=["00101JAH9"],
-  start_date="2019-01-01",
-  end_date="2021-12-31"
+    domain="WRDS",
+    dataset="trace_enhanced",
+    cusips=["00101JAH9"],
+    start_date="2019-01-01",
+    end_date="2021-12-31",
 )
 ```
 
@@ -278,16 +256,16 @@ To download high-frequency S&P 500 data or factor library data from Hugging Face
 
 ```python
 tf.download_data(
-  domain="Tidy Finance",
-  dataset="high_frequency_sp500",
-  start_date="2007-07-26",
-  end_date="2007-07-27"
+    domain="Tidy Finance",
+    dataset="high_frequency_sp500",
+    start_date="2007-07-26",
+    end_date="2007-07-27",
 )
 
 tf.download_data(
-  domain="Tidy Finance",
-  dataset="factor_library",
-  sorting_variable="assetgrowth"
+    domain="Tidy Finance",
+    dataset="factor_library",
+    sorting_variable="assetgrowth",
 )
 ```
 
