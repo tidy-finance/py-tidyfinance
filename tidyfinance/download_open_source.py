@@ -1,6 +1,7 @@
 """Open-source data downloads for tidyfinance."""
 
 import calendar
+import csv
 import datetime as dt
 import io
 import numbers
@@ -19,6 +20,7 @@ from ._internal import (
     _get_random_user_agent,
     _parse_date,
     _transfrom_to_snake_case,
+    _user_stacklevel,
     _validate_dates,
 )
 from .supported_datasets import (
@@ -182,6 +184,143 @@ def _get_available_famafrench_datasets():
     return datasets_list
 
 
+def _breakpoints_col_names_ff(file_url: str) -> list[str] | None:
+    """Column names of a Fama-French breakpoints file, or None.
+
+    Breakpoints files have no usable column-name row: 'ME', 'OP',
+    'INV', and 'Prior_2-12' are headerless, while 'BE-ME', 'E-P',
+    'CF-P', and 'D-P' have a header that names only the first three of
+    their columns. The columns are therefore named positionally:
+    'date', the firm counts ('Count', or '<=0' and '>0' for ratios
+    that can be non-positive), and the 20 percentile bins '0-5',
+    '5-10', ..., '95-100'.
+    """
+    stem = file_url.rsplit("/", 1)[-1]
+    if stem.endswith("_CSV.zip"):
+        stem = stem[: -len("_CSV.zip")]
+    if not stem.endswith("_Breakpoints"):
+        return None
+    ratio_stems = [f"{s}_Breakpoints" for s in ("BE-ME", "E-P", "CF-P", "D-P")]
+    count_cols = ["<=0", ">0"] if stem in ratio_stems else ["Count"]
+    bounds = list(range(0, 105, 5))
+    bins = [f"{lo}-{hi}" for lo, hi in zip(bounds, bounds[1:])]
+    return ["date"] + count_cols + bins
+
+
+def _parse_ff_number(value: str):
+    """Parse one CSV field like R's 'as.numeric()' (None if invalid)."""
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def _parse_french_data_factors(
+    text: str, col_names: list[str] | None = None
+) -> pl.DataFrame:
+    """Parse the first table of a Kenneth French CSV file.
+
+    Kenneth French CSV files start with descriptive header lines, then
+    contain one or more data tables of consecutive lines that start
+    with a date key. This helper extracts the first such table. Most
+    factor files carry a column-name row directly above the data (e.g.
+    ',Mkt-RF,SMB,HML,RF'); files without one are read positionally and
+    named 'date', 'V2', 'V3', ... If annual summary rows (4-digit keys)
+    follow the periodic rows without a blank separator, they are
+    dropped by keeping only the leading rows whose date-key width
+    matches the first data row.
+
+    Parameters
+    ----------
+    text : str
+        Content of the unzipped CSV file.
+    col_names : list of str, optional
+        Column names. If supplied, any column-name row is ignored and
+        the table is read positionally with these names (used for
+        breakpoints files, see '_breakpoints_col_names_ff').
+
+    Returns
+    -------
+    pl.DataFrame
+        The first column, 'date', holds the date keys as strings; the
+        remaining columns are Float64.
+    """
+    lines = text.splitlines()
+
+    # Data rows begin with a date key, i.e. an optional run of spaces,
+    # digits, and a comma. Requiring the comma keeps prose lines that
+    # start with a digit (e.g. "1 month is skipped ...") out of the
+    # table. The column-name row sits directly above the first such row.
+    data_row = re.compile(r"^\s*([0-9]+)\s*,")
+    is_data = [bool(data_row.match(line)) for line in lines]
+    if not any(is_data):
+        raise ValueError(
+            "Could not locate a data table in the downloaded file."
+        )
+    first_data = is_data.index(True)
+    last_data = first_data
+    while last_data + 1 < len(lines) and is_data[last_data + 1]:
+        last_data += 1
+
+    # A column-name row sits directly above the data only when the
+    # preceding line exists, is non-blank, and is comma-delimited.
+    header_line = first_data - 1
+    has_header = (
+        header_line >= 0
+        and lines[header_line].strip() != ""
+        and "," in lines[header_line]
+    )
+
+    # Keep only the leading rows whose date-key width matches the first
+    # data row, so monthly/daily tables never absorb annual rows.
+    data_lines = lines[first_data : last_data + 1]
+    key_width = [len(data_row.match(line).group(1)) for line in data_lines]
+    n_keep = 0
+    while n_keep < len(data_lines) and key_width[n_keep] == key_width[0]:
+        n_keep += 1
+    n_dropped = len(data_lines) - n_keep
+    if n_dropped > 0:
+        warnings.warn(
+            f"Dropped {n_dropped} trailing "
+            f"row{'s' if n_dropped > 1 else ''} with a different date-key "
+            "width. These are usually annual summary rows appended to a "
+            "periodic table.",
+            UserWarning,
+            stacklevel=_user_stacklevel(),
+        )
+    rows = [
+        [field.strip() for field in row]
+        for row in csv.reader(data_lines[:n_keep])
+    ]
+    width = max(len(row) for row in rows)
+
+    if col_names is not None:
+        if width != len(col_names):
+            raise ValueError(
+                f"Expected {len(col_names)} columns in the downloaded "
+                f"file, found {width}."
+            )
+        names = list(col_names)
+    elif has_header:
+        header = next(csv.reader([lines[header_line]]))
+        width = max(width, len(header))
+        names = [name.strip() for name in header]
+        names += [f"V{j + 1}" for j in range(len(names), width)]
+    else:
+        names = [f"V{j + 1}" for j in range(width)]
+    names[0] = "date"
+
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    columns = {"date": pl.Series("date", [row[0] for row in rows])}
+    for j, name in enumerate(names[1:], start=1):
+        columns[name] = pl.Series(
+            name,
+            [_parse_ff_number(row[j]) for row in rows],
+            dtype=pl.Float64,
+        )
+    return pl.DataFrame(columns)
+
+
 def _famafrench_downloader(file_url, start_date=None, end_date=None):
     """Download a Kenneth French data ZIP and parse its first table.
 
@@ -203,117 +342,44 @@ def _famafrench_downloader(file_url, start_date=None, end_date=None):
         column. Factor files return columns such as 'Mkt-RF', 'SMB',
         'HML', 'RF'; breakpoint files return one column per percentile
         bin plus diagnostic columns ('<=0', '>0', 'Count') depending
-        on the file. Returns 'None' implicitly if no table could be
-        parsed. The Fama-French archives often contain several tables
-        (value-weighted, equal-weighted, etc.); only the first is
-        returned. Download the source ZIP directly if you need the
-        others.
+        on the file. Monthly keys map to the first day of the month and
+        annual keys to the year end. The Fama-French archives often
+        contain several tables (value-weighted, equal-weighted, etc.);
+        only the first is returned. Download the source ZIP directly if
+        you need the others.
     """
     ff_url = "http://mba.tuck.dartmouth.edu/pages/faculty/ken.french/"
-    datatset_url = ff_url + file_url
-    resp = requests.get(datatset_url, impersonate="chrome")
+    resp = requests.get(ff_url + file_url, impersonate="chrome")
     resp.raise_for_status()
 
-    # decode
     with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-        name = zf.namelist()[0]
-        data_raw = zf.read(name).decode("latin1")
+        csv_files = [
+            name for name in zf.namelist() if name.lower().endswith(".csv")
+        ]
+        if not csv_files:
+            raise ValueError("No CSV file found in the downloaded archive.")
+        data_raw = zf.read(csv_files[0]).decode("latin1")
 
-    # Derive the stem (e.g., "ME_Breakpoints") for breakpoint column-
-    # naming logic by stripping the ftp/ prefix and _CSV.zip suffix.
-    stem = file_url
-    if stem.startswith("ftp/"):
-        stem = stem[len("ftp/") :]
-    if stem.endswith("_CSV.zip"):
-        stem = stem[: -len("_CSV.zip")]
+    df = _parse_french_data_factors(
+        data_raw, col_names=_breakpoints_col_names_ff(file_url)
+    )
 
-    # Breakpoint dataset cases
-    read_kwargs = {}
-    if stem.endswith("_Breakpoints"):
-        # Ratio files (BE-ME, E-P, CF-P, D-P) count the stocks with
-        # non-positive and positive ratios; the others count all stocks.
-        if "-" in stem and stem != "Prior_2-12_Breakpoints":
-            cols = ["<=0", ">0"]
-        else:
-            cols = ["Count"]
-        r = list(range(0, 105, 5))
-        read_kwargs["new_columns"] = (
-            ["Date"] + cols + [f"{lo}-{hi}" for lo, hi in zip(r, r[1:])]
-        )
-        read_kwargs["has_header"] = False
+    # Convert the integer date keys: YYYYMMDD (daily, weekly), YYYYMM
+    # (monthly, first day of the month), or YYYY (annual, year end).
+    keys = df.get_column("date")
+    key_width = keys.str.len_chars()[0]
+    suffix = {8: "", 6: "01", 4: "1231"}.get(key_width)
+    if suffix is None:
+        raise ValueError("Unrecognized integer date format in index.")
+    df = df.with_columns(
+        (pl.col("date") + suffix).str.to_date("%Y%m%d", strict=False)
+    ).filter(pl.col("date").is_not_null())
 
-    start = _parse_date(start_date) if start_date else None
-    end = _parse_date(end_date) if end_date else None
-
-    doc_chunks, tables = [], []
-    for chunk in data_raw.split(2 * "\r\n"):
-        if len(chunk) < 800:
-            doc_chunks.append(chunk.replace("\r\n", " ").strip())
-        else:
-            tables.append(chunk)
-
-    for src in tables:
-        match = re.search(r"^\s*,", src, re.M)  # the table starts there
-        table_start = 0 if not match else match.start()
-        table = "Date" + src[table_start:]
-        if read_kwargs:
-            # Breakpoint files are read without a header: drop the header
-            # row if the table has one, and keep the first data row
-            # otherwise.
-            table = src[table_start:]
-            if match:
-                table = table.split("\r\n", 1)[1]
-
-        # raw to dataframe
-        try:
-            df = pl.read_csv(table.encode("utf-8"), **read_kwargs)
-        except Exception as e:
-            warnings.warn(str(e), UserWarning, stacklevel=2)
-            continue
-
-        # Space-padded numeric fields are read as strings by polars;
-        # strip and cast them so values match the pandas parser.
-        idx_name = df.columns[0]
-        df = df.with_columns(
-            [
-                pl.col(c).str.strip_chars().cast(pl.Float64, strict=False)
-                for c, dtype in df.schema.items()
-                if dtype == pl.String and c != idx_name
-            ]
-        )
-
-        # get the leading integer-date column as a proper date
-        try:
-            s = df.get_column(idx_name).cast(pl.String).str.strip_chars()
-            lengths = s.str.len_chars()
-            if (lengths == 8).all():
-                dates = s.str.to_date("%Y%m%d", strict=False)
-            elif (lengths == 6).all():
-                dates = (s + "01").str.to_date("%Y%m%d", strict=False)
-            elif (lengths == 4).all():
-                # annual data is aligned to the year end
-                dates = (s + "1231").str.to_date("%Y%m%d", strict=False)
-            else:
-                raise ValueError("Unrecognized integer date format in index.")
-            new_name = idx_name.strip().lower()
-            df = (
-                df.with_columns(dates.alias("__ff_date"))
-                .filter(pl.col("__ff_date").is_not_null())
-                .drop(idx_name)
-                .rename({"__ff_date": new_name})
-            )
-            df = df.select(
-                [new_name] + [c for c in df.columns if c != new_name]
-            )
-        except Exception:
-            pass
-
-        # start and end dates
-        if start:
-            df = df.filter(pl.col("date") >= start)
-        if end:
-            df = df.filter(pl.col("date") <= end)
-        return df
+    if start_date:
+        df = df.filter(pl.col("date") >= _parse_date(start_date))
+    if end_date:
+        df = df.filter(pl.col("date") <= _parse_date(end_date))
+    return df
 
 
 def download_data_factors_ff(
@@ -1237,11 +1303,13 @@ def _fetch_fred_md_bytes(url: str) -> bytes:
     return response.content
 
 
-def _looks_like_fred_md(text: str) -> bool:
+def _looks_like_fred_md(text: str | None) -> bool:
     """True if ``text`` is a FRED-MD/QD CSV (first cell ``sasdate``) —
     guards 200-OK HTML pages."""
-    first = text.lstrip("﻿").splitlines()[0] if text.strip() else ""
-    return first.split(",")[0].strip().lower() == "sasdate"
+    if text is None or not text.strip():
+        return False
+    lines = [ln for ln in text.lstrip("﻿").splitlines() if ln.strip()]
+    return lines[0].split(",")[0].strip().lower() == "sasdate"
 
 
 def _vintage_label(name: str) -> str | None:
@@ -1263,8 +1331,10 @@ def _fred_md_wide(text: str, transform: bool) -> pl.DataFrame:
     """
     raw = pl.read_csv(text.encode("utf-8"), infer_schema_length=0)
     date_col = raw.columns[0]
-    series_cols = list(raw.columns[1:])
-    tcodes = {c: int(float(raw[0, c])) for c in series_cols}
+    # Some archived vintages end the header with a trailing comma, which
+    # yields an unnamed empty column that is not a series.
+    series_cols = [c for c in raw.columns[1:] if c.strip()]
+    tcodes = {c: int(round(float(raw[0, c]))) for c in series_cols}
 
     body = raw.slice(1)
     body = body.with_columns(

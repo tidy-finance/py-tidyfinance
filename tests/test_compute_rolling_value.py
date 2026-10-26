@@ -217,23 +217,51 @@ def test_accepts_a_regular_function():
 
 
 def test_works_with_period_quarter():
-    """Test works with period = 'quarter'."""
-    df = make_df(n_months=24)
+    """Test works with period = 'quarter'; every row gets the value of
+    its quarter's window (8 months in 3 quarters)."""
+    df = pl.DataFrame(
+        {"date": month_starts(8), "value": [float(v) for v in range(1, 9)]}
+    )
     out = compute_rolling_value(
-        df, lambda x: x["value"].mean(), period="quarter", periods=4
+        df, lambda x: x["value"].mean(), period="quarter", periods=2, min_obs=1
     )
     assert isinstance(out, np.ndarray)
-    assert len(out) == len(df)
+    np.testing.assert_allclose(out, [2, 2, 2, 3.5, 3.5, 3.5, 6, 6])
 
 
 def test_works_with_period_year():
-    """Test works with period = 'year'."""
-    df = make_df(n_months=36)
-    out = compute_rolling_value(
-        df, lambda x: x["value"].mean(), period="year", periods=2
+    """Test works with period = 'year' on quarterly rows."""
+    dates = [
+        dt.date(2018 + (5 + 3 * i) // 12, (5 + 3 * i) % 12 + 1, 1)
+        for i in range(12)
+    ]
+    df = pl.DataFrame(
+        {"date": dates, "value": [float(v) for v in range(1, 13)]}
     )
-    assert isinstance(out, np.ndarray)
+    out = compute_rolling_value(
+        df, lambda x: x["value"].mean(), period="year", periods=2, min_obs=1
+    )
     assert len(out) == len(df)
+    # 2018: 1-3, 2019: 1-7, 2020: 4-11, 2021: 8-12
+    np.testing.assert_allclose(out, np.repeat([2, 4, 7.5, 10], [3, 4, 4, 1]))
+
+
+def test_aligns_with_rows_when_a_period_holds_several_rows():
+    df = pl.DataFrame(
+        {
+            "date": [
+                dt.date(2020, 1, 1),
+                dt.date(2020, 1, 15),
+                dt.date(2020, 2, 1),
+                dt.date(2020, 3, 1),
+            ],
+            "value": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    out = compute_rolling_value(
+        df, lambda x: x["value"].mean(), periods=2, min_obs=1
+    )
+    np.testing.assert_allclose(out, [1.5, 1.5, 2, 3.5])
 
 
 # %% multi-column / edge cases

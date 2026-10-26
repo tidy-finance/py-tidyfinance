@@ -3,6 +3,7 @@
 import datetime as dt
 import os
 import sys
+import warnings
 
 import polars as pl
 import pytest
@@ -12,7 +13,12 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.portfolios import filter_options, filter_sorting_data  # noqa: E402
+from tidyfinance.portfolios import (  # noqa: E402
+    _filter_with_log,
+    _require_column,
+    filter_options,
+    filter_sorting_data,
+)
 
 
 def make_data():
@@ -460,6 +466,61 @@ def test_formation_screens_require_the_id_column():
             filter_options=filter_options(min_stock_price=5),
             rebalancing_month=7,
         )
+
+
+# %% helpers
+
+
+def test_require_column_passes_silently_when_the_column_is_present():
+    _require_column(pl.DataFrame({"siccd": [1, 2, 3]}), "siccd", "siccd")
+
+
+def test_require_column_raises_an_informative_error_when_missing():
+    with pytest.raises(ValueError, match="not found"):
+        _require_column(pl.DataFrame({"x": [1, 2, 3]}), "siccd", "siccd")
+
+
+def test_require_column_supports_a_custom_hint():
+    with pytest.raises(ValueError, match="NYSE hint"):
+        _require_column(
+            pl.DataFrame({"x": [1, 2, 3]}),
+            "exchange",
+            "exchange",
+            info="NYSE hint",
+        )
+
+
+def test_filter_with_log_keeps_only_matching_rows():
+    d = pl.DataFrame({"price": [0.5, 1.0, 5.0, None]})
+    out = _filter_with_log(
+        d,
+        pl.col("price").is_not_null() & (pl.col("price") >= 1),
+        "min_stock_price",
+        True,
+    )
+    assert out["price"].to_list() == [1.0, 5.0]
+
+
+def test_filter_with_log_reports_dropped_observations_unless_quiet():
+    d = pl.DataFrame({"price": [0.5, 1.0, 5.0]})
+    with pytest.warns(
+        UserWarning, match="Filter 'min_stock_price': removed 1 observation"
+    ):
+        _filter_with_log(d, pl.col("price") >= 1, "min_stock_price", False)
+
+
+def test_filter_with_log_is_silent_when_quiet_is_true():
+    d = pl.DataFrame({"price": [0.5, 1.0, 5.0]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _filter_with_log(d, pl.col("price") >= 1, "min_stock_price", True)
+
+
+def test_filter_with_log_is_silent_when_nothing_is_removed():
+    d = pl.DataFrame({"price": [1.0, 5.0]})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        _filter_with_log(d, pl.col("price") >= 1, "min_stock_price", False)
 
 
 if __name__ == "__main__":

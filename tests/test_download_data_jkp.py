@@ -1,9 +1,11 @@
 """Tests for download_data_jkp and list_supported_jkp_factors."""
 
 import datetime as dt
+import io
 import os
 import sys
-from unittest.mock import patch
+import zipfile
+from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
@@ -15,6 +17,9 @@ sys.path.insert(
 from tidyfinance.download_open_source import (  # noqa: E402
     _build_jkp_reference_url,
     _build_jkp_url,
+    _download_jkp_csv,
+    _download_jkp_file,
+    _fetch_jkp_availability,
     download_data_jkp,
 )
 from tidyfinance.utilities import list_supported_jkp_factors  # noqa: E402
@@ -398,6 +403,63 @@ def test_list_supported_jkp_factors_returns_empty_dataframe_on_failure():
 
     assert isinstance(result, pl.DataFrame)
     assert len(result) == 0
+
+
+# %% download helpers
+
+
+def _jkp_response(**attrs):
+    return MagicMock(status_code=200, **attrs)
+
+
+def _zip_of(files):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        for name, text in files.items():
+            zf.writestr(name, text)
+    return buffer.getvalue()
+
+
+def test_fetch_jkp_availability_parses_the_json_manifest():
+    response = _jkp_response()
+    response.json.return_value = {"factors": {"usa": ["mkt", "be_me"]}}
+    with patch(
+        "tidyfinance.download_open_source.requests.get",
+        return_value=response,
+    ):
+        result = _fetch_jkp_availability()
+    assert result["factors"]["usa"] == ["mkt", "be_me"]
+
+
+def test_download_jkp_file_unzips_and_reads_the_first_csv():
+    content = _zip_of({"data.csv": "location,date,ret\nusa,2020-01-31,0.01"})
+    with patch(
+        "tidyfinance.download_open_source.requests.get",
+        return_value=_jkp_response(content=content),
+    ):
+        result = _download_jkp_file("https://example.com/x.zip")
+    assert result["location"].to_list() == ["usa"]
+    assert result["ret"].to_list() == [0.01]
+
+
+def test_download_jkp_file_aborts_when_the_archive_has_no_csv():
+    with (
+        patch(
+            "tidyfinance.download_open_source.requests.get",
+            return_value=_jkp_response(content=_zip_of({"readme.txt": "x"})),
+        ),
+        pytest.raises(ValueError, match="No CSV file"),
+    ):
+        _download_jkp_file("https://example.com/x.zip")
+
+
+def test_download_jkp_csv_reads_a_plain_csv_file():
+    with patch(
+        "tidyfinance.download_open_source.requests.get",
+        return_value=_jkp_response(content=b"eom,n\n2020-01-31,5\n"),
+    ):
+        result = _download_jkp_csv("https://example.com/x.csv")
+    assert result["n"].to_list() == [5]
 
 
 if __name__ == "__main__":

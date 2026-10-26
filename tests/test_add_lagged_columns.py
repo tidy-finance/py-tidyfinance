@@ -270,6 +270,27 @@ def test_data_options_specifies_date_column_name():
     assert result["size_lag"][1] == 1
 
 
+def _daily_values():
+    return pl.DataFrame(
+        {
+            "date": [
+                dt.date(2023, 1, 1) + dt.timedelta(days=i) for i in range(10)
+            ],
+            "value": list(range(1, 11)),
+        }
+    )
+
+
+def test_integer_lag_counts_days():
+    result = add_lagged_columns(_daily_values(), cols="value", lag=1)
+    assert result["value_lag"].to_list() == [None, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+
+def test_window_lag_works_with_integer_lags():
+    result = add_lagged_columns(_daily_values(), cols="value", lag=1, max_lag=3)
+    assert result["value_lag"].to_list() == [None, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])

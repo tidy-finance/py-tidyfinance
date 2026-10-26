@@ -7,6 +7,7 @@ import sys
 import numpy as np
 import polars as pl
 import pytest
+from polars.testing import assert_frame_equal
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -633,6 +634,52 @@ def test_a_missing_return_is_skipped_across_secondary_portfolios():
         quiet=True,
     )
     assert result["ret_excess_ew"].to_list() == pytest.approx([0.02, 0.065])
+
+
+def test_the_complete_panel_is_ordered_by_portfolio_and_date():
+    """Test the output is sorted by portfolio and date, whatever the
+    input order, and missing portfolio-dates are kept as nulls."""
+    d = pl.DataFrame(
+        {
+            "permno": [1, 2, 2, 1, 2],
+            "date": [
+                dt.date(2020, 2, 1),
+                dt.date(2020, 1, 1),
+                dt.date(2020, 2, 1),
+                dt.date(2020, 3, 1),
+                dt.date(2020, 3, 1),
+            ],
+            "size": [1.0, 2.0, 3.0, 4.0, 5.0],
+            "ret_excess": [0.01, 0.02, 0.03, 0.04, 0.05],
+        }
+    )
+    options = breakpoint_options(n_portfolios=2)
+    # 2020-01-01 has a single stock, which triggers a one-portfolio warning
+    with pytest.warns(UserWarning):
+        result = compute_portfolio_returns(
+            d, "size", "univariate", breakpoint_options_main=options, quiet=True
+        )
+    dates = [dt.date(2020, 1, 1), dt.date(2020, 2, 1), dt.date(2020, 3, 1)]
+    assert result["portfolio"].to_list() == [1, 1, 1, 2, 2, 2]
+    assert result["date"].to_list() == dates * 2
+    assert result["ret_excess_ew"].to_list() == [
+        0.02,
+        0.01,
+        0.04,
+        None,
+        0.03,
+        0.05,
+    ]
+
+    with pytest.warns(UserWarning):
+        shuffled = compute_portfolio_returns(
+            d[[4, 2, 0, 3, 1]],
+            "size",
+            "univariate",
+            breakpoint_options_main=options,
+            quiet=True,
+        )
+    assert_frame_equal(shuffled, result)
 
 
 if __name__ == "__main__":

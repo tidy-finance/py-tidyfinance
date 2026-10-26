@@ -31,6 +31,7 @@ class _OLSFit:
         r_squared=None,
         adj_r_squared=None,
         n_obs=None,
+        aliased=(),
     ):
         self._coef = dict(zip(names, (float(v) for v in coef)))
         self._se = dict(zip(names, (float(v) for v in se)))
@@ -39,6 +40,7 @@ class _OLSFit:
         self._r_squared = r_squared
         self._adj_r_squared = adj_r_squared
         self._n_obs = n_obs
+        self._aliased = tuple(aliased)
 
     def coef(self):
         return self._coef
@@ -60,6 +62,30 @@ class _OLSFit:
 
     def n_obs(self):
         return self._n_obs
+
+    def aliased(self):
+        return self._aliased
+
+
+def _non_aliased_columns(x_mat: np.ndarray, tol: float = 1e-7) -> list:
+    """Indices of the design-matrix columns that lm() would keep.
+
+    Mirrors the limited column pivoting of R's QR decomposition
+    (LINPACK 'dqrdc2', 'tol = 1e-07'): columns are visited in order and
+    a column is aliased when the part of it not explained by the kept
+    columns before it has a norm below 'tol' times its own norm.
+    """
+    kept = []
+    for j in range(x_mat.shape[1]):
+        col = x_mat[:, j]
+        norm = np.linalg.norm(col)
+        if kept:
+            basis = x_mat[:, kept]
+            coef = np.linalg.lstsq(basis, col, rcond=None)[0]
+            col = col - basis @ coef
+        if norm > 0 and np.linalg.norm(col) >= tol * norm:
+            kept.append(j)
+    return kept
 
 
 def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
@@ -91,16 +117,24 @@ def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
     y_vec = np.asarray(y, dtype=float).ravel()
 
     n, k = x_mat.shape
-    beta, _, _, _ = np.linalg.lstsq(x_mat, y_vec, rcond=None)
-    resid = y_vec - x_mat @ beta
-
-    dof = n - k
-    if dof > 0:
-        sigma2 = float(resid @ resid) / dof
-        xtx_inv = np.linalg.pinv(x_mat.T @ x_mat)
-        se = np.sqrt(np.maximum(sigma2 * np.diag(xtx_inv), 0.0))
+    # Like lm(), drop aliased columns (linear combinations of earlier
+    # columns) and report NaN for their coefficients.
+    kept = _non_aliased_columns(x_mat)
+    x_kept = x_mat[:, kept]
+    rank = x_kept.shape[1]
+    beta = np.full(k, np.nan)
+    se = np.full(k, np.nan)
+    if rank > 0:
+        beta[kept] = np.linalg.lstsq(x_kept, y_vec, rcond=None)[0]
+        resid = y_vec - x_kept @ beta[kept]
     else:
-        se = np.full(k, np.nan)
+        resid = y_vec.copy()
+
+    dof = n - rank
+    if dof > 0 and rank > 0:
+        sigma2 = float(resid @ resid) / dof
+        xtx_inv = np.linalg.pinv(x_kept.T @ x_kept)
+        se[kept] = np.sqrt(np.maximum(sigma2 * np.diag(xtx_inv), 0.0))
 
     with np.errstate(divide="ignore", invalid="ignore"):
         tstat = np.where(se > 0, beta / se, np.nan)
@@ -118,7 +152,18 @@ def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
     else:
         adj_r_squared = np.nan
 
-    return _OLSFit(names, beta, se, tstat, resid, r_squared, adj_r_squared, n)
+    aliased = [name for j, name in enumerate(names) if j not in kept]
+    return _OLSFit(
+        names,
+        beta,
+        se,
+        tstat,
+        resid,
+        r_squared,
+        adj_r_squared,
+        n,
+        aliased,
+    )
 
 
 # Rolling-window units accepted by 'estimate_betas'
@@ -951,6 +996,9 @@ def estimate_fama_macbeth(
             [coefs.get(factor, np.nan) for coefs in cross_section_coefs],
             dtype=float,
         )
+        # As in R, 'n' counts every period, including those in which the
+        # factor was aliased; the estimates themselves skip them.
+        n_periods = int(estimates.size)
         estimates = estimates[~np.isnan(estimates)]
         n = int(estimates.size)
         risk_premium = float(estimates.mean()) if n > 0 else np.nan
@@ -980,7 +1028,7 @@ def estimate_fama_macbeth(
         premium_col.append(risk_premium)
         se_col.append(float(se) if se is not None else np.nan)
         t_col.append(t_stat)
-        n_col.append(n)
+        n_col.append(n_periods)
 
     # Column order: factor, risk_premium, n,
     # standard_error, t_statistic.
@@ -1052,9 +1100,11 @@ def estimate_model(
         the requested elements. Coefficients and t-statistics are
         returned as one-row data frames with column names corresponding
         to the model terms (all-null when there are not enough
-        observations). Residuals are returned as a numeric vector of
-        length 'len(data)' with NaN for rows with missing data or
-        insufficient observations.
+        observations). As in 'lm()', a term that is a linear
+        combination of earlier terms is aliased: its coefficient is
+        null and it has no t-statistic column. Residuals are returned
+        as a numeric vector of length 'len(data)' with NaN for rows
+        with missing data or insufficient observations.
 
     Examples
     --------
@@ -1183,7 +1233,14 @@ def estimate_model(
         if insufficient:
             result["tstats"] = na_df()
         else:
-            result["tstats"] = to_df(fit.tstat())
+            # Like summary(lm()), aliased terms have no t-statistic.
+            result["tstats"] = to_df(
+                {
+                    name: value
+                    for name, value in fit.tstat().items()
+                    if name not in fit.aliased()
+                }
+            )
 
     if "residuals" in output_list:
         if insufficient:

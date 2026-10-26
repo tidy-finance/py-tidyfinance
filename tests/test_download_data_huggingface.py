@@ -1293,6 +1293,48 @@ def test_downloads_are_throttled_across_calls():
     assert 0 < sleep.call_args.args[0] <= 0.5
 
 
+# %% _read_parquet_url
+
+
+def _parquet_bytes(frame):
+    buffer = io.BytesIO()
+    frame.write_parquet(buffer)
+    return buffer.getvalue()
+
+
+def test_read_parquet_url_downloads_and_parses_the_parquet_file():
+    fixture = pl.DataFrame(
+        {
+            "date": [dt.date(2024, 1, 1), dt.date(2024, 1, 2)],
+            "risk_free": [0.001, 0.002],
+        }
+    )
+    response = MagicMock(content=_parquet_bytes(fixture))
+    with patch.object(tfhf.requests, "get", return_value=response):
+        result = tfhf._read_parquet_url("https://example.com/data.parquet")
+    assert result.columns == ["date", "risk_free"]
+    assert result["risk_free"].to_list() == [0.001, 0.002]
+
+
+def test_read_parquet_url_propagates_http_errors():
+    response = MagicMock()
+    response.raise_for_status.side_effect = RuntimeError("HTTP 404 Not Found")
+    with (
+        patch.object(tfhf.requests, "get", return_value=response),
+        pytest.raises(RuntimeError, match="404"),
+    ):
+        tfhf._read_parquet_url("https://example.com/missing.parquet")
+
+
+def test_read_parquet_url_propagates_parquet_read_errors():
+    response = MagicMock(content=b"not a parquet file")
+    with (
+        patch.object(tfhf.requests, "get", return_value=response),
+        pytest.raises(ValueError),
+    ):
+        tfhf._read_parquet_url("https://example.com/bad.parquet")
+
+
 if __name__ == "__main__":
     # Run all tests
     pytest.main([__file__])

@@ -414,5 +414,82 @@ def test_insufficient_obs_with_no_independent_variables_returns_na_scalar():
     assert np.isnan(result)
 
 
+def test_intercept_only_t_statistic_is_named_intercept():
+    """Test the t-statistic of an intercept-only model is 'intercept'."""
+    x = pl.DataFrame({"y": [1.0, 2.0, 3.0, 5.0]})
+    assert estimate_model(x, "y ~ 1", output="tstats").columns == ["intercept"]
+
+
+def test_estimate_model_works_with_a_single_column_data_frame():
+    """Test a one-column data frame is estimated."""
+    x = pl.DataFrame({"y": [1.0, 2.0, 3.0, 5.0]})
+    assert estimate_model(x, "y ~ 1").height == 1
+
+
+# %% aliased (collinear) regressors, as in lm()
+
+
+def _collinear_data():
+    a = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+    b = [2.0, 1.0, 4.0, 3.0, 6.0, 5.0, 8.0, 7.0]
+    return pl.DataFrame(
+        {
+            "y": [1.0, 3.0, 2.0, 5.0, 4.0, 6.0, 8.0, 7.0],
+            "a": a,
+            "b": b,
+            "c": [ai + bi for ai, bi in zip(a, b)],
+            "k": [3.0] * 8,
+        }
+    )
+
+
+def test_aliased_coefficient_is_null_like_lm():
+    """A regressor that is a linear combination of earlier ones gets a
+    null coefficient; reference values from R's lm()."""
+    result = estimate_model(_collinear_data(), "y ~ a + b + c")
+    assert result.columns == ["intercept", "a", "b", "c"]
+    assert result["c"][0] is None
+    np.testing.assert_allclose(
+        result.select("intercept", "a", "b").row(0), [0.45, 1.2, -0.3]
+    )
+
+
+def test_aliasing_follows_the_order_of_the_terms():
+    """Like lm(), the last term of a collinear set is the aliased one."""
+    result = estimate_model(_collinear_data(), "y ~ c + a + b")
+    assert result["b"][0] is None
+    np.testing.assert_allclose(
+        result.select("intercept", "c", "a").row(0), [0.45, -0.3, 1.5]
+    )
+
+
+def test_constant_regressor_is_aliased_with_the_intercept():
+    result = estimate_model(_collinear_data(), "y ~ a + k")
+    assert result["k"][0] is None
+    np.testing.assert_allclose(
+        result.select("intercept", "a").row(0), [0.3214286, 0.9285714]
+    )
+
+
+def test_aliased_terms_have_no_t_statistic():
+    """As in summary(lm()), aliased terms are left out of the tstats."""
+    result = estimate_model(_collinear_data(), "y ~ a + b + c", output="tstats")
+    assert result.columns == ["intercept", "a", "b"]
+    np.testing.assert_allclose(
+        result.row(0), [0.5608048, 3.2796802, -0.8199201], rtol=1e-6
+    )
+
+
+def test_residuals_are_unaffected_by_aliased_terms():
+    residuals = estimate_model(
+        _collinear_data(), "y ~ a + b + c", output="residuals"
+    )
+    np.testing.assert_allclose(
+        residuals,
+        [-0.05, 0.45, -0.85, 0.65, -0.65, -0.15, 1.55, -0.95],
+        atol=1e-12,
+    )
+
+
 if __name__ == "__main__":
     pytest.main([__file__])

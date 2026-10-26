@@ -494,6 +494,61 @@ def test_default_min_obs_rounds_like_r() -> None:
     )
 
 
+def _monthly_panel_r(seed: int = 1234) -> pl.DataFrame:
+    """50 stocks over the 12 months of 2020, as in the R tests."""
+    rng = np.random.default_rng(seed)
+    return pl.DataFrame(
+        {
+            "date": [
+                d
+                for d in _month_starts(dt.date(2020, 1, 1), 12)
+                for _ in range(50)
+            ],
+            "permno": list(range(1, 51)) * 12,
+            "ret_excess": rng.normal(0, 0.1, 600),
+            "mkt_excess": rng.normal(0, 0.1, 600),
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("lookback", "step"),
+    [("5h", 3600), ("5m", 60), ("5s", 1)],
+)
+def test_subday_lookbacks_run_on_datetime_columns(lookback, step) -> None:
+    """Hour, minute, and second windows work on a datetime column.
+
+    As in R, each stock has a single observation per window here, so
+    the default min_obs drops every window.
+    """
+    data = _monthly_panel_r().with_columns(
+        pl.col("date").cast(pl.Datetime("us"))
+        + pl.duration(seconds=(pl.int_range(pl.len()) // 50) * step)
+    )
+    result = estimate_betas(data, "ret_excess ~ mkt_excess", lookback)
+    assert result.columns == ["permno", "date", "intercept", "beta_mkt_excess"]
+    assert result.height == 0
+
+
+def test_hour_lookback_pools_consecutive_hours() -> None:
+    data = _monthly_panel_r().with_columns(
+        date=pl.datetime(2020, 1, 1)
+        + pl.duration(hours=pl.int_range(pl.len()) // 50)
+    )
+    result = estimate_betas(data, "ret_excess ~ mkt_excess", "5h")
+    # Windows ending in hours 4 to 12 reach min_obs = 4: 9 per stock.
+    assert result.height == 50 * 9
+
+
+def test_windows_with_fewer_than_min_obs_observations_are_dropped() -> None:
+    result = estimate_betas(
+        _monthly_panel_r(), "ret_excess ~ mkt_excess", "3mo", min_obs=3
+    )
+    # The first two months of each permno cannot reach three observations.
+    assert result["date"].min() == dt.date(2020, 3, 1)
+    assert result.height == 50 * 10
+
+
 def sample_data_fmb() -> pl.DataFrame:
     np.random.seed(42)
     dates = _month_ends(2020, 1, 12)
@@ -630,6 +685,78 @@ def test_estimate_fama_macbeth_detail() -> None:
     ]
     assert len(summary_statistics) == 1
     assert 0 <= summary_statistics["r_squared"][0] <= 1
+
+
+def test_estimate_fama_macbeth_results_do_not_depend_on_row_order() -> None:
+    data = sample_data_fmb()
+    model = "ret_excess ~ beta + bm + log_mktcap"
+    ordered = estimate_fama_macbeth(data, model, detail=True)
+    for shuffled in (
+        data.sample(fraction=1.0, shuffle=True, seed=42),
+        data.reverse(),
+    ):
+        result = estimate_fama_macbeth(shuffled, model, detail=True)
+        assert_frame_equal(result["coefficients"], ordered["coefficients"])
+        assert_frame_equal(
+            result["summary_statistics"], ordered["summary_statistics"]
+        )
+
+
+def test_estimate_fama_macbeth_vcov_changes_only_standard_errors() -> None:
+    data = sample_data_fmb()
+    iid = estimate_fama_macbeth(data, "ret_excess ~ beta + bm", vcov="iid")
+    nw = estimate_fama_macbeth(data, "ret_excess ~ beta + bm")
+    np.testing.assert_allclose(iid["risk_premium"], nw["risk_premium"])
+    assert not (iid["standard_error"] == nw["standard_error"]).all()
+
+
+def test_estimate_fama_macbeth_detail_summary_statistics() -> None:
+    result = estimate_fama_macbeth(
+        sample_data_fmb(), "ret_excess ~ beta + bm", detail=True
+    )
+    coefficients = result["coefficients"]
+    assert coefficients.columns == [
+        "factor",
+        "risk_premium",
+        "n",
+        "standard_error",
+        "t_statistic",
+    ]
+    assert coefficients.height == 3
+    summary = result["summary_statistics"].row(0, named=True)
+    assert summary["adj_r_squared"] <= summary["r_squared"]
+    assert summary["n_obs"] == 50
+
+
+def _fmb_panel_with_aliased_months() -> pl.DataFrame:
+    """'k' is constant within every third month, so it is aliased with
+    the intercept in those cross-sections."""
+    rng = np.random.default_rng(5)
+    rows = []
+    for m in range(1, 13):
+        for _ in range(20):
+            k = 1.0 if m % 3 == 0 else rng.normal()
+            rows.append((dt.date(2020, m, 1), rng.normal(), rng.normal(), k))
+    return pl.DataFrame(rows, schema=["date", "y", "a", "k"], orient="row")
+
+
+def test_estimate_fama_macbeth_skips_aliased_estimates_like_r() -> None:
+    """Aliased cross-sectional estimates are skipped in the averages
+    while 'n' counts every period. Reference values from R."""
+    data = _fmb_panel_with_aliased_months()
+    iid = estimate_fama_macbeth(data, "y ~ a + k", vcov="iid")
+    nw = estimate_fama_macbeth(data, "y ~ a + k")
+    assert iid["factor"].to_list() == ["intercept", "a", "k"]
+    assert iid["n"].to_list() == [12, 12, 12]
+    np.testing.assert_allclose(
+        iid["risk_premium"], [0.0442682, -0.1135147, 0.2559981], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        iid["standard_error"], [0.08938236, 0.05740801, 0.06501215], rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        nw["standard_error"], [0.06643991, 0.04089791, 0.03272616], rtol=1e-6
+    )
 
 
 # Fixed series with reference values computed in R via

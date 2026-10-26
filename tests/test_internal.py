@@ -1,7 +1,9 @@
 """Test script for tidyfinance package."""
 
+import datetime as dt
 import os
 import sys
+from unittest.mock import patch
 
 import numpy as np
 import polars as pl
@@ -10,6 +12,14 @@ from dotenv import dotenv_values
 
 sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
+from tidyfinance._internal import (
+    _get_random_user_agent,
+    _shift_years,
+    _validate_column_name,
+    _validate_dates,
+    _validate_flag,
+    _validate_optional_number,
 )
 from tidyfinance.download_wrds import set_wrds_credentials
 from tidyfinance.utilities import list_supported_indexes, trim, winsorize
@@ -155,6 +165,127 @@ def test_list_supported_indexes_content():
     # iShares removed the German retail pages; all files are read from
     # the Swiss professional pages or BlackRock Japan.
     assert not df["url"].str.contains("/de/privatanleger/").any()
+
+
+# %% _validate_dates
+
+
+def test_validate_dates_both_none_returns_none_pair():
+    assert _validate_dates(None, None) == (None, None)
+
+
+def test_validate_dates_both_none_with_default_range_returns_two_years():
+    start, end = _validate_dates(None, None, use_default_range=True)
+    today = dt.date.today()
+    assert isinstance(start, dt.date) and isinstance(end, dt.date)
+    assert start == _shift_years(today, -2)
+    assert end == _shift_years(today, -1)
+
+
+def test_validate_dates_coerces_a_valid_pair_to_dates():
+    start, end = _validate_dates("2022-01-01", "2022-12-31")
+    assert start == dt.date(2022, 1, 1)
+    assert end == dt.date(2022, 12, 31)
+
+
+def test_validate_dates_start_after_end_raises():
+    with pytest.raises(ValueError):
+        _validate_dates("2022-12-31", "2022-01-01")
+
+
+# %% option validators
+
+
+def test_validate_column_name_accepts_a_single_string():
+    assert _validate_column_name("permno", "id", "entity") is None
+
+
+def test_validate_column_name_rejects_non_strings_and_non_scalars():
+    for bad in (123, ["a", "b"], None, True):
+        with pytest.raises(ValueError, match="id"):
+            _validate_column_name(bad, "id", "entity")
+
+
+def test_validate_flag_accepts_a_single_boolean():
+    _validate_flag(True, "flag")
+    _validate_flag(False, "flag")
+
+
+def test_validate_flag_rejects_non_booleans_none_and_sequences():
+    for bad in ("yes", 1, None, [True, False]):
+        with pytest.raises(ValueError, match="flag"):
+            _validate_flag(bad, "flag")
+
+
+def test_validate_flag_supports_a_custom_message():
+    with pytest.raises(ValueError, match="True or False"):
+        _validate_flag(None, "flag", "'flag' must be True or False.")
+
+
+def test_validate_optional_number_passes_for_none():
+    assert _validate_optional_number(None, "msg") is None
+
+
+def test_validate_optional_number_enforces_strict_lower_bound():
+    _validate_optional_number(0.5, "msg", min=0, min_strict=True)
+    with pytest.raises(ValueError, match="msg"):
+        _validate_optional_number(0, "msg", min=0, min_strict=True)
+
+
+def test_validate_optional_number_enforces_an_exclusive_0_1_range():
+    def in_unit(value):
+        _validate_optional_number(
+            value, "msg", min=0, max=1, min_strict=True, max_strict=True
+        )
+
+    in_unit(0.5)
+    for bad in (0, 1):
+        with pytest.raises(ValueError, match="msg"):
+            in_unit(bad)
+
+
+def test_validate_optional_number_rejects_nan_non_numbers_and_sequences():
+    for bad in (float("nan"), "a", [0.1, 0.2]):
+        with pytest.raises(ValueError, match="msg"):
+            _validate_optional_number(bad, "msg")
+
+
+def test_validate_optional_number_allows_an_inclusive_non_negative_bound():
+    _validate_optional_number(0, "msg", min=0)
+    with pytest.raises(ValueError, match="msg"):
+        _validate_optional_number(-1, "msg", min=0)
+
+
+# %% _get_random_user_agent
+
+
+def test_get_random_user_agent_returns_first_agent():
+    with patch(
+        "tidyfinance._internal.np.random.choice",
+        side_effect=lambda agents: agents[0],
+    ):
+        user_agent = _get_random_user_agent()
+    assert isinstance(user_agent, str)
+    assert "Windows NT 10.0" in user_agent
+    assert "Chrome/122.0.6261.111" in user_agent
+
+
+def test_get_random_user_agent_returns_last_agent():
+    with patch(
+        "tidyfinance._internal.np.random.choice",
+        side_effect=lambda agents: agents[-1],
+    ):
+        user_agent = _get_random_user_agent()
+    assert isinstance(user_agent, str)
+    assert "Firefox/125.0" in user_agent
+
+
+def test_get_random_user_agent_samples_from_twenty_agents():
+    with patch(
+        "tidyfinance._internal.np.random.choice",
+        side_effect=lambda agents: str(len(agents)),
+    ):
+        assert _get_random_user_agent() == "20"
 
 
 if __name__ == "__main__":

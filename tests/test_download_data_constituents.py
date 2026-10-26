@@ -11,6 +11,7 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
+from tidyfinance.download import download_data
 from tidyfinance.download_open_source import download_data_constituents  # noqa: E402
 
 
@@ -316,6 +317,33 @@ def test_path_reads_latin1_file(tmp_path):
     out = download_data_constituents(path=file)
 
     assert out["symbol"].to_list() == ["ABC.DE"]
+
+
+def test_path_reads_utf8_file_with_byte_order_mark(tmp_path):
+    """Test a UTF-8 holdings file with a byte order mark is decoded."""
+    file = tmp_path / "holdings.csv"
+    file.write_bytes(
+        b"\xef\xbb\xbf"
+        + (
+            "Anlageklasse,Emittententicker,Name,Standort,Börse\n"
+            "Aktien,ABC,Alpha AG,Germany,Xetra\n"
+        ).encode()
+    )
+    out = download_data_constituents(path=file)
+
+    assert out["symbol"].to_list() == ["ABC.DE"]
+
+
+def test_download_data_passes_path_to_the_constituents_reader(tmp_path):
+    """Test download_data forwards 'path' to the constituents reader."""
+    file = tmp_path / "holdings.csv"
+    file.write_text(
+        "Asset Class,Ticker,Name,Location,Exchange\n"
+        "Equity,AAPL,Apple Inc,United States,Nasdaq\n"
+    )
+    out = download_data("Index Constituents", path=file)
+
+    assert out["symbol"].to_list() == ["AAPL"]
 
 
 def test_unknown_file_layout_fails(tmp_path):

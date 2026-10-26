@@ -12,7 +12,12 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 )
 
-from tidyfinance.portfolios import breakpoint_options, compute_breakpoints, data_options  # noqa: E402
+from tidyfinance.portfolios import (  # noqa: E402
+    assign_portfolio,
+    breakpoint_options,
+    compute_breakpoints,
+    data_options,
+)
 
 # %% validation tests
 
@@ -271,16 +276,17 @@ def test_null_data_options_uses_defaults_without_error():
 # %% interior epsilon
 
 
-def test_interior_breakpoints_are_slightly_larger_than_raw_quantiles():
-    """Test interior breakpoints are slightly larger than raw quantiles."""
-    data = pl.DataFrame({"id": range(1000), "value": np.arange(1, 1001)})
-    bp = compute_breakpoints(data, "value", breakpoint_options(n_portfolios=5))
-    raw_q = np.quantile(
-        data.get_column("value").to_numpy(), np.linspace(0, 1, 6)
-    )
-    assert bp[0] == raw_q[0]
-    for i in range(1, 6):
-        assert abs(bp[i] - (raw_q[i] + 1e-20)) < 1e-25
+def test_a_value_on_an_interior_breakpoint_joins_the_portfolio_above():
+    """A value lying exactly on an interior breakpoint joins the upper
+    portfolio, because assignment counts the breakpoints <= value."""
+    data = pl.DataFrame({"id": range(1, 6), "value": [1.0, 2.0, 3.0, 4.0, 5.0]})
+    options = breakpoint_options(n_portfolios=2)
+
+    breakpoints = compute_breakpoints(data, "value", options)
+    assert breakpoints[1] == 3
+
+    portfolios = assign_portfolio(data, "value", options)
+    assert portfolios.to_list() == [1, 1, 2, 2, 2]
 
 
 # %% smooth_bunching

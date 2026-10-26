@@ -17,7 +17,9 @@ sys.path.insert(
 from tidyfinance.download_open_source import (
     download_data_factors_ff,
     download_data_factors_q,
+    _breakpoints_col_names_ff,
     _famafrench_downloader,
+    _parse_french_data_factors,
 )  # noqa: E402
 from tidyfinance.supported_datasets import (
     _check_supported_dataset_ff,
@@ -616,6 +618,241 @@ def test_famafrench_downloader_propagates_download_error():
     ):
         with pytest.raises(Exception, match="404 error"):
             _famafrench_downloader("ftp/Missing_CSV.zip")
+
+
+# %% _parse_french_data_factors
+
+
+def test_parse_french_data_factors_keeps_first_table_names_date_column():
+    text = (
+        "This file was created by a test\n"
+        "\n"
+        ",Mkt-RF,SMB,RF\n"
+        "202001,  1.00, -0.50, 0.10\n"
+        "202002,  2.00,  0.50, 0.10\n"
+        "\n"
+        "  Annual Factors:\n"
+        ",Mkt-RF,SMB,RF\n"
+        "2020, 12.00, -1.00, 1.20"
+    )
+    result = _parse_french_data_factors(text)
+    assert result.columns == ["date", "Mkt-RF", "SMB", "RF"]
+    assert result.height == 2
+    assert result["date"].to_list() == ["202001", "202002"]
+    assert result["Mkt-RF"].to_list() == [1.0, 2.0]
+
+
+def test_parse_french_data_factors_aborts_when_no_table_present():
+    with pytest.raises(ValueError, match="Could not locate a data table"):
+        _parse_french_data_factors("Only header text\nno data here")
+
+
+def test_parse_french_data_factors_parses_positionally_without_header():
+    result = _parse_french_data_factors(
+        "202001,  1.00, -0.50\n202002,  2.00,  0.25"
+    )
+    assert result.height == 2
+    assert result.columns == ["date", "V2", "V3"]
+    assert result["date"].to_list() == ["202001", "202002"]
+
+
+def test_parse_french_data_factors_blank_line_above_data_is_headerless():
+    result = _parse_french_data_factors(
+        "Some title text\n\n202001,  1.00, -0.50"
+    )
+    assert result.height == 1
+    assert result.columns == ["date", "V2", "V3"]
+
+
+def test_parse_french_data_factors_prose_line_above_data_is_headerless():
+    result = _parse_french_data_factors(
+        "Average Value Weight Returns\n202001,1.0,0.1"
+    )
+    assert result.height == 1
+    assert result.columns == ["date", "V2", "V3"]
+
+
+def test_parse_french_data_factors_ignores_prose_starting_with_a_digit():
+    result = _parse_french_data_factors(
+        "1 month is skipped\n,Mom\n202001,1.0\n202002,2.0"
+    )
+    assert result.columns == ["date", "Mom"]
+    assert result.height == 2
+
+
+def test_parse_french_data_factors_accepts_named_first_column():
+    result = _parse_french_data_factors(
+        "Count,P5,P10\n202001,100,5.0\n202002,101,5.1"
+    )
+    assert result.height == 2
+    assert result.columns == ["date", "P5", "P10"]
+
+
+def test_parse_french_data_factors_parses_breakpoints_file_layout():
+    """A prose title, a blank line, then headerless data; the
+    integer-looking count column is read as a float."""
+    text = (
+        "This file was created using the CRSP database.\n"
+        "\n"
+        "192512,   488,        1.40,        2.38,     1319.00\n"
+        "192601,   492,        1.38,        2.54,     1331.71"
+    )
+    result = _parse_french_data_factors(text)
+    assert result.height == 2
+    assert result["date"].to_list() == ["192512", "192601"]
+    assert result.columns == ["date", "V2", "V3", "V4", "V5"]
+    assert result.schema["V2"] == pl.Float64
+
+
+def test_parse_french_data_factors_drops_merged_annual_rows():
+    text = ",Mkt-RF,RF\n202001,1.0,0.1\n202002,2.0,0.1\n2020,12.0,1.2"
+    with pytest.warns(UserWarning, match="different date-key width"):
+        result = _parse_french_data_factors(text)
+    assert result.height == 2
+    assert result["date"].to_list() == ["202001", "202002"]
+
+
+def test_parse_french_data_factors_aborts_on_column_count_mismatch():
+    with pytest.raises(ValueError, match="Expected 2 columns"):
+        _parse_french_data_factors("202001,1.0,0.1", col_names=["date", "a"])
+
+
+def test_famafrench_downloader_parses_a_small_first_table():
+    """Tables are found by their date keys, whatever their size."""
+    response = _make_french_zip(
+        ",Mkt-RF,RF\r\n202001,1.0,0.1\r\n202002,2.0,0.1"
+    )
+    with patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    ):
+        result = _famafrench_downloader("ftp/Some_File_CSV.zip")
+    assert result.columns == ["date", "Mkt-RF", "RF"]
+    assert result["date"].to_list() == [
+        dt.date(2020, 1, 1),
+        dt.date(2020, 2, 1),
+    ]
+
+
+def test_famafrench_downloader_aborts_when_archive_has_no_csv():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("readme.txt", "no table")
+    response = MagicMock()
+    response.content = buffer.getvalue()
+    with (
+        patch(
+            "tidyfinance.download_open_source.requests.get",
+            return_value=response,
+        ),
+        pytest.raises(ValueError, match="No CSV file found"),
+    ):
+        _famafrench_downloader("ftp/Empty_CSV.zip")
+
+
+# %% breakpoints files
+
+_PERCENTILE_BINS = [f"{lo}-{lo + 5}" for lo in range(0, 100, 5)]
+
+
+def _breakpoints_row(date, counts):
+    return ",   ".join([date, *counts, *(f"{p:.2f}" for p in range(1, 21))])
+
+
+def _mock_ff_file(lines):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("data.csv", "\n".join(lines))
+    response = MagicMock()
+    response.content = buffer.getvalue()
+    return patch(
+        "tidyfinance.download_open_source.requests.get", return_value=response
+    )
+
+
+def test_breakpoints_col_names_ff_names_count_and_ratio_layouts():
+    assert (
+        _breakpoints_col_names_ff("ftp/F-F_Research_Data_Factors_CSV.zip")
+        is None
+    )
+    assert _breakpoints_col_names_ff("ftp/ME_Breakpoints_CSV.zip") == [
+        "date",
+        "Count",
+        *_PERCENTILE_BINS,
+    ]
+    assert _breakpoints_col_names_ff("ftp/Prior_2-12_Breakpoints_CSV.zip") == [
+        "date",
+        "Count",
+        *_PERCENTILE_BINS,
+    ]
+    assert _breakpoints_col_names_ff("ftp/BE-ME_Breakpoints_CSV.zip") == [
+        "date",
+        "<=0",
+        ">0",
+        *_PERCENTILE_BINS,
+    ]
+
+
+def test_download_data_factors_ff_parses_count_breakpoints_unscaled():
+    lines = [
+        "This file was created using the CRSP database.",
+        "",
+        _breakpoints_row("202001", ["488"]),
+        _breakpoints_row("202002", ["492"]),
+    ]
+    with _mock_ff_file(lines):
+        result = download_data_factors_ff("ME Breakpoints")
+
+    assert result.columns == ["date", "count", *_PERCENTILE_BINS]
+    assert result["date"].to_list() == [
+        dt.date(2020, 1, 1),
+        dt.date(2020, 2, 1),
+    ]
+    # Dollar levels and share counts are returned unscaled.
+    assert result["count"].to_list() == [488, 492]
+    assert result["95-100"].to_list() == [20, 20]
+
+
+def test_download_data_factors_ff_parses_ratio_breakpoints_layout():
+    """The header names only 3 of the 23 columns."""
+    lines = [
+        "This file was created using the CRSP database.",
+        "",
+        "  ,<= 0,>0",
+        _breakpoints_row("2019", ["3", "428"]),
+        _breakpoints_row("2020", ["1", "464"]),
+    ]
+    with _mock_ff_file(lines):
+        result = download_data_factors_ff("BE/ME Breakpoints")
+
+    assert result.columns == ["date", "<=0", ">0", *_PERCENTILE_BINS]
+    assert result["date"].to_list() == [
+        dt.date(2019, 12, 31),
+        dt.date(2020, 12, 31),
+    ]
+    assert result["<=0"].to_list() == [3, 1]
+    assert result[">0"].to_list() == [428, 464]
+    assert result["0-5"].to_list() == [1, 1]
+
+
+def test_download_data_factors_ff_parses_prior_return_breakpoints():
+    """The preamble has three lines, one of which starts with a digit."""
+    lines = [
+        "This file was created using the CRSP database.",
+        " The prior returns are for 12 months. ",
+        "1 month is skipped at the end of the prior period.",
+        "",
+        _breakpoints_row("192612", ["472"]),
+        _breakpoints_row("192701", ["476"]),
+    ]
+    with _mock_ff_file(lines):
+        result = download_data_factors_ff("Prior (2-12) Return Breakpoints")
+
+    assert result.columns == ["date", "count", *_PERCENTILE_BINS]
+    assert result["date"].to_list() == [
+        dt.date(1926, 12, 1),
+        dt.date(1927, 1, 1),
+    ]
+    assert result["count"].to_list() == [472, 476]
 
 
 if __name__ == "__main__":
