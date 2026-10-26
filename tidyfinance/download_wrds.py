@@ -1921,8 +1921,8 @@ def _redact_wrds_credentials(message: str, user: str, password: str) -> str:
 def disconnect_connection(con: object) -> bool:
     """Close an open WRDS database connection.
 
-    Closes the supplied connection. As in R, an error raised by the
-    underlying driver is not caught but propagates to the caller.
+    Closes the supplied connection. An error raised by the underlying
+    driver is not caught but propagates to the caller.
 
     Parameters
     ----------

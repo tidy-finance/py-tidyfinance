@@ -68,11 +68,11 @@ class _OLSFit:
 
 
 def _non_aliased_columns(x_mat: np.ndarray, tol: float = 1e-7) -> list:
-    """Indices of the design-matrix columns that lm() would keep.
+    """Indices of the design-matrix columns that are not aliased.
 
-    Mirrors the limited column pivoting of R's QR decomposition
-    (LINPACK 'dqrdc2', 'tol = 1e-07'): columns are visited in order and
-    a column is aliased when the part of it not explained by the kept
+    Uses limited column pivoting as in the LINPACK QR decomposition
+    'dqrdc2' with 'tol = 1e-07': columns are visited in order and a
+    column is aliased when the part of it not explained by the kept
     columns before it has a norm below 'tol' times its own norm.
     """
     kept = []
@@ -117,8 +117,8 @@ def _fit_ols(model: str, data: pl.DataFrame) -> _OLSFit:
     y_vec = np.asarray(y, dtype=float).ravel()
 
     n, k = x_mat.shape
-    # Like lm(), drop aliased columns (linear combinations of earlier
-    # columns) and report NaN for their coefficients.
+    # Drop aliased columns (linear combinations of earlier columns) and
+    # report NaN for their coefficients.
     kept = _non_aliased_columns(x_mat)
     x_kept = x_mat[:, kept]
     rank = x_kept.shape[1]
@@ -996,8 +996,8 @@ def estimate_fama_macbeth(
             [coefs.get(factor, np.nan) for coefs in cross_section_coefs],
             dtype=float,
         )
-        # As in R, 'n' counts every period, including those in which the
-        # factor was aliased; the estimates themselves skip them.
+        # 'n' counts every period, including those in which the factor
+        # was aliased; the estimates themselves skip them.
         n_periods = int(estimates.size)
         estimates = estimates[~np.isnan(estimates)]
         n = int(estimates.size)
@@ -1100,8 +1100,8 @@ def estimate_model(
         the requested elements. Coefficients and t-statistics are
         returned as one-row data frames with column names corresponding
         to the model terms (all-null when there are not enough
-        observations). As in 'lm()', a term that is a linear
-        combination of earlier terms is aliased: its coefficient is
+        observations). A term that is a linear combination of
+        earlier terms is aliased: its coefficient is
         null and it has no t-statistic column. Residuals are returned
         as a numeric vector of length 'len(data)' with NaN for rows
         with missing data or insufficient observations.
@@ -1233,7 +1233,7 @@ def estimate_model(
         if insufficient:
             result["tstats"] = na_df()
         else:
-            # Like summary(lm()), aliased terms have no t-statistic.
+            # Aliased terms have no t-statistic.
             result["tstats"] = to_df(
                 {
                     name: value

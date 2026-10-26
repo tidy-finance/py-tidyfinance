@@ -208,7 +208,7 @@ def _breakpoints_col_names_ff(file_url: str) -> list[str] | None:
 
 
 def _parse_ff_number(value: str):
-    """Parse one CSV field like R's 'as.numeric()' (None if invalid)."""
+    """Parse one CSV field as a number (None if invalid)."""
     try:
         return float(value)
     except ValueError:

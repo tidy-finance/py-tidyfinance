@@ -412,8 +412,7 @@ def list_tidy_finance_chapters() -> list:
     list of str
         Chapter slugs in the order they appear in the book. Each slug
         corresponds to a chapter page at
-        https://www.tidy-finance.org/chapters/<slug>.html, which shows
-        the R and the Python code side by side.
+        https://www.tidy-finance.org/chapters/<slug>.html.
 
     Examples
     --------
