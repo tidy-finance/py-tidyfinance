@@ -1691,6 +1691,11 @@ def compute_portfolio_returns(
     """
     _validate_flag(quiet, "quiet")
 
+    # Required; it has a None default only because it follows arguments
+    # with defaults.
+    if breakpoint_options_main is None:
+        raise ValueError("breakpoint_options_main must be provided.")
+
     if data_options is None:
         data_options = {
             "id": "permno",

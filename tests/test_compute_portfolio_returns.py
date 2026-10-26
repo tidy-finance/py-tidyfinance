@@ -122,6 +122,12 @@ def test_cap_weight_outside_0_1_raises_error():
         )
 
 
+def test_errors_when_breakpoint_options_main_is_missing():
+    """Test errors when breakpoint_options_main is missing."""
+    with pytest.raises(ValueError, match="breakpoint_options_main"):
+        compute_portfolio_returns(make_data(), "size", "univariate")
+
+
 def test_missing_column_raises_error():
     """Test missing column raises error."""
     with pytest.raises(ValueError, match="Missing columns"):
