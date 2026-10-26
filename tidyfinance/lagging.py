@@ -110,6 +110,15 @@ def add_lagged_columns(
     The combination of 'by' and the date column must be unique in 'data'.
     If 'by' is None, dates alone must be unique.
 
+    For lags expressed in whole months or years (for example '"1mo"' or
+    '"1y"'), the dates should be the first of the month, as returned by
+    the 'download_data' functions. On other days of the month, month
+    arithmetic shifts a date to a different day (e.g., 31 March minus one
+    month is 28 or 29 February), so the exact-lag match can fail; floor
+    the dates with 'pl.col("date").dt.truncate("1mo")' beforehand. This
+    does not apply to 'ff_adjustment=True', which works on calendar
+    years.
+
     Parameters
     ----------
     data : pl.DataFrame
@@ -397,6 +406,14 @@ def join_lagged_values(
     date grids (e.g. monthly source data into quarterly target data).
     All columns in 'new_data' besides 'id_keys' and the date column are
     lagged and joined under their original names.
+
+    For 'min_lag'/'max_lag' expressed in whole months or years, the dates
+    in both data frames should be the first of the month, as returned by
+    the 'download_data' functions. On other days of the month the monthly
+    offset can miss the intended match (for example, a source dated 30
+    April never matches a target dated 31 May); floor the dates with
+    'pl.col("date").dt.truncate("1mo")' beforehand. This does not apply
+    to 'ff_adjustment=True', which works on calendar years.
 
     Parameters
     ----------
