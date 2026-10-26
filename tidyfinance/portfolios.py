@@ -1886,8 +1886,8 @@ def compute_portfolio_returns(
     if data.height == 0:
         if not quiet:
             warnings.warn(
-                "Returning an empty panel: all observations were "
-                "filtered out (insufficient observations on every date).",
+                "Returning an empty panel: every row has a missing "
+                "sorting value, so no portfolio could be formed.",
                 UserWarning,
                 stacklevel=2,
             )
