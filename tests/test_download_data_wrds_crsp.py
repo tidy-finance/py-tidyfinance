@@ -3,7 +3,7 @@
 import datetime as dt
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import polars as pl
 import pytest
@@ -44,6 +44,30 @@ def test_crsp_argument_validation_covers_required_inputs():
 
         with pytest.raises(ValueError, match="Unsupported CRSP dataset"):
             download_data_wrds_crsp("bad")
+
+
+def test_a_failing_close_does_not_replace_the_download_error():
+    """Test the connection is closed after a failed download without a
+    failing close() replacing the download error."""
+    con = MagicMock()
+    con.close.side_effect = RuntimeError("close failed")
+    with (
+        patch(
+            "tidyfinance.download_wrds.get_wrds_connection", return_value=con
+        ),
+        patch(
+            "tidyfinance.download_wrds._read_sql",
+            side_effect=ValueError("query failed"),
+        ),
+        pytest.raises(ValueError, match="query failed"),
+    ):
+        download_data_wrds_crsp(
+            "crsp_daily",
+            start_date="2020-01-01",
+            end_date="2020-01-31",
+            quiet=True,
+        )
+    con.close.assert_called_once()
 
 
 def test_deprecated_type_inputs_are_translated_to_dataset():

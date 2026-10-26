@@ -1,5 +1,6 @@
 """WRDS connection and downloads for tidyfinance."""
 
+import contextlib
 import contextvars
 import datetime as dt
 import functools
@@ -1159,7 +1160,13 @@ def download_data_wrds_crsp(
             raise ValueError(
                 "Invalid dataset. Use 'crsp_monthly' or 'crsp_daily'."
             )
-    finally:
+    except BaseException:
+        # Close the connection without letting a failing close() replace
+        # the error of the download.
+        with contextlib.suppress(Exception):
+            disconnect_connection(wrds_connection)
+        raise
+    else:
         disconnect_connection(wrds_connection)
 
     if add_ccm_links:
@@ -1912,11 +1919,10 @@ def _redact_wrds_credentials(message: str, user: str, password: str) -> str:
 
 
 def disconnect_connection(con: object) -> bool:
-    """Close an open WRDS database connection safely.
+    """Close an open WRDS database connection.
 
-    Attempts to close the supplied connection. Any exception raised by
-    the underlying driver is swallowed so the call can be used in
-    'finally' blocks without masking the original error.
+    Closes the supplied connection. As in R, an error raised by the
+    underlying driver is not caught but propagates to the caller.
 
     Parameters
     ----------
@@ -1927,8 +1933,12 @@ def disconnect_connection(con: object) -> bool:
     Returns
     -------
     bool
-        'True' on successful disconnection, 'False' if the close call
-        raised an exception.
+        'True' once the connection is closed.
+
+    Raises
+    ------
+    Exception
+        Any error raised by the connection's 'close()' method.
 
     Examples
     --------
@@ -1938,11 +1948,8 @@ def disconnect_connection(con: object) -> bool:
     disconnect_connection(con)
     ```
     """
-    try:
-        con.close()
-        return True
-    except Exception:
-        return False
+    con.close()
+    return True
 
 
 def _load_wrds_credentials() -> tuple:

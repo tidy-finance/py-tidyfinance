@@ -22,14 +22,13 @@ def test_returns_true_on_successful_disconnect():
     connection.close.assert_called_once()
 
 
-def test_returns_false_when_close_raises():
-    """Test disconnect_connection returns False when close fails."""
+def test_propagates_errors_from_close():
+    """Test disconnect_connection propagates errors from close, as in R."""
     connection = MagicMock()
-    connection.close.side_effect = Exception("disconnection failed")
+    connection.close.side_effect = RuntimeError("disconnection failed")
 
-    result = disconnect_connection(connection)
-
-    assert result is False
+    with pytest.raises(RuntimeError, match="disconnection failed"):
+        disconnect_connection(connection)
 
 
 if __name__ == "__main__":
