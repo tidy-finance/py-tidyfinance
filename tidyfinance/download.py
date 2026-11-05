@@ -94,7 +94,13 @@ def download_data(
         'download_data_huggingface' for details. If 'domain' is
         'Damodaran', arguments such as 'region' and 'year' are passed to
         'download_data_damodaran', which selects years via 'year'
-        instead of 'start_date' and 'end_date'. If 'domain' is 'WRDS'
+        instead of 'start_date' and 'end_date'. If 'domain' is
+        'Open Source Asset Pricing', 'dataset' is one of
+        'long_short_returns' (the default), 'signal_doc', 'predictors',
+        or 'signed_predictors', 'release' selects the data release on
+        Hugging Face, 'signals' selects factors or predictors, and
+        'sheet_id' downloads long-short returns from Google Drive
+        instead; see 'download_data_osap'. If 'domain' is 'WRDS'
         or 'Pseudo Data', 'quiet=True' suppresses the messages about the
         WRDS connection and the download progress, or the pseudo-data
         notice.
@@ -216,7 +222,10 @@ def download_data(
         )
     elif domain == "Open Source Asset Pricing":
         processed_data = download_data_osap(
-            start_date=start_date, end_date=end_date, **kwargs
+            dataset=dataset if dataset is not None else "long_short_returns",
+            start_date=start_date,
+            end_date=end_date,
+            **kwargs,
         )
     elif domain == "Global Factor Data":
         processed_data = download_data_jkp(

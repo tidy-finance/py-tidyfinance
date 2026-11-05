@@ -241,9 +241,11 @@ def _transfrom_to_snake_case(column_name):
     """
     Convert a string to snake_case.
 
-    Inserts underscores before CamelCase boundaries, lowercases all
-    letters, replaces spaces and special characters with underscores,
-    and collapses runs of underscores into one.
+    Inserts an underscore where a lowercase letter is followed by an
+    uppercase letter, replaces runs of other characters than letters,
+    digits, and underscores with an underscore, lowercases all letters,
+    and collapses runs of underscores into one. Runs of capitals stay
+    together, e.g., 'BM' becomes 'bm' and 'BMdec' becomes 'bmdec'.
 
     Parameters
     ----------
@@ -255,15 +257,10 @@ def _transfrom_to_snake_case(column_name):
     str
         Snake_case version of 'column_name'.
     """
-    column_name = re.sub(r"(?<!^)(?=[A-Z])", "_", column_name)
-    column_name = column_name.replace(" ", "_").replace("-", "_").lower()
-    column_name = "".join(
-        c if c.isalnum() or c == "_" else "_" for c in column_name
-    )
-
-    while "__" in column_name:
-        column_name = column_name.replace("__", "_")
-
+    column_name = re.sub(r"([a-z])([A-Z])", r"\1_\2", column_name)
+    column_name = re.sub(r"[^0-9A-Za-z_]+", "_", column_name)
+    column_name = column_name.lower()
+    column_name = re.sub(r"_+", "_", column_name)
     return column_name.strip("_")
 
 

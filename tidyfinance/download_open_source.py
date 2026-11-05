@@ -5,8 +5,10 @@ import csv
 import datetime as dt
 import io
 import numbers
+import os
 import pathlib
 import re
+import tempfile
 import time
 import warnings
 import zipfile
@@ -18,11 +20,13 @@ from curl_cffi import requests
 from ._internal import (
     _deprecate_legacy_dataset,
     _get_random_user_agent,
+    _inform,
     _parse_date,
     _transfrom_to_snake_case,
     _user_stacklevel,
     _validate_dates,
 )
+from .download_tidy_finance import _rate_limit_reset, _wait_for_rate_limit
 from .supported_datasets import (
     _check_supported_dataset_ff,
     _determine_frequency_ff,
@@ -1708,25 +1712,254 @@ def download_data_stock_prices(
     return df_all
 
 
+_OSAP_DATASETS = (
+    "long_short_returns",
+    "signal_doc",
+    "predictors",
+    "signed_predictors",
+)
+_OSAP_LATEST_RELEASE = "2026.10"
+_OSAP_RELEASES = (
+    _OSAP_LATEST_RELEASE,
+    "2025.10",
+    "2024.10",
+    "2024.08",
+    "2023.08",
+    "2022.04",
+    "2022.03",
+    "2021.04",
+    "2021.03",
+)
+_OSAP_HF_URL = (
+    "https://huggingface.co/datasets/OpenSourceAP/CrossSection/resolve/"
+)
+_OSAP_MAX_TRIES = 3
+
+
+class _OsapFileNotFound(Exception):
+    """Hugging Face has no file at the URL (HTTP 404)."""
+
+
+def _osap_release_urls(release, dataset: str = "long_short_returns") -> list:
+    """Build the Hugging Face URLs of an OSAP file.
+
+    Each OSAP data release is a branch of the Hugging Face dataset. The
+    latest release is on a branch named 'Data-Release-<release>', the
+    older ones on a branch named like the release. The latest release
+    can therefore move to a branch named like the release once OSAP
+    publishes the next one, so it also gets a URL on that branch.
+
+    Parameters
+    ----------
+    release : str or None
+        The OSAP data release, e.g. '2026.10', or None for the latest.
+    dataset : str
+        The dataset, see 'download_data_osap'.
+
+    Returns
+    -------
+    list of str
+        The URLs of the parquet file, in the order to try them.
+    """
+    if release is None:
+        release = _OSAP_LATEST_RELEASE
+    releases = list(_OSAP_RELEASES)
+    # The signal documentation is a parquet file from release 2022.03 on.
+    if dataset == "signal_doc":
+        releases = [r for r in releases if r not in ("2021.04", "2021.03")]
+    if not isinstance(release, str) or release not in releases:
+        raise ValueError(
+            f"'release' must be one of {', '.join(map(repr, releases))} "
+            f"for '{dataset}'. You supplied {release!r}."
+        )
+
+    ls_folder = (
+        "Full_Sets_Main" if release == "2021.03" else "Full%20Sets%20OP"
+    )
+    path = {
+        "long_short_returns": (
+            f"Portfolios/{ls_folder}/PredictorLSretWide.parquet"
+        ),
+        "signal_doc": "SignalDoc.parquet",
+        "predictors": "Firm%20Level%20Characteristics/Predictors.parquet",
+        "signed_predictors": (
+            "Firm%20Level%20Characteristics/signed_predictors_dl_wide.parquet"
+        ),
+    }[dataset]
+
+    if release == _OSAP_LATEST_RELEASE:
+        branches = [f"Data-Release-{release}", release]
+    else:
+        branches = [release]
+    return [f"{_OSAP_HF_URL}{branch}/{path}" for branch in branches]
+
+
+def _download_osap_file(url: str, path: str) -> None:
+    """Download a file from Hugging Face to 'path'.
+
+    The file is streamed to disk, since the firm-level predictors are
+    about 2 GB. When Hugging Face refuses the file because of its rate
+    limit (HTTP 429), the download waits until the limit resets and
+    tries again, twice at most.
+
+    Raises
+    ------
+    _OsapFileNotFound
+        If Hugging Face has no file at 'url'.
+    RuntimeError
+        If the rate limit still refuses the file after three attempts.
+    """
+    headers = {"User-Agent": _get_random_user_agent()}
+    token = os.getenv("HF_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    for attempt in range(1, _OSAP_MAX_TRIES + 1):
+        response = requests.get(
+            url,
+            headers=headers,
+            impersonate="chrome",
+            timeout=(30, 300),
+            stream=True,
+        )
+        try:
+            if response.status_code == 404:
+                raise _OsapFileNotFound(url)
+            if response.status_code == 429:
+                seconds = _rate_limit_reset(response)
+                if attempt == _OSAP_MAX_TRIES:
+                    raise RuntimeError(
+                        "Hugging Face refused the download because of its "
+                        "rate limit. The limit resets in "
+                        f"{seconds} second{'s' if seconds != 1 else ''}. "
+                        "Try again then."
+                    )
+                _wait_for_rate_limit(seconds)
+                continue
+            response.raise_for_status()
+            with open(path, "wb") as f:
+                for chunk in response.iter_content():
+                    f.write(chunk)
+            return
+        finally:
+            response.close()
+
+
+def _read_osap_parquet(urls: list, signals, id_columns: list):
+    """Read an OSAP parquet file from Hugging Face.
+
+    Parameters
+    ----------
+    urls : list of str
+        The URLs of the file, in the order to try them when a URL is not
+        found.
+    signals : list of str or None
+        The signals to read; None reads all columns.
+    id_columns : list of str
+        The columns to read besides 'signals'.
+
+    Returns
+    -------
+    tuple
+        The data frame and the names in 'signals' that the file does not
+        have, in which case the data frame is empty.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = os.path.join(tmp_dir, "osap.parquet")
+        try:
+            _download_osap_file(urls[0], path)
+        except _OsapFileNotFound:
+            if len(urls) == 1:
+                raise
+            _download_osap_file(urls[1], path)
+
+        columns = list(pl.read_parquet_schema(path))
+        if signals is None:
+            select = None
+        else:
+            unknown = [s for s in signals if s not in columns]
+            if unknown:
+                return pl.DataFrame(), unknown
+            select = id_columns + list(signals)
+        # Without memory mapping, the file can be deleted right after
+        # reading, also on Windows.
+        data = pl.read_parquet(
+            path, columns=select, use_pyarrow=True, memory_map=False
+        )
+    return data, []
+
+
+def _read_osap_google_drive(sheet_id: str, signals, id_columns: list):
+    """Read OSAP long-short returns from Google Drive.
+
+    Returns the data frame and the names in 'signals' that the file does
+    not have, in which case the data frame is empty.
+    """
+    url = f"https://drive.google.com/uc?export=download&id={sheet_id}"
+    data = _fetch_google_drive_csv(url)
+    if signals is None:
+        return data, []
+    unknown = [s for s in signals if s not in data.columns]
+    if unknown:
+        return pl.DataFrame(), unknown
+    return data.select(id_columns + list(signals)), []
+
+
 def download_data_osap(
     start_date: str = None,
     end_date: str = None,
-    sheet_id: str = "10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI",
+    sheet_id: str = None,
+    dataset: str = "long_short_returns",
+    release: str = None,
+    signals=None,
 ) -> pl.DataFrame:
     """
     Download and process Open Source Asset Pricing data.
 
-    Downloads the data from the Open Source Asset Pricing project at
-    https://www.openassetpricing.com/data/ from Google Drive using a
-    specified file ID, processes the data by converting column names
-    to snake_case, aligning the date to the beginning of the month,
-    scaling the percentage long-short returns to numeric values, and
-    optionally filters the data based on a provided date range.
+    Downloads data from Open Source Asset Pricing (OSAP,
+    https://www.openassetpricing.com/data/): the monthly long-short
+    returns of the predictor portfolios, the signal documentation, or
+    the monthly firm-level predictors (signals). The column names are
+    converted to snake_case, dates are aligned to the beginning of the
+    month, and the data are optionally filtered by a date range.
 
-    The dataset contains monthly long-short returns of the predictor
-    portfolios. Every column other than 'date' is a return expressed
-    in percent, so all of them are divided by 100 to convert them into
-    plain numeric (decimal) returns.
+    The data come from the OSAP dataset on Hugging Face
+    (https://huggingface.co/datasets/OpenSourceAP/CrossSection), which
+    keeps every data release on its own branch. 'release' selects the
+    release. Releases up to October 2025 were also distributed on
+    Google Drive. Pass the Google Drive file ID of a wide CSV of
+    long-short returns to 'sheet_id' to download it from Google Drive
+    instead.
+
+    The datasets are:
+
+    - 'long_short_returns': monthly long-short returns of the
+      predictor portfolios, constructed as in the original papers, with
+      one column per predictor. The returns are in percent in the
+      source file, so they are divided by 100 to obtain plain numeric
+      (decimal) returns.
+    - 'signal_doc': the documentation of all predictors and placebos,
+      one row per signal, e.g., its category, original paper, and sign.
+      The 'acronym' column holds the OSAP names of the signals, which
+      'signals' takes. Available from release '2022.03'.
+    - 'predictors': the monthly firm-level predictors, with columns
+      'permno', 'date', and one column per predictor. The values are
+      not scaled. 'Price', 'Size', and 'STreversal' are not included
+      because they require a WRDS subscription.
+    - 'signed_predictors': the same as 'predictors', but each predictor
+      is multiplied by its sign in 'signal_doc' so that a higher value
+      implies a higher expected return.
+
+    The files of 'predictors' and 'signed_predictors' are about 2 GB.
+    The whole file is downloaded in either case, but 'signals' reads
+    only the selected predictors into memory.
+
+    The dates of the predictors and the long-short returns differ by
+    one month. A predictor dated the first of a month is observed at
+    the end of that month and predicts the returns after it, while a
+    long-short return is dated the first of the month in which it is
+    earned. To relate the two, join the predictors of month t to the
+    returns of month t + 1, not on 'date'.
 
     Google Drive limits how often a shared file can be downloaded. When
     the limit is reached, Google Drive returns an error page instead of
@@ -1738,93 +1971,198 @@ def download_data_osap(
     start_date : str, optional
         A character string or date in 'YYYY-MM-DD' format specifying
         the start date for the data. If not provided, the full dataset
-        is returned.
+        is returned. Ignored for 'signal_doc'.
     end_date : str, optional
         A character string or date in 'YYYY-MM-DD' format specifying
         the end date for the data. If not provided, the full dataset
-        is returned.
+        is returned. Ignored for 'signal_doc'.
     sheet_id : str, optional
-        The Google Drive file ID of the wide CSV of monthly long-short
-        returns. The default, '10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI', is
-        the October 2025 release (v2.0.0). Pass the ID of another
-        release to download it instead.
+        The Google Drive file ID of a wide CSV of monthly long-short
+        returns, e.g., '10sOryk_ddjkXagaajTKUk1nwJs2ZLRiI' for the
+        October 2025 release (v2.0.0). If provided, the data are
+        downloaded from Google Drive instead of Hugging Face, and
+        'release' must not be set. Only for 'long_short_returns'.
+    dataset : str, default 'long_short_returns'
+        The dataset to download: 'long_short_returns',
+        'signal_doc', 'predictors', or 'signed_predictors'.
+    release : str, optional
+        The OSAP data release to download from Hugging Face. The
+        default, None, is the October 2026 release ('2026.10',
+        v2.1.0). The other supported releases are '2025.10', '2024.10',
+        '2024.08', '2023.08', '2022.04', '2022.03', '2021.04', and
+        '2021.03'. The releases of 2020 have no wide file of long-short
+        returns or firm-level predictors.
+    signals : str or list of str, optional
+        Predictors to read for 'long_short_returns', 'predictors', and
+        'signed_predictors', using the OSAP names in the 'acronym'
+        column of 'signal_doc', e.g., 'BM' for the time series of a
+        single factor or ['BM', 'Mom12m']. If not provided, all
+        predictors are returned.
 
     Returns
     -------
     pl.DataFrame
         A data frame containing the processed data. The column names
         are converted to snake_case, the 'date' column is aligned to
-        the beginning of the month, all predictor columns (long-short
-        returns in percent) are divided by 100 to obtain plain numeric
-        (decimal) returns, and the data is filtered by the specified
-        date range if 'start_date' and 'end_date' are provided.
+        the beginning of the month, and the data is filtered by the
+        specified date range if 'start_date' and 'end_date' are
+        provided. See above for how the dates of the predictors relate
+        to the dates of the long-short returns.
+
+    Raises
+    ------
+    ValueError
+        If 'dataset', 'release', or 'signals' is not supported, if
+        'sheet_id' is combined with 'release' or another dataset than
+        'long_short_returns', or if 'signals' contains names that the
+        file does not have.
 
     Examples
     --------
     ```python
-    from tidyfinance import download_data
-    osap = download_data(
-        'Open Source Asset Pricing',
+    from tidyfinance import download_data_osap
+    osap = download_data_osap(
+        start_date='2020-01-01', end_date='2020-06-30'
+    )
+    # An earlier release
+    osap_2025 = download_data_osap(release='2025.10')
+    # The time series of a single factor
+    osap_bm = download_data_osap(signals='BM')
+    # Signal documentation
+    signal_doc = download_data_osap(dataset='signal_doc')
+    # Firm-level predictors (downloads about 2 GB)
+    predictors = download_data_osap(
         start_date='2020-01-01',
-        end_date='2020-06-30',
+        end_date='2020-12-31',
+        dataset='signed_predictors',
+        signals=['BM', 'Mom12m'],
     )
     ```
     """
-    start_date, end_date = _validate_dates(start_date, end_date)
+    if not isinstance(dataset, str) or dataset not in _OSAP_DATASETS:
+        raise ValueError(
+            "'dataset' must be one of "
+            f"{', '.join(map(repr, _OSAP_DATASETS))}. "
+            f"You supplied {dataset!r}."
+        )
+    if sheet_id is not None and dataset != "long_short_returns":
+        raise ValueError(
+            "'sheet_id' is only supported for 'long_short_returns'."
+        )
+    if sheet_id is not None and release is not None:
+        raise ValueError("Supply either 'release' or 'sheet_id', not both.")
+    if signals is not None and dataset == "signal_doc":
+        raise ValueError("'signals' is not supported for 'signal_doc'.")
+    if isinstance(signals, str):
+        signals = [signals]
+    if signals is not None and (
+        not isinstance(signals, (list, tuple))
+        or len(signals) == 0
+        or not all(isinstance(s, str) for s in signals)
+    ):
+        raise ValueError(
+            "'signals' must be a non-empty string or list of strings."
+        )
 
-    # Google Drive direct download link
-    url = f"https://drive.google.com/uc?export=download&id={sheet_id}"
+    id_columns = {
+        "long_short_returns": ["date"],
+        "signal_doc": [],
+    }.get(dataset, ["permno", "yyyymm"])
+
+    if sheet_id is not None:
+
+        def download():
+            return _read_osap_google_drive(sheet_id, signals, id_columns)
+
+    else:
+        urls = _osap_release_urls(release, dataset)
+
+        def download():
+            return _read_osap_parquet(urls, signals, id_columns)
+
+    if dataset != "signal_doc":
+        start_date, end_date = _validate_dates(start_date, end_date)
+    if dataset in ("predictors", "signed_predictors"):
+        _inform(
+            f"Downloading '{dataset}' (about 2 GB). This can take a while."
+        )
 
     try:
-        raw_data = _fetch_google_drive_csv(url)
+        raw_data, unknown = download()
     except Exception as e:
         warnings.warn(
             "Failed to download or process the resource. The resource may "
             "not be available, or the URL may have changed. "
             f"Error message: {e}",
             UserWarning,
-            stacklevel=2,
+            stacklevel=_user_stacklevel(),
         )
-        warnings.warn(
-            "Returning an empty dataset due to download failure.",
-            UserWarning,
-            stacklevel=2,
+        raw_data, unknown = pl.DataFrame(), []
+
+    # Raised here, so that an unknown signal is not reported as a failed
+    # download.
+    if unknown:
+        raise ValueError(
+            f"'signals' contains unknown names: {unknown}. Use the OSAP "
+            "names in the 'acronym' column of 'signal_doc', e.g., 'BM' "
+            "instead of 'bm'."
         )
-        return pl.DataFrame()
 
     if raw_data.is_empty():
         warnings.warn(
             "Returning an empty dataset due to download failure.",
             UserWarning,
-            stacklevel=2,
+            stacklevel=_user_stacklevel(),
         )
         return raw_data
 
-    if "date" in raw_data.columns:
+    if dataset == "signal_doc":
+        return raw_data.rename(
+            {col: _transfrom_to_snake_case(col) for col in raw_data.columns}
+        )
+
+    if dataset == "long_short_returns":
         if raw_data.schema["date"] == pl.String:
-            raw_data = raw_data.with_columns(
-                pl.col("date").str.to_date(strict=False)
-            )
+            date = pl.col("date").str.to_date(strict=False)
         else:
-            raw_data = raw_data.with_columns(pl.col("date").cast(pl.Date))
-        raw_data = raw_data.with_columns(pl.col("date").dt.truncate("1mo"))
-
-    raw_data = raw_data.rename(
-        {col: _transfrom_to_snake_case(col) for col in raw_data.columns}
-    )
-
-    # All columns except the date are long-short returns in percent, so
-    # scale them to plain numeric (decimal) returns.
-    raw_data = raw_data.with_columns(
-        [pl.col(c) / 100 for c in raw_data.columns if c != "date"]
-    )
+            date = pl.col("date").cast(pl.Date)
+        processed_data = raw_data.with_columns(
+            date.dt.truncate("1mo").alias("date")
+        ).rename(
+            {col: _transfrom_to_snake_case(col) for col in raw_data.columns}
+        )
+        # All columns except the date are long-short returns in percent,
+        # so scale them to plain numeric (decimal) returns.
+        processed_data = processed_data.with_columns(
+            [pl.col(c) / 100 for c in processed_data.columns if c != "date"]
+        )
+    else:
+        # Signals at the end of month yyyymm predict the returns after it.
+        yyyymm = pl.col("yyyymm").cast(pl.Int64)
+        processed_data = raw_data.with_columns(
+            pl.date(yyyymm // 100, yyyymm % 100, 1).alias("date")
+        )
+        other = [
+            c
+            for c in processed_data.columns
+            if c not in ("permno", "date", "yyyymm")
+        ]
+        processed_data = processed_data.select(
+            ["permno", "date"] + other
+        ).rename(
+            {
+                col: _transfrom_to_snake_case(col)
+                for col in processed_data.columns
+                if col != "yyyymm"
+            }
+        )
 
     if start_date and end_date:
-        raw_data = raw_data.filter(
+        processed_data = processed_data.filter(
             pl.col("date").is_between(start_date, end_date)
         )
 
-    return raw_data
+    return processed_data
 
 
 def download_data_pastor_stambaugh(
