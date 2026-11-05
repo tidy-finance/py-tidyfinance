@@ -77,7 +77,7 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
       submitting.
 - [x] Add the Open Journals draft-PDF GitHub Action
       (`.github/workflows/draft-pdf.yml`).
-- [ ] Check that the first run compiles and read the PDF (Actions tab,
+- [x] Check that the first run compiles and read the PDF (Actions tab,
       artifact "paper").
 - [ ] Move the cross-language check (`alignment_checks/`) into the
       repository, or describe it in the paper so that reviewers can verify
