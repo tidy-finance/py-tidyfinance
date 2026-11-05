@@ -39,6 +39,8 @@ bibliography: paper.bib
 
 # Summary
 
+Researchers in finance study why some stocks earn higher returns than others. To do so, they sort stocks into portfolios by a characteristic, such as firm size or how fast a firm's assets grow, and compare the returns of the portfolios over time. The return difference between the top and the bottom portfolio, a factor, is the basic building block of asset pricing tests, investment strategies, and risk models.
+
 `tidyfinance` is a Python package that builds factor returns for empirical asset pricing from raw data. It turns each step of the construction into a function, and each construction choice into an argument with a conventional default. A default call reproduces standard practice; changing one choice takes one argument.
 
 Building a factor takes three steps. Researchers download and clean return and accounting data, typically from CRSP and Compustat. They lag firm characteristics so that portfolios use only information available at formation. They then sort stocks into portfolios and take the return difference between the extreme portfolios. Each step involves choices about delistings, fiscal-year lags, breakpoints, weights, and rebalancing, and few studies publish these choices as code.
@@ -119,17 +121,21 @@ factor = tf.compute_long_short_returns(portfolios, direction="bottom_minus_top")
 
 `factor` holds value-weighted, equal-weighted, and capped value-weighted long-short returns for each month. To control for size, exclude financial firms, or rebalance in staggered cohorts, a user changes one argument.
 
-All computation runs in polars. `set_backend("pandas")` converts inputs and outputs at the package boundary, so pandas users receive pandas data frames without a second code path. Function names, arguments, defaults, and output columns match the R package. Tests check that the numbers match too: the Newey-West standard errors of `estimate_fama_macbeth()` agree with R's `sandwich` package [@zeileis.2004] to within $10^{-13}$. GitHub Actions runs the test suite on every pull request.
+All computation runs in polars. Factor construction on CRSP data joins and groups panels with millions of stock-months, which polars handles quickly and with little memory. Since much of empirical finance still works in pandas, `set_backend("pandas")` converts inputs and outputs in a single wrapper around the public functions, so pandas users receive pandas data frames and the computational code has one implementation.
+
+The Python and R packages implement one specification. Function names, arguments, defaults, and output columns match, and a test fails when the public functions of the Python package differ from the exports of the R package. A cross-language check runs both packages on the same simulated panel and compares portfolio returns, lagged variables, and Fama-MacBeth estimates within $10^{-8}$. <!-- TODO: the cross-language check lives outside this repository (alignment_checks/). Add it to the repository or describe it so that reviewers can run it. --> Matching results to this precision required computing quantiles with the same floating-point arithmetic in both languages, because numpy and R differ in the last bit when a breakpoint falls on an observation, which moves a stock across the breakpoint. The check also uncovered bugs that unit tests in either language had missed. Tests also lock the Newey-West standard errors of `estimate_fama_macbeth()` to R's `sandwich` package [@zeileis.2004]. GitHub Actions runs more than 1,000 unit tests on Linux, macOS, and Windows for Python 3.11 to 3.14 on every pull request.
 
 # Research impact statement
+
+<!-- TODO: JOSS requires verifiable evidence. (1) The book appeared in 2024, before the package was on PyPI (March 2025), so "throughout" can only refer to tidy-finance.org; check. (2) Name the courses (university, course) that use the package. (3) Add PyPI download numbers and the period, e.g., from pepy.tech. -->
 
 *Tidy Finance with Python* [@scheuch.2024] and its companion website, tidy-finance.org, use `tidyfinance` throughout, and instructors use both in undergraduate and graduate courses in finance and asset pricing. @frey.2026 describe the R version and use it to rebuild the asset growth factor from raw data and to show how construction choices change its premium. The package also gives access to the Tidy Finance factor library, a set of precomputed factor returns on Hugging Face, through `download_data("Tidy Finance", "factor_library")`. The package has been on PyPI since March 2025.
 
 # AI usage disclosure
 
-<!-- TODO: fill in. JOSS requires: tools/models used (with versions), where (code, tests, docs, paper text), nature and scope of assistance, and confirmation that the authors reviewed, edited, and validated all AI-assisted output and made the core design decisions. -->
+<!-- TODO: all authors must confirm and complete this statement: other tools (e.g., GitHub Copilot) and the period of use. -->
 
-We used generative AI tools ([TOOL, VERSION]) for [code refactoring / test scaffolding / documentation / copy-editing of this paper]. We reviewed, edited, and validated all AI-assisted output and made all design decisions.
+We used generative AI in the development of this package and the writing of this paper. Claude (Anthropic; models including Claude Opus 5.5), used through Claude Code and Claude Cowork, assisted with porting functions from the R package, refactoring, writing unit tests, the cross-language comparison scripts, documentation, and drafting this paper. We made the design decisions, reviewed and edited all AI-assisted code and text, and verified correctness through the unit tests and the comparison against the R package.
 
 # Acknowledgements
 
