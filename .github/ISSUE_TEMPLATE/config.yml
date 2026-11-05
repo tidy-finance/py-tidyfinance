@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://python.tidy-finance.org
+    about: Function reference and examples.
+  - name: Tidy Finance with Python
+    url: https://www.tidy-finance.org
+    about: The book that the package accompanies.

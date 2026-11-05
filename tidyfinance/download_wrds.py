@@ -1213,6 +1213,13 @@ def download_data_wrds_ccm_links(
     pl.DataFrame
         A data frame containing columns permno, gvkey, linkdt, and
         linkenddt (missing end dates replaced with today's date).
+
+    Examples
+    --------
+    ```python
+    from tidyfinance import download_data_wrds_ccm_links
+    ccm_links = download_data_wrds_ccm_links()
+    ```
     """
     conn = get_wrds_connection(quiet=quiet)
 
