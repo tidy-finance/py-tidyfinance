@@ -75,9 +75,10 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 - [ ] JOSS requires a paper branch to be created from the default branch,
       so that it contains the source. Merge `main` into `joss-paper` before
       submitting.
-- [ ] Add the Open Journals draft-PDF GitHub Action, or compile with the
-      `openjournals/inara` Docker image, and check that `joss/paper.md`
-      compiles.
+- [x] Add the Open Journals draft-PDF GitHub Action
+      (`.github/workflows/draft-pdf.yml`).
+- [ ] Check that the first run compiles and read the PDF (Actions tab,
+      artifact "paper").
 - [ ] Move the cross-language check (`alignment_checks/`) into the
       repository, or describe it in the paper so that reviewers can verify
       the claim.
@@ -96,7 +97,7 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 
 ### 3.2 Length and required sections
 
-- [x] 750 to 1,750 words (currently about 1,490).
+- [x] 750 to 1,750 words (currently about 1,570).
 - [x] Summary for a diverse, non-specialist audience, without jargon.
 - [x] "Statement of need" with exactly this heading (EditorialBot checks
       for it): problem, target audience, relation to other work.
@@ -111,10 +112,13 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 
 - [ ] "334 datasets from 13 providers" (count with
       `list_supported_datasets()` on the submitted version).
-- [ ] Open Asset Pricing: "212 cross-sectional signals" and "written in
-      Python since version 2.0".
-- [ ] Performance claim on polars ("quickly and with little memory"):
-      back it with a benchmark or rephrase without a performance claim.
+- [x] Open Asset Pricing: "212 cross-sectional signals" and "written in
+      Python since version 2.0" (openassetpricing.com: 212 predictors;
+      signals translated to Python in the October 2025 release, v2.0.0).
+- [x] Performance claim on polars: rephrased as a design rationale
+      without a performance claim.
+- [x] Default screen timing (`timing='formation'`, warning for
+      `'every_period'`) matches the code.
 - [ ] Code example runs on `"Pseudo Data"` with the submitted version.
 - [ ] The paper reports no numerical results. If any are added, reviewers
       must be able to reproduce them, including access to the data, so
@@ -122,21 +126,31 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 
 ### 3.4 Content risks
 
-- [ ] The review criteria state that the paper "should not include
-      software documentation such as API functionality". The bullet list in
-      Software design reads partly like an API overview; shorten it toward
-      design decisions before submitting.
+- [x] The review criteria state that the paper "should not include
+      software documentation such as API functionality". The API bullet
+      list in Software design is rewritten as three design decisions.
+- [ ] The code example is still API-like; keep it (reviewers value a
+      real-world example) unless the editor asks to cut it.
 
 ### 3.5 References
 
-- [ ] DOIs for every reference that has one; EditorialBot checks DOIs
-      before acceptance.
-- [ ] Add numpy (Harris et al. 2020, Nature), which the paper names.
-- [ ] Complete `walter.2024` (SSRN ID or DOI) and `fama.2023` (SSRN DOI).
+- [x] Add numpy (`harris.2020`, Nature) and cite it where the paper
+      names numpy.
+- [x] DOIs added: `fama.2023` (SSRN 4629613), `walter.2024`
+      (SSRN 4164117), polars (Zenodo concept DOI).
+- [ ] `walter.2024`: SSRN 4164117 circulated as "Non-Standard Errors in
+      Portfolio Sorts" (2022); confirm with Patrick Weiss that "Methodological
+      Uncertainty in Portfolio Sorts" (2024) is the current title of the
+      same paper.
+- [x] All in-text citations exist in `paper.bib`; no unused or duplicate
+      entries.
+- [x] Full venue names, no abbreviations.
+- [x] polars cited with version 2.1.0; OSAP code updated to v2.1.0.
+- [ ] Versions for wrds, yfinance, linearmodels, and pandas-datareader
+      (optional; URLs are given). Set them to the versions current at
+      submission.
 - [ ] Update `frey.2026` once the R Journal decides.
-- [ ] Full venue names, no abbreviations.
-- [ ] Software entries with versions where possible (polars, wrds,
-      yfinance, linearmodels, pandas-datareader).
+- [ ] Run `@editorialbot check references` after submission.
 - [ ] Cite all prior similar work; reviewers point out missing tools.
 
 ### 3.6 Research impact statement
