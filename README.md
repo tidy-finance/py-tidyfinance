@@ -102,13 +102,25 @@ tf.download_data(
 )
 ```
 
-To download data from [Open Source Asset Pricing](https://www.openassetpricing.com/) (OSAP):
+To download data from [Open Source Asset Pricing](https://www.openassetpricing.com/) (OSAP), which comes from the [OSAP dataset on Hugging Face](https://huggingface.co/datasets/OpenSourceAP/CrossSection):
 
 ```python
 tf.download_data(
     domain="Open Source Asset Pricing",
     start_date="2020-01-01",
     end_date="2020-12-31",
+)
+```
+
+`dataset` selects the long-short returns (the default), the signal documentation (`"signal_doc"`), or the firm-level predictors (`"predictors"` or `"signed_predictors"`, about 2 GB each). `signals` selects predictors by their OSAP names, and `release` selects an earlier data release:
+
+```python
+tf.download_data(
+    domain="Open Source Asset Pricing",
+    dataset="signed_predictors",
+    start_date="2020-01-01",
+    end_date="2020-12-31",
+    signals=["BM", "Mom12m"],
 )
 ```
 

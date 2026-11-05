@@ -378,12 +378,16 @@ def test_filter_options_without_timing_default_to_formation_screens():
 
 def test_formation_screens_report_removed_holding_month_rows():
     """Test formation screens report removed holding-month rows."""
-    with pytest.warns(UserWarning, match="formation month 7"):
+    with pytest.warns(UserWarning) as record:
         filter_sorting_data(
             timing_panel(),
             filter_options=filter_options(min_stock_price=5),
             rebalancing_month=7,
         )
+
+    messages = [str(w.message) for w in record]
+    assert any("formation month 7" in m for m in messages)
+    assert any("removed 1 observation" in m for m in messages)
 
 
 def test_formation_screens_handle_end_of_month_dates_and_cohorts():

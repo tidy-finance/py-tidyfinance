@@ -159,3 +159,11 @@
 - **Documented (first-of-month dates):** the help of `add_lagged_columns()` and `join_lagged_values()` states that lags in whole months or years require first-of-month dates, as returned by `download_data()`, and how to truncate other dates.
 - **Docs (README):** the README follows the R package: the same sections and examples, plus the Damodaran download and the factor library tools, corrected dataset names and links, and the Python-only backend, index constituents, and FISD examples.
 - **Dependencies (lock file):** `uv.lock` updates `certifi`, `pillow`, and `nbconvert` to releases without known security vulnerabilities. This affects only the development and documentation environments; installing the package resolves its dependencies independently of the lock file.
+
+## Unreleased
+
+- **Changed (OSAP source):** `download_data_osap()` downloads from the Open Source Asset Pricing dataset on Hugging Face (`OpenSourceAP/CrossSection`) by default instead of Google Drive. The default is the October 2026 release (v2.1.0), which uses CRSP v2 and revised predictors. `sheet_id` now defaults to `None`; passing a Google Drive file ID still downloads long-short returns from Google Drive (#89).
+- **Added (`release`):** `download_data_osap(release=...)` selects a data release on Hugging Face: `"2026.10"` (the default), `"2025.10"`, `"2024.10"`, `"2024.08"`, `"2023.08"`, `"2022.04"`, `"2022.03"`, `"2021.04"`, or `"2021.03"`. It cannot be combined with `sheet_id`.
+- **Added (`dataset`):** besides the long-short returns (`"long_short_returns"`), `download_data_osap()` downloads the signal documentation (`"signal_doc"`) and the monthly firm-level predictors (`"predictors"`, `"signed_predictors"`, about 2 GB each), with columns `permno`, `date`, and one column per predictor. `download_data("Open Source Asset Pricing", dataset, ...)` passes the dataset through.
+- **Added (`signals`):** `download_data_osap(signals=...)` selects predictors by their OSAP names, e.g., `signals="BM"` for the long-short returns of a single factor. Unknown names raise a `ValueError` instead of being reported as a failed download.
+- **Fixed (OSAP column names):** runs of capital letters stay together when converting to snake_case, e.g., `AM` becomes `am` instead of `a_m`, and `BMdec` becomes `bmdec`. The column names now match those of the R package.
