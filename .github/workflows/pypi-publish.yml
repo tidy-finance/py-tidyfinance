@@ -14,6 +14,14 @@ jobs:
       - name: Check out the repository
         uses: actions/checkout@v4
 
+      - name: Check that the release tag matches the package version
+        run: |
+          version=$(grep -m1 '^version' pyproject.toml | cut -d '"' -f2)
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::Release tag $GITHUB_REF_NAME does not match version $version in pyproject.toml."
+            exit 1
+          fi
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
