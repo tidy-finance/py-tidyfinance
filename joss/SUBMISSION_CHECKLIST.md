@@ -62,8 +62,13 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 
 ### 2.4 Collaboration evidence (reviewers check the commit history)
 
-- [ ] Submitting author made substantial contributions, as shown by the
-      commit history. Decide who submits accordingly.
+- [x] Submitting author made substantial contributions, as shown by the
+      commit history: Christoph Frey (accounts `chf77` and `dsforecast`,
+      about 220 commits) submits from `chf77`.
+- [ ] Add the name "Christoph Frey" to the `chf77` GitHub profile, and
+      state in the pre-review issue that both accounts are his.
+- [ ] Patrick Weiss has no commits; be ready to describe his
+      contribution (design, specification, book) if reviewers ask.
 - [ ] Author list matches the contributions visible in the history; be
       ready to explain non-code contributions (project direction counts,
       funding or supervision alone does not).
@@ -97,7 +102,8 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 
 ### 3.2 Length and required sections
 
-- [x] 750 to 1,750 words (currently about 1,570).
+- [x] 750 to 1,750 words (currently about 1,655; little room left for
+      the co-authors' additions, so shorten elsewhere if needed).
 - [x] Summary for a diverse, non-specialist audience, without jargon.
 - [x] "Statement of need" with exactly this heading (EditorialBot checks
       for it): problem, target audience, relation to other work.
@@ -155,13 +161,24 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
 
 ### 3.6 Research impact statement
 
-- [ ] Book claim: the book appeared in 2024, before the package was on
-      PyPI, so cite tidy-finance.org for usage, not the book.
-- [ ] Courses that use the package (university, course name, students).
-- [ ] PyPI downloads with the period (e.g., pepy.tech).
-- [ ] Papers, preprints, theses, or projects that use the package.
-- [ ] Non-author issues or pull requests (strong positive signal).
-- [ ] Factor library: confirm how it relates to the package and its size.
+- [x] Book claim fixed: usage is attributed to tidy-finance.org, not the
+      book.
+- [x] PyPI downloads with source and date (17,451 by 5 November 2026,
+      pepy.tech, including automated installs; pypistats.org shows about
+      540 per month without mirrors).
+- [x] Copenhagen course Advanced Empirical Finance (setup page has
+      students install and test the package).
+- [ ] Number of students in the Copenhagen course (Stefan).
+- [ ] BSE summer school: confirm that it uses the package itself (its
+      page names only the book and Python).
+- [ ] Papers, preprints, theses, or projects that use the package
+      (asked in the co-author group, 5 November 2026).
+- [x] Non-author issues and pull requests mentioned (Goyal-Welch fix by
+      burksooner, PRs #75/#76; issue #80 by EcoFin; contributors
+      BrightBlu and MA-Austin-Burks).
+- [x] R package as context: 22,969 CRAN downloads since January 2024
+      (cranlogs, to 4 November 2026); factor library available in both.
+- [ ] Update all numbers on the submission date.
 
 ### 3.7 AI usage disclosure
 
