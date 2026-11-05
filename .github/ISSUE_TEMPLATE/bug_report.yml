@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a problem with tidyfinance
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Thanks for reporting a problem. Please search existing issues first.
+        Do not post WRDS credentials or extracts from licensed databases.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Minimal reproducible example
+      description: >-
+        Code that reproduces the problem. If possible, use
+        domain="Pseudo Data" so that others can run it without a WRDS
+        subscription.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error message or output
+      render: text
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: Paste the output of the code below.
+      value: |
+        import platform, sys
+        from importlib.metadata import version
+        print(sys.version, platform.platform())
+        print("tidyfinance", version("tidyfinance"))
+        print("polars", version("polars"))
+      render: python
+    validations:
+      required: true

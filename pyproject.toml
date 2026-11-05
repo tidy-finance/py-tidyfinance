@@ -6,7 +6,8 @@ build-backend = "hatchling.build"
 name = "tidyfinance"
 authors = [{name = "Christoph Frey", email = "christoph.frey@gmail.com"},
 	   {name = "Christoph Scheuch", email = "christoph@tidy-intelligence.com"},
-       {name = "Stefan Voigt", email = "stefan.voigt@econ.ku.dk"}
+       {name = "Stefan Voigt", email = "stefan.voigt@econ.ku.dk"},
+       {name = "Patrick Weiss"}
            ]
 version = "1.0.0"
 description = "Tidy Finance Helper Functions"
@@ -61,9 +62,10 @@ docs = [
 ]
 
 [project.urls]
+Documentation = "https://python.tidy-finance.org"
 Repository = "https://github.com/tidy-finance/py-tidyfinance"
 Issues = "https://github.com/tidy-finance/py-tidyfinance/issues"
-Changelog = "https://github.com/tidy-finance/py-tidyfinance/blob/master/CHANGELOG.md"
+Changelog = "https://github.com/tidy-finance/py-tidyfinance/blob/main/CHANGELOG.md"
 
 [tool.pytest.ini_options]
 filterwarnings = [

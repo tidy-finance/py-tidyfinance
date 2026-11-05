@@ -88,6 +88,14 @@ def set_backend(backend: str) -> None:
     dtype. Any time-of-day component in a column with one of these
     names is therefore dropped on input. Timezone-aware datetime
     columns are never cast.
+
+    Examples
+    --------
+    ```python
+    import tidyfinance as tf
+    tf.set_backend("pandas")  # requires 'pip install tidyfinance[pandas]'
+    tf.set_backend("polars")  # back to the default
+    ```
     """
     global _BACKEND
     if backend not in _VALID_BACKENDS:
@@ -107,7 +115,15 @@ def set_backend(backend: str) -> None:
 
 
 def get_backend() -> str:
-    """Return the active data frame backend ('"polars"' or '"pandas"')."""
+    """Return the active data frame backend ('"polars"' or '"pandas"').
+
+    Examples
+    --------
+    ```python
+    import tidyfinance as tf
+    tf.get_backend()
+    ```
+    """
     return _BACKEND
 
 
