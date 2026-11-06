@@ -168,17 +168,31 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
       540 per month without mirrors).
 - [x] Copenhagen course Advanced Empirical Finance (setup page has
       students install and test the package).
-- [ ] Number of students in the Copenhagen course (Stefan).
-- [ ] BSE summer school: confirm that it uses the package itself (its
-      page names only the book and Python).
-- [ ] Papers, preprints, theses, or projects that use the package
-      (asked in the co-author group, 5 November 2026).
+- [x] Courses at CBS, University of Vienna, and Cambridge added
+      (Stefan, 5 November 2026).
+- [ ] Which of these courses use the Python package; course names and
+      links.
+- [x] 30 to 45 master's theses at the University of Copenhagen (Stefan).
+- [ ] 3 to 5 papers that cite or use the packages, with full references
+      in `paper.bib` (Stefan).
+- [x] tidy-finance.org: about 50,000 unique visitors in 30 days
+      (Christoph Scheuch); external blog authors (5 of 14 posts).
+- [x] Factor library: 4,418 Hugging Face downloads in the last month
+      (Stefan).
+- [ ] BSE summer school: left out, since its page names only the book
+      and Python; add if it uses the package.
 - [x] Non-author issues and pull requests mentioned (Goyal-Welch fix by
       burksooner, PRs #75/#76; issue #80 by EcoFin; contributors
       BrightBlu and MA-Austin-Burks).
 - [x] R package as context: 22,969 CRAN downloads since January 2024
       (cranlogs, to 4 November 2026); factor library available in both.
-- [ ] Update all numbers on the submission date.
+- [x] Public numbers linked in the paper: PyPI (pepy.tech), CRAN
+      (cranlogs), factor library (Hugging Face dataset page, 30-day
+      count), Copenhagen course, blog.
+- [ ] Numbers without a public source: about 50,000 visitors of
+      tidy-finance.org (site analytics) and 30 to 45 theses (KU). Keep the
+      evidence ready in case the editor asks.
+- [ ] Update all numbers and dates on the submission date.
 
 ### 3.7 AI usage disclosure
 
