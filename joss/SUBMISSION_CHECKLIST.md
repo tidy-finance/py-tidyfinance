@@ -179,8 +179,8 @@ Review checklist, Editorial guide, and EditorialBot. `[x]` = done,
       (Christoph Scheuch); external blog authors (5 of 14 posts).
 - [x] Factor library: 4,418 Hugging Face downloads in the last month
       (Stefan).
-- [ ] BSE summer school: left out, since its page names only the book
-      and Python; add if it uses the package.
+- [x] BSE summer school and VGSF reproducible research workshop
+      (2024, 2025) added with links (confirmed by Chris, 6 November 2026).
 - [x] Non-author issues and pull requests mentioned (Goyal-Welch fix by
       burksooner, PRs #75/#76; issue #80 by EcoFin; contributors
       BrightBlu and MA-Austin-Burks).
