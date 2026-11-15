@@ -102,7 +102,13 @@ def _fetch_google_drive_csv(url: str, timeout: int = 120) -> pl.DataFrame:
             "Google Drive returned an HTML page instead of a CSV."
         )
 
-    return pl.read_csv(io.BytesIO(response.content))
+    # Missing values are written as "NA", and many columns hold nothing
+    # else in the first rows, so the types are inferred from all rows.
+    return pl.read_csv(
+        io.BytesIO(response.content),
+        null_values="NA",
+        infer_schema_length=None,
+    )
 
 
 def _fetch_whitespace_table(
