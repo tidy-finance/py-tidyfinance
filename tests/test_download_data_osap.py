@@ -120,6 +120,32 @@ def test_rejects_other_html_pages_instead_of_parsing_them():
     assert result.width == 0
 
 
+def test_parses_missing_values_and_late_starting_columns():
+    """Test "NA" is missing and columns that start late stay numeric.
+
+    In the Open Source Asset Pricing file, missing returns are written as
+    "NA", and most predictors start long after the first row. Types
+    inferred from the first rows only would make such columns strings.
+    """
+    dates = [f"{1926 + i // 12}-{i % 12 + 1:02d}-28" for i in range(150)]
+    late = ["NA"] * 120 + ["1.5"] * 30
+    lines = ["date,Early,Late"] + [f"{d},2.0,{v}" for d, v in zip(dates, late)]
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {"content-type": "text/csv"}
+    response.content = "\n".join(lines).encode("utf-8")
+    with patch(
+        "tidyfinance.download_open_source.requests.get",
+        return_value=response,
+    ):
+        result = download_data_osap(sheet_id="abc")
+
+    assert result.schema["early"] == pl.Float64
+    assert result.schema["late"] == pl.Float64
+    assert result["late"].null_count() == 120
+    assert result["late"].drop_nulls().to_list() == [0.015] * 30
+
+
 def test_converts_names_to_snake_case():
     """Test converts names to snake case."""
     result = [
