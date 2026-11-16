@@ -160,6 +160,6 @@
 - **Docs (README):** the README follows the R package: the same sections and examples, plus the Damodaran download and the factor library tools, corrected dataset names and links, and the Python-only backend, index constituents, and FISD examples.
 - **Dependencies (lock file):** `uv.lock` updates `certifi`, `pillow`, and `nbconvert` to releases without known security vulnerabilities. This affects only the development and documentation environments; installing the package resolves its dependencies independently of the lock file.
 
-## Unreleased
+## v1.0.1 (2026-11-16)
 
 - **Fixed (Open Source Asset Pricing):** `download_data("Open Source Asset Pricing")` no longer fails with "division with 'String' datatypes is not allowed". The CSV file writes missing returns as `NA`, and most predictors start decades after the first row, so polars read 210 of the 212 return columns as strings. Missing values are now read as nulls and the column types are inferred from all rows. This fixes [#93](https://github.com/tidy-finance/py-tidyfinance/issues/93).
