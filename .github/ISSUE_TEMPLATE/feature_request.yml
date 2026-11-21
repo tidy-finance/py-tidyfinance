@@ -1,0 +1,25 @@
+name: Feature request
+description: Suggest a new function, argument, or data source
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Research problem
+      description: What do you want to do that tidyfinance does not support?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >-
+        The function, argument, or data source you have in mind, and a
+        reference (paper, data documentation) if one exists.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: How do you solve this today?

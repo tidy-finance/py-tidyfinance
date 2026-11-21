@@ -1,0 +1,47 @@
+cff-version: 1.2.0
+message: >-
+  If you use tidyfinance in your research, please cite the software and the
+  book Tidy Finance with Python.
+title: "tidyfinance: Tidy Finance Helper Functions"
+type: software
+authors:
+  - given-names: Christoph
+    family-names: Frey
+    orcid: "https://orcid.org/0000-0002-9937-0903"
+  - given-names: Christoph
+    family-names: Scheuch
+    orcid: "https://orcid.org/0009-0004-0423-6819"
+  - given-names: Stefan
+    family-names: Voigt
+    orcid: "https://orcid.org/0000-0001-5619-3161"
+  - given-names: Patrick
+    family-names: Weiss
+    orcid: "https://orcid.org/0000-0002-9282-5872"
+version: 1.0.0
+date-released: "2026-10-26"
+license: MIT
+repository-code: "https://github.com/tidy-finance/py-tidyfinance"
+url: "https://python.tidy-finance.org"
+keywords:
+  - finance
+  - asset pricing
+  - portfolio sorts
+  - factor construction
+  - reproducible research
+  - polars
+preferred-citation:
+  type: book
+  title: Tidy Finance with Python
+  authors:
+    - given-names: Christoph
+      family-names: Scheuch
+    - given-names: Stefan
+      family-names: Voigt
+    - given-names: Patrick
+      family-names: Weiss
+    - given-names: Christoph
+      family-names: Frey
+  year: 2024
+  publisher:
+    name: Chapman and Hall/CRC
+  doi: 10.1201/9781032684307

@@ -1,0 +1,22 @@
+name: Question
+description: Ask how to use tidyfinance
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        Please check the documentation at https://python.tidy-finance.org
+        and the book at https://www.tidy-finance.org first.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What are you trying to do, and what have you tried?
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: Code
+      description: The code you are working with, if any.
+      render: python

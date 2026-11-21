@@ -9,6 +9,10 @@ MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.or
 
 Helper functions for empirical research in financial economics, addressing a variety of topics covered in [Scheuch, Voigt, Weiss, and Frey (2024)](https://doi.org/10.1201/9781032684307). The package is designed to provide shortcuts for issues extensively discussed in the book, facilitating easier application of its concepts. For more information and resources related to the book, visit [tidy-finance.org](https://www.tidy-finance.org).
 
+Researchers who want to reproduce or modify a published factor usually rebuild its construction from scratch, and small differences in breakpoints, sample filters, weights, or the timing of accounting data change the results. `tidyfinance` turns each step of factor construction, from downloading and cleaning raw data to portfolio sorts and Fama-MacBeth regressions, into a function, and each construction choice into an argument with a conventional default. It serves researchers, PhD students, and instructors who work in Python. Its interface and results match the R package [tidyfinance](https://github.com/tidy-finance/r-tidyfinance).
+
+**Documentation:** [python.tidy-finance.org](https://python.tidy-finance.org) (function reference with examples).
+
 ## Installation
 
 You can install the release version from [PyPI](https://pypi.org/project/tidyfinance/):
@@ -30,6 +34,63 @@ Import the package:
 ```python
 import tidyfinance as tf
 ```
+
+## Example: Build a Factor Without WRDS Access
+
+The example below builds the asset growth factor of Cooper, Gulen, and Schill (2008) from raw CRSP and Compustat panels. With `"Pseudo Data"`, it runs without a WRDS subscription on simulated panels that have the WRDS column layout (the values are random and not suitable for inference). Replace `"Pseudo Data"` with `"WRDS"` to run it on the real data.
+
+```python
+import polars as pl
+import tidyfinance as tf
+
+crsp = tf.download_data(
+    "Pseudo Data",
+    "crsp_monthly",
+    start_date="1972-01-01",
+    end_date="2024-12-31",
+    add_ccm_links=True,
+)
+compustat = tf.download_data(
+    "Pseudo Data",
+    "compustat_annual",
+    start_date="1972-01-01",
+    end_date="2024-12-31",
+).select("gvkey", "date", "at")
+
+# Asset growth: the change in total assets over the previous fiscal year
+signal = (
+    tf.add_lagged_columns(compustat, cols="at", lag="1y", by="gvkey")
+    .with_columns(asset_growth=pl.col("at") / pl.col("at_lag") - 1)
+    .filter(pl.col("asset_growth").is_finite())
+    .select("gvkey", "date", "asset_growth")
+)
+
+# Fama-French timing: fiscal-year data from July of the following year
+sorting_data = tf.join_lagged_values(
+    crsp, signal, id_keys="gvkey", ff_adjustment=True
+)
+
+# Quintiles with NYSE breakpoints, rebalanced every July
+options = tf.portfolio_sort_options(
+    breakpoint_options_main=tf.breakpoint_options(
+        n_portfolios=5, breakpoints_exchanges="NYSE"
+    )
+)
+portfolios = tf.implement_portfolio_sort(
+    sorting_data,
+    sorting_variables="asset_growth",
+    sorting_method="univariate",
+    rebalancing_month=7,
+    portfolio_sort_options=options,
+)
+
+# Low minus high asset growth
+factor = tf.compute_long_short_returns(
+    portfolios, direction="bottom_minus_top"
+)
+```
+
+`factor` holds the value-weighted, equal-weighted, and capped value-weighted long-short returns for each month.
 
 ## Choosing a Data Frame Backend
 
@@ -334,3 +395,17 @@ tf.winsorize()
 tf.trim()
 tf.create_summary_statistics()
 ```
+
+## Getting Help and Contributing
+
+- **Questions and support:** open an [issue](https://github.com/tidy-finance/py-tidyfinance/issues/new/choose) with the "Question" template.
+- **Bug reports:** open an [issue](https://github.com/tidy-finance/py-tidyfinance/issues/new/choose) with the "Bug report" template and a minimal example, ideally with `domain="Pseudo Data"`.
+- **Contributing:** see [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, tests, and conventions.
+
+Please note that this project follows a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you agree to abide by its terms.
+
+## Citation
+
+If you use `tidyfinance` in your research, please cite the package and the book (see [CITATION.cff](CITATION.cff)):
+
+> Scheuch, C., Voigt, S., Weiss, P., and Frey, C. (2024). *Tidy Finance with Python*. Chapman and Hall/CRC. https://doi.org/10.1201/9781032684307
